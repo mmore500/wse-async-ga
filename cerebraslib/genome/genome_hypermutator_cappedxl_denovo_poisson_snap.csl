@@ -3,10 +3,31 @@
 // byte 1
 // byte 2 MUTATOR (u8, 1 byte)
 // byte 3 DELCOUNT (u8, 1 byte)
-// TOTAL: 1 words -> 4 bytes
+// byte 4 COUNTER (u32, 4 bytes)
+// byte 5
+// byte 6
+// byte 7
+// byte 8 SNAPSHOT MUTATOR ORIGIN NETBENCOUNT (i16, 2 bytes)
+// byte 9
+// byte 10 SNAPSHOT MUTATOR ORIGIN COUNTER // 256 (u16, 2 bytes)
+// byte 11
+// TOTAL: 3 words -> 12 bytes
 
 //! {
-//!     "nWav": (1, pl.UInt8),
+//!     "nWav": (3, pl.UInt8),
+//!     "netbencount_hexoffset": (0, pl.UInt8),
+//!     "netbencount_hexwidth": (4, pl.UInt8),
+//!     "mutator_hexoffset": (4, pl.UInt8),
+//!     "mutator_hexwidth": (2, pl.UInt8),
+//!     "delcount_hexoffset": (6, pl.UInt8),
+//!     "delcount_hexwidth": (2, pl.UInt8),
+//!     "counter_hexoffset": (8, pl.UInt8),
+//!     "counter_hexwidth": (8, pl.UInt8),
+//!     "snapshot_netbencount_hexoffset": (16, pl.UInt8),
+//!     "snapshot_netbencount_hexwidth": (4, pl.UInt8),
+//!     "snapshot_counter_hexoffset": (20, pl.UInt8),
+//!     "snapshot_counter_hexwidth": (4, pl.UInt8),
+//!     "snapshot_counter_dilation": (8, pl.UInt8),
 //! }
 
 // module imports =============================================================
@@ -20,7 +41,7 @@ const opscalar = @import_module("cerebraslib/opscalar.csl");
 const tilted = @import_module("cerebraslib/dstream_tilted.csl");
 
 // module config specs ========================================================
-const gSize: u16 = 1;
+const gSize: u16 = 3;
 const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 2;
@@ -49,8 +70,16 @@ fn _apply_mutation(genome: genomePtr_t) void {
     _ptr_delcount(genome).* += @as(u8, num_del);
 
     if (opscalar.p(Ub)) {
+        if (_ptr_mutator(genome).* == 1) {
+            _ptr_snap_netbencount(genome).* = _ptr_netbencount(genome).*;
+            _ptr_snap_counter(genome).* = @as(
+                u16,
+                _ptr_counter(genome).* >> 3,
+            );
+        }
         _ptr_mutator(genome).* = 100;
     }
+    _ptr_counter(genome).* += 1;
 }
 
 fn _ptr_netbencount(genome: genomePtr_t) *i16 {
@@ -66,6 +95,21 @@ fn _ptr_delcount(genome: genomePtr_t) *u8 {
 fn _ptr_mutator(genome: genomePtr_t) *u8 {
     const genome_ptr = @ptrcast([*]u8, genome);
     return &genome_ptr[2];
+}
+
+fn _ptr_counter(genome: genomePtr_t) *u32 {
+    const genome_ptr = @ptrcast([*]u32, genome);
+    return &genome_ptr[1];
+}
+
+fn _ptr_snap_netbencount(genome: genomePtr_t) *i16 {
+    const genome_ptr = @ptrcast([*]i16, genome);
+    return &genome_ptr[4];
+}
+
+fn _ptr_snap_counter(genome: genomePtr_t) *u16 {
+    const genome_ptr = @ptrcast([*]u16, genome);
+    return &genome_ptr[5];
 }
 
 // public API =================================================================
@@ -87,6 +131,9 @@ fn initialize_one(genome: genomePtr_t) void {
     _ptr_netbencount(genome).* = 0;
     _ptr_delcount(genome).* = 0;
     _ptr_mutator(genome).* = 1;
+    _ptr_counter(genome).* = 0;
+    _ptr_snap_netbencount(genome).* = 0x0ACE;
+    _ptr_snap_counter(genome).* = 0xBEEF;
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
