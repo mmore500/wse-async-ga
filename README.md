@@ -7,7 +7,8 @@ Development work for agent-based evolution/epidemiological modeling on the Cereb
 Incoprorates [hereditary stratigraphy](https://github.com/mmore500/hstrat) methodology for distributed tracking of agent phylogenies.
 
 Requires [Cerebras SDK](https://www.cerebras.net/developers/sdk-request/), available through invitation.
-Library CSL code targets compatibility with Cerebras SDK v1.X releases. As of October 2025, library code is tested against Cerebras SDK v1.4.0.
+Library CSL code targets compatibility with Cerebras SDK v1.X releases.
+As of October 2025, library code is tested against Cerebras SDK v1.4.0.
 
 ## Contents
 
@@ -19,8 +20,6 @@ Library CSL code targets compatibility with Cerebras SDK v1.X releases. As of Oc
 ## Installation and Running
 
 See our [Continuous Integration config](https://github.com/mmore500/wse-async-ga/blob/master/.github/workflows/ci.yaml) for detailed instructions on installing dependencies and running project components.
-
-Note that the `test-csl` continuous integration components do not run within the scope of the public-facing `wse-async-ga` repository in order to protect Cerebras' intellectual property.
 
 ## Citing
 
