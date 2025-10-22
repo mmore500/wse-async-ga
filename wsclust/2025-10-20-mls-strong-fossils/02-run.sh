@@ -150,11 +150,14 @@ mkdir -p "${WORKDIR_STEP}/run"
 
 cd "${WORKDIR_STEP}/run"
 echo "PWD ${PWD}"
+ls
+echo "copying kernel-async-ga files from ${WORKDIR}/src/kernel-async-ga..."
 cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" .
 cp -rL "${WORKDIR}/src/kernel-async-ga/out" .
 cp -L "${WORKDIR}/src/kernel-async-ga/client.py" .
 cp -L "${WORKDIR}/src/kernel-async-ga/compconf.json" .
 ls
+cat client.py
 
 cd "${WORKDIR_STEP}"
 echo "PWD ${PWD}"
