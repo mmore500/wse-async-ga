@@ -200,6 +200,44 @@ done
 
 ###############################################################################
 echo
+echo "cladesample phylogeny ---------------------------------------------------"
+echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
+###############################################################################
+for csamp in 8192 32768 131072 262144; do
+echo "csamp ${csamp}"
+
+ls -1 ${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt \
+    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.15 \
+    python3 -m hstrat._auxiliary_lib._alifestd_downsample_tips_clade_asexual \
+        -n "${csamp}" \
+        "${WORKDIR_STEP}/a=phylogeny+csamp=${csamp}+ext=.pqt" \
+        | tee "${RESULTDIR_STEP}/_alifestd_downsample_tips_clade_asexual${csamp}.log"
+
+singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.15 \
+    python3 -m hstrat._auxiliary_lib._alifestd_as_newick_asexual \
+        -i "${WORKDIR_STEP}/a=phylogeny+csamp=${csamp}+ext=.pqt" \
+        -o "${WORKDIR_STEP}/a=phylotree+csamp=${csamp}+ext=.nwk" \
+        -l "id" \
+        | tee "${RESULTDIR_STEP}/_alifestd_as_newick_asexual_csamp${csamp}.log"
+
+ls -1 "${WORKDIR_STEP}/a=phylogeny+csamp=${csamp}+ext=.pqt" \
+    | singularity run docker://ghcr.io/mmore500/joinem:v0.11.0 \
+        "${WORKDIR_STEP}/a=phylometa+csamp=${csamp}+ext=.csv" \
+        --select "id" \
+        --select "origin_time" \
+        --select "focal_trait_count" \
+        --select "nonfocal_trait_count" \
+        --select "^trait_byte\d+_bit\d+$" \
+        --select "^trait_num\d+$" \
+        | tee "${RESULTDIR_STEP}/joinem_csamp${csamp}.log"
+
+gzip -k "${WORKDIR_STEP}/a=phylotree+csamp=${csamp}+ext=.nwk"
+gzip -k "${WORKDIR_STEP}/a=phylometa+csamp=${csamp}+ext=.csv"
+
+done
+
+###############################################################################
+echo
 echo "closeout ---------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
