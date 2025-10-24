@@ -168,7 +168,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 for dsamp in 8192 32768 131072 262144; do
 echo "dsamp ${dsamp}"
 
-ls -1 ${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt \
+ls -1 "${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt" \
     | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
     python3 -m hstrat._auxiliary_lib._alifestd_downsample_tips_asexual \
         -n "${dsamp}" \
@@ -206,7 +206,15 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 for csamp in 8192 32768 131072 262144; do
 echo "csamp ${csamp}"
 
-ls -1 ${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt \
+# workaround for pyarrow.lib.ArrowTypeError:
+# Converting unsigned dictionary indices to pandas not yet supported, index type: uint32
+ls -1 "${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt" \
+    | singularity run docker://ghcr.io/mmore500/joinem:v0.11.1 \
+    --eager-read --eager-write \
+    --with-column 'pl.selectors.categorical().cast(pl.String)' \
+    "${WORKDIR_STEP}/a=phylogeny+ext=.pqt"
+
+ls -1 "${WORKDIR_STEP}/a=phylogeny+ext=.pqt" \
     | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.15 \
     python3 -m hstrat._auxiliary_lib._alifestd_downsample_tips_clade_asexual \
         -n "${csamp}" \
