@@ -86,6 +86,9 @@ echo "create tarballs --------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 cd "${RESULTDIR}"
+pwd
+ls
+
 for f in 0*; do
     echo "archiving ${f} ..."
     tar -czvf "${RESULTDIR_STEP}/${f}.tar.gz" "${f}" &
