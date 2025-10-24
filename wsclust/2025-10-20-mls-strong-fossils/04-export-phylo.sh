@@ -162,44 +162,6 @@ gzip -k "${WORKDIR_STEP}/a=phylometa+ext=.csv"
 
 ###############################################################################
 echo
-echo "downsample phylogeny ---------------------------------------------------"
-echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
-###############################################################################
-for dsamp in 8192 32768 131072 262144; do
-echo "dsamp ${dsamp}"
-
-ls -1 "${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt" \
-    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
-    python3 -m hstrat._auxiliary_lib._alifestd_downsample_tips_asexual \
-        -n "${dsamp}" \
-        "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
-        | tee "${RESULTDIR_STEP}/_alifestd_downsample_tips_asexual${dsamp}.log"
-
-singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
-    python3 -m hstrat._auxiliary_lib._alifestd_as_newick_asexual \
-        -i "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
-        -o "${WORKDIR_STEP}/a=phylotree+dsamp=${dsamp}+ext=.nwk" \
-        -l "id" \
-        | tee "${RESULTDIR_STEP}/_alifestd_as_newick_asexual_dsamp${dsamp}.log"
-
-ls -1 "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
-    | singularity run docker://ghcr.io/mmore500/joinem:v0.11.0 \
-        "${WORKDIR_STEP}/a=phylometa+dsamp=${dsamp}+ext=.csv" \
-        --select "id" \
-        --select "origin_time" \
-        --select "focal_trait_count" \
-        --select "nonfocal_trait_count" \
-        --select "^trait_byte\d+_bit\d+$" \
-        --select "^trait_num\d+$" \
-        | tee "${RESULTDIR_STEP}/joinem_dsamp${dsamp}.log"
-
-gzip -k "${WORKDIR_STEP}/a=phylotree+dsamp=${dsamp}+ext=.nwk"
-gzip -k "${WORKDIR_STEP}/a=phylometa+dsamp=${dsamp}+ext=.csv"
-
-done
-
-###############################################################################
-echo
 echo "cladesample phylogeny ---------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
@@ -241,6 +203,44 @@ ls -1 "${WORKDIR_STEP}/a=phylogeny+csamp=${csamp}+ext=.pqt" \
 
 gzip -k "${WORKDIR_STEP}/a=phylotree+csamp=${csamp}+ext=.nwk"
 gzip -k "${WORKDIR_STEP}/a=phylometa+csamp=${csamp}+ext=.csv"
+
+done
+
+###############################################################################
+echo
+echo "downsample phylogeny ---------------------------------------------------"
+echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
+###############################################################################
+for dsamp in 8192 32768 131072 262144; do
+echo "dsamp ${dsamp}"
+
+ls -1 "${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt" \
+    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
+    python3 -m hstrat._auxiliary_lib._alifestd_downsample_tips_asexual \
+        -n "${dsamp}" \
+        "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
+        | tee "${RESULTDIR_STEP}/_alifestd_downsample_tips_asexual${dsamp}.log"
+
+singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
+    python3 -m hstrat._auxiliary_lib._alifestd_as_newick_asexual \
+        -i "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
+        -o "${WORKDIR_STEP}/a=phylotree+dsamp=${dsamp}+ext=.nwk" \
+        -l "id" \
+        | tee "${RESULTDIR_STEP}/_alifestd_as_newick_asexual_dsamp${dsamp}.log"
+
+ls -1 "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
+    | singularity run docker://ghcr.io/mmore500/joinem:v0.11.0 \
+        "${WORKDIR_STEP}/a=phylometa+dsamp=${dsamp}+ext=.csv" \
+        --select "id" \
+        --select "origin_time" \
+        --select "focal_trait_count" \
+        --select "nonfocal_trait_count" \
+        --select "^trait_byte\d+_bit\d+$" \
+        --select "^trait_num\d+$" \
+        | tee "${RESULTDIR_STEP}/joinem_dsamp${dsamp}.log"
+
+gzip -k "${WORKDIR_STEP}/a=phylotree+dsamp=${dsamp}+ext=.nwk"
+gzip -k "${WORKDIR_STEP}/a=phylometa+dsamp=${dsamp}+ext=.csv"
 
 done
 
