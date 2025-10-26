@@ -140,7 +140,7 @@ echo
 echo "export phylogeny -------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
+singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.20 \
     python3 -m hstrat._auxiliary_lib._alifestd_as_newick_asexual \
         -i "${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt" \
         -o "${WORKDIR_STEP}/a=phylotree+ext=.nwk" \
@@ -169,13 +169,13 @@ dsamp=8192
 echo "dsamp ${dsamp}"
 
 ls -1 ${WORKDIR}/03-build-phylo/a=phylogeny+ext=.pqt \
-    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
+    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.20 \
     python3 -m hstrat._auxiliary_lib._alifestd_downsample_tips_asexual \
         -n "${dsamp}" \
         "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
         | tee "${RESULTDIR_STEP}/_alifestd_downsample_tips_asexual${dsamp}.log"
 
-singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
+singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.20 \
     python3 -m hstrat._auxiliary_lib._alifestd_as_newick_asexual \
         -i "${WORKDIR_STEP}/a=phylogeny+dsamp=${dsamp}+ext=.pqt" \
         -o "${WORKDIR_STEP}/a=phylotree+dsamp=${dsamp}+ext=.nwk" \

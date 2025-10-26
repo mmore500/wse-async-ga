@@ -152,7 +152,7 @@ echo "SINGULARITYENV_POLARS_MAX_THREADS=${SINGULARITYENV_POLARS_MAX_THREADS}"
 echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 
 find . -type f \( -name 'a=genomes*.pqt' -o -name 'a=fossils*.pqt' \) \
-    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.14 \
+    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.20 \
     python3 -m hstrat.dataframe.surface_build_tree \
         "${WORKDIR_STEP}/a=phylogeny+ext=.pqt" \
         --trie-postprocessor \

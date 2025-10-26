@@ -227,7 +227,7 @@ echo "SECONDS ${SECONDS}"
 ###############################################################################
 cd "${SCRATCHDIR}"
 find . -type f \( -name 'a=genomes*.pqt' -o -name 'a=fossils*.pqt' \) \
-    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.13 \
+    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.20.20 \
     python3 -m hstrat.dataframe.surface_build_tree \
         "a=phylogeny+ext=.pqt" \
         --filter '~pl.col("data_hex").str.contains(r"^0+$")' \
