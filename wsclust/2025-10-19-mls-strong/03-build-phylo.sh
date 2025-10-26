@@ -146,7 +146,7 @@ find . -type f \( -name 'a=genomes*.pqt' -o -name 'a=fossils*.pqt' \) \
     python3 -m hstrat.dataframe.surface_build_tree \
         "${WORKDIR_STEP}/a=phylogeny+ext=.pqt" \
         --trie-postprocessor \
-            'hstrat.AssignOriginTimeNodeRankTriePostprocessor()' \
+            'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
         --filter '~pl.col("data_hex").str.contains(r"^0+$")' \
         --eager-read --eager-write \
         --with-column 'pl.lit(filepath).cast(pl.Categorical).alias("file")' \
