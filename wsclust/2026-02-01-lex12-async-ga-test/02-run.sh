@@ -274,6 +274,7 @@ EOF
         if [ -n "${WSJOB_ID}" ]; then
             echo "running csctl get job ${WSJOB_ID}..."
             csctl get job "${WSJOB_ID}" -oyaml > "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
+            csctl get job "${WSJOB_ID}" > "${CONFIG_WORKDIR}/out/csctl-job.txt" 2>&1 || :
             echo "... done!"
         else
             echo "WSJOB_ID is empty, skipping csctl"
