@@ -227,13 +227,19 @@ with SdkLauncher("./run", disable_version_check=True) as launcher:
         for key, value in os.environ.items()
         if key.startswith("ASYNC_GA_") or key.startswith("COMPCONFENV_")
     )
-    # --no-suptrace enables simfab traces for debugging
-    command = f"{env_prefix} cs_python client.py --cmaddr %CMADDR% --no-suptrace 2>&1 | tee run.log"
+    command = f"{env_prefix} cs_python client.py --cmaddr %CMADDR% 2>&1 | tee run.log"
     logging.info(f"command={command}")
     logging.info("running command...")
     response = launcher.run(command)
     logging.info("... done!")
     logging.info(response + "\n")
+
+    logging.info("capturing WSJOB_ID...")
+    wsjob_id = launcher.run("echo $WSJOB_ID").strip()
+    logging.info(f"WSJOB_ID={wsjob_id}")
+    with open("${CONFIG_WORKDIR}/out/wsjob_id.txt", "w") as f:
+        f.write(wsjob_id + "\n")
+    logging.info("... done!")
 
     logging.info("finding output files...")
     response = launcher.run(
@@ -253,6 +259,28 @@ with SdkLauncher("./run", disable_version_check=True) as launcher:
 
 logging.info("exited SdkLauncher")
 EOF
+
+    ###########################################################################
+    echo
+    echo "get csctl job info: ${CONFIG_NAME} ----------------------------------"
+    echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
+    ###########################################################################
+    WSJOB_ID_FILE="${CONFIG_WORKDIR}/out/wsjob_id.txt"
+    if [ -f "${WSJOB_ID_FILE}" ]; then
+        WSJOB_ID="$(cat "${WSJOB_ID_FILE}")"
+        echo "WSJOB_ID ${WSJOB_ID}"
+        if [ -n "${WSJOB_ID}" ]; then
+            echo "running csctl get job ${WSJOB_ID}..."
+            csctl get job "${WSJOB_ID}" -oyaml > "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
+            echo "running csctl get job ${WSJOB_ID} events..."
+            csctl get job "${WSJOB_ID}" --show-events -oyaml > "${CONFIG_WORKDIR}/out/csctl-job-events.yaml" 2>&1 || :
+            echo "... done!"
+        else
+            echo "WSJOB_ID is empty, skipping csctl"
+        fi
+    else
+        echo "WSJOB_ID file not found: ${WSJOB_ID_FILE}"
+    fi
 
     ###########################################################################
     echo
