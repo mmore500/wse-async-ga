@@ -154,29 +154,21 @@ echo "SINGULARITY_BIND ${SINGULARITY_BIND}"
 
 ###############################################################################
 echo
-echo "compile configs (parallel) --------------------------------------------"
+echo "compile configs --------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # lex12 configuration: two genome flavors with seeds 1 and 2
-# Each config gets its own source copy to allow parallel compilation
-
-compile_config() {
-    local genome_flavor="$1"
-    local seed="$2"
-    local CONFIG_NAME="flavor=${genome_flavor}+seed=${seed}"
-
+seed=0
+for genome_flavor in genome_purifyingonly genome_purifyingplus; do
+    seed=$((seed + 1))
+    CONFIG_NAME="flavor=${genome_flavor}+seed=${seed}"
     echo
     echo "====== Compiling config: ${CONFIG_NAME} ======"
 
-    local CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
-    local CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
-    local CONFIG_SRCDIR="${WORKDIR_STEP}/${CONFIG_NAME}/src"
+    CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
+    CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
     mkdir -p "${CONFIG_WORKDIR}"
     mkdir -p "${CONFIG_RESULTDIR}"
-
-    # Each config gets its own source copy for parallel compilation
-    echo "copying source to ${CONFIG_SRCDIR}..."
-    cp -rL "${WORKDIR}/src/kernel-async-ga" "${CONFIG_SRCDIR}"
 
     ###########################################################################
     echo
@@ -230,44 +222,16 @@ EOF
     echo "do compile: ${CONFIG_NAME} -------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
-    "${CONFIG_SRCDIR}/compile.sh" 2>&1 | tee "${CONFIG_RESULTDIR}/compile.log"
+    "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${CONFIG_RESULTDIR}/compile.log"
 
     # Copy compiled artifacts to config workdir for run step
-    cp -rL "${CONFIG_SRCDIR}/cerebraslib" "${CONFIG_WORKDIR}/"
-    cp -rL "${CONFIG_SRCDIR}/out" "${CONFIG_WORKDIR}/"
-    cp -L "${CONFIG_SRCDIR}/client.py" "${CONFIG_WORKDIR}/"
-    cp -L "${CONFIG_SRCDIR}/compconf.json" "${CONFIG_WORKDIR}/"
+    cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" "${CONFIG_WORKDIR}/"
+    cp -rL "${WORKDIR}/src/kernel-async-ga/out" "${CONFIG_WORKDIR}/"
+    cp -L "${WORKDIR}/src/kernel-async-ga/client.py" "${CONFIG_WORKDIR}/"
+    cp -L "${WORKDIR}/src/kernel-async-ga/compconf.json" "${CONFIG_WORKDIR}/"
 
     echo "Config ${CONFIG_NAME} compile complete!"
-}
-
-# Export function and variables for subshells
-export -f compile_config
-export WORKDIR WORKDIR_STEP RESULTDIR_STEP FLOWNAME STEPNAME SECONDS
-export CSLC ASYNC_GA_FABRIC_DIMS SINGULARITY_BIND
-
-# Launch parallel compiles
-echo "Launching parallel compiles..."
-compile_config "genome_purifyingonly" 1 &
-PID1=$!
-compile_config "genome_purifyingplus" 2 &
-PID2=$!
-
-echo "Waiting for parallel compiles to complete..."
-echo "  PID1 (genome_purifyingonly): ${PID1}"
-echo "  PID2 (genome_purifyingplus): ${PID2}"
-
-# Wait for both and check exit status
-FAIL=0
-wait ${PID1} || { echo "genome_purifyingonly compile failed!"; FAIL=1; }
-wait ${PID2} || { echo "genome_purifyingplus compile failed!"; FAIL=1; }
-
-if [ ${FAIL} -ne 0 ]; then
-    echo "One or more compiles failed!"
-    exit 1
-fi
-
-echo "All parallel compiles complete!"
+done
 
 ###############################################################################
 echo
