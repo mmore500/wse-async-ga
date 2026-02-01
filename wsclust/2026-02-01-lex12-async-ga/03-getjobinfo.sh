@@ -115,24 +115,16 @@ for WSJOB_ID_FILE in "${WORKDIR_RUN}"/*/out/wsjob_id.txt; do
 
     if [ -n "${WSJOB_ID}" ]; then
         echo "running csctl get job ${WSJOB_ID}..."
-        PRE_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        CSCTL_YAML_OUT="$(csctl get job "${WSJOB_ID}" -oyaml 2>&1 || :)"
-        CSCTL_TXT_OUT="$(csctl get job "${WSJOB_ID}" 2>&1 || :)"
-        POST_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
         # Write yaml with timestamps
-        {
-            echo "pre_timestamp: \"${PRE_TIMESTAMP}\""
-            echo "post_timestamp: \"${POST_TIMESTAMP}\""
-            echo "${CSCTL_YAML_OUT}"
-        } > "${CONFIG_RESULTDIR}/csctl-job.yaml"
+        date -u '+pre_timestamp: "%Y-%m-%dT%H:%M:%SZ"' > "${CONFIG_RESULTDIR}/csctl-job.yaml"
+        date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_RESULTDIR}/csctl-job.yaml"
+        csctl get job "${WSJOB_ID}" -oyaml >> "${CONFIG_RESULTDIR}/csctl-job.yaml" 2>&1 || :
 
         # Write txt with timestamps as first and last lines
-        {
-            echo "${PRE_TIMESTAMP}"
-            echo "${CSCTL_TXT_OUT}"
-            echo "${POST_TIMESTAMP}"
-        } > "${CONFIG_RESULTDIR}/csctl-job.txt"
+        date -u '+%Y-%m-%dT%H:%M:%SZ' > "${CONFIG_RESULTDIR}/csctl-job.txt"
+        csctl get job "${WSJOB_ID}" >> "${CONFIG_RESULTDIR}/csctl-job.txt" 2>&1 || :
+        date -u '+%Y-%m-%dT%H:%M:%SZ' >> "${CONFIG_RESULTDIR}/csctl-job.txt"
 
         echo "... done!"
         echo "Output written to:"
