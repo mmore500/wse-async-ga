@@ -235,7 +235,7 @@ with SdkLauncher("./run", disable_version_check=True) as launcher:
     logging.info(response + "\n")
 
     logging.info("capturing WSJOB_ID...")
-    wsjob_id = launcher.run("echo $WSJOB_ID").strip()
+    wsjob_id = launcher.run("echo \$WSJOB_ID").strip()
     logging.info(f"WSJOB_ID={wsjob_id}")
     with open("${CONFIG_WORKDIR}/out/wsjob_id.txt", "w") as f:
         f.write(wsjob_id + "\n")
