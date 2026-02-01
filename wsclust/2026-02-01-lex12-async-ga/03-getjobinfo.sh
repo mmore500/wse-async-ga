@@ -118,8 +118,8 @@ for WSJOB_ID_FILE in "${WORKDIR_RUN}"/*/out/wsjob_id.txt; do
 
         # Write yaml with timestamps
         date -u '+pre_timestamp: "%Y-%m-%dT%H:%M:%SZ"' > "${CONFIG_RESULTDIR}/csctl-job.yaml"
-        date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_RESULTDIR}/csctl-job.yaml"
         csctl get job "${WSJOB_ID}" -oyaml >> "${CONFIG_RESULTDIR}/csctl-job.yaml" 2>&1 || :
+        date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_RESULTDIR}/csctl-job.yaml"
 
         # Write txt with timestamps as first and last lines
         date -u '+%Y-%m-%dT%H:%M:%SZ' > "${CONFIG_RESULTDIR}/csctl-job.txt"

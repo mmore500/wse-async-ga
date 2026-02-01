@@ -275,8 +275,8 @@ EOF
             echo "running csctl get job ${WSJOB_ID}..."
             # Write yaml with timestamps
             date -u '+pre_timestamp: "%Y-%m-%dT%H:%M:%SZ"' > "${CONFIG_WORKDIR}/out/csctl-job.yaml"
-            date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_WORKDIR}/out/csctl-job.yaml"
             csctl get job "${WSJOB_ID}" -oyaml >> "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
+            date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_WORKDIR}/out/csctl-job.yaml"
 
             # Write txt with timestamps as first and last lines
             date -u '+%Y-%m-%dT%H:%M:%SZ' > "${CONFIG_WORKDIR}/out/csctl-job.txt"
