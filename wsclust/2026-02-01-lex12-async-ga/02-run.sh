@@ -199,11 +199,15 @@ from cerebras.appliance import logger
 from cerebras.sdk.client import SdkLauncher
 
 
+# Enable DEBUG level logging for more telemetry
 logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     format="%(asctime)s %(levelname)-8s %(message)s",
-    level=logging.INFO,
+    level=logging.DEBUG,
 )
+
+# Also set appliance logger to DEBUG
+logger.setLevel(logging.DEBUG)
 
 logging.info("entering SdkLauncher")
 with SdkLauncher("./run", disable_version_check=True) as launcher:
@@ -223,7 +227,8 @@ with SdkLauncher("./run", disable_version_check=True) as launcher:
         for key, value in os.environ.items()
         if key.startswith("ASYNC_GA_") or key.startswith("COMPCONFENV_")
     )
-    command = f"{env_prefix} cs_python client.py --cmaddr %CMADDR% 2>&1 | tee run.log"
+    # --no-suptrace enables simfab traces for debugging
+    command = f"{env_prefix} cs_python client.py --cmaddr %CMADDR% --no-suptrace 2>&1 | tee run.log"
     logging.info(f"command={command}")
     logging.info("running command...")
     response = launcher.run(command)
