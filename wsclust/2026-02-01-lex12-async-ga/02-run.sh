@@ -273,8 +273,25 @@ EOF
         echo "WSJOB_ID ${WSJOB_ID}"
         if [ -n "${WSJOB_ID}" ]; then
             echo "running csctl get job ${WSJOB_ID}..."
-            csctl get job "${WSJOB_ID}" -oyaml > "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
-            csctl get job "${WSJOB_ID}" > "${CONFIG_WORKDIR}/out/csctl-job.txt" 2>&1 || :
+            PRE_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            CSCTL_YAML_OUT="$(csctl get job "${WSJOB_ID}" -oyaml 2>&1 || :)"
+            CSCTL_TXT_OUT="$(csctl get job "${WSJOB_ID}" 2>&1 || :)"
+            POST_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+            # Write yaml with timestamps
+            {
+                echo "pre_timestamp: \"${PRE_TIMESTAMP}\""
+                echo "post_timestamp: \"${POST_TIMESTAMP}\""
+                echo "${CSCTL_YAML_OUT}"
+            } > "${CONFIG_WORKDIR}/out/csctl-job.yaml"
+
+            # Write txt with timestamps as first and last lines
+            {
+                echo "timestamp: ${PRE_TIMESTAMP}"
+                echo "${CSCTL_TXT_OUT}"
+                echo "timestamp: ${POST_TIMESTAMP}"
+            } > "${CONFIG_WORKDIR}/out/csctl-job.txt"
+
             echo "... done!"
         else
             echo "WSJOB_ID is empty, skipping csctl"
