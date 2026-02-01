@@ -210,7 +210,8 @@ logging.basicConfig(
 logger.setLevel(logging.DEBUG)
 
 logging.info("entering SdkLauncher")
-with SdkLauncher("./run", disable_version_check=True) as launcher:
+# Set job_time_sec to 2 hours (7200 seconds) to prevent default 600s timeout
+with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as launcher:
 
     logging.info("querying context info...")
     response = launcher.run(
