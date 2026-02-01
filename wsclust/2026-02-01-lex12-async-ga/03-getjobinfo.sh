@@ -129,9 +129,9 @@ for WSJOB_ID_FILE in "${WORKDIR_RUN}"/*/out/wsjob_id.txt; do
 
         # Write txt with timestamps as first and last lines
         {
-            echo "timestamp: ${PRE_TIMESTAMP}"
+            echo "${PRE_TIMESTAMP}"
             echo "${CSCTL_TXT_OUT}"
-            echo "timestamp: ${POST_TIMESTAMP}"
+            echo "${POST_TIMESTAMP}"
         } > "${CONFIG_RESULTDIR}/csctl-job.txt"
 
         echo "... done!"

@@ -287,9 +287,9 @@ EOF
 
             # Write txt with timestamps as first and last lines
             {
-                echo "timestamp: ${PRE_TIMESTAMP}"
+                echo "${PRE_TIMESTAMP}"
                 echo "${CSCTL_TXT_OUT}"
-                echo "timestamp: ${POST_TIMESTAMP}"
+                echo "${POST_TIMESTAMP}"
             } > "${CONFIG_WORKDIR}/out/csctl-job.txt"
 
             echo "... done!"
