@@ -274,8 +274,6 @@ EOF
         if [ -n "${WSJOB_ID}" ]; then
             echo "running csctl get job ${WSJOB_ID}..."
             csctl get job "${WSJOB_ID}" -oyaml > "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
-            echo "running csctl get job ${WSJOB_ID} events..."
-            csctl get job "${WSJOB_ID}" --show-events -oyaml > "${CONFIG_WORKDIR}/out/csctl-job-events.yaml" 2>&1 || :
             echo "... done!"
         else
             echo "WSJOB_ID is empty, skipping csctl"
