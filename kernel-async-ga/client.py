@@ -298,9 +298,17 @@ log("- runner launch complete")
 
 log(f"- {nonBlock=}, if True waiting for first kernel to finish...")
 fossils = []
+fossil_mmap = np.memmap(
+    f"{temp_dir}/fossils.dat",
+    dtype=np.uint32,
+    mode="w+",
+    shape=(max_fossil_sets, nCol, nRow, nWav + 2),
+)
+fossil_count = 0
 while nonBlock:
     print("1", end="", flush=True)
     if len(fossils) < max_fossil_sets:
+        print(f"({len(fossils)})", end="", flush=True)
         print("a", end="", flush=True)
         memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
         out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
@@ -323,8 +331,10 @@ while nonBlock:
 
         genome_data = out_tensors.copy()
         print("d", end="", flush=True)
-        fossils.append(genome_data)
+        fossil_mmap[len(fossils), :, :, :] = genome_data
         print("e", end="", flush=True)
+        fossils.append(fossil_mmap[len(fossils)])
+        print("f", end="", flush=True)
 
     print("2", end="", flush=True)
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
