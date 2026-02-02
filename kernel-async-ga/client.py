@@ -277,6 +277,9 @@ metadata = {
 }
 log(metadata)
 
+max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
+log(f" - {max_fossil_sets=}")
+
 log("do run =====================================================")
 # Path to ELF and simulation output files
 runner = SdkRuntime(
@@ -297,28 +300,33 @@ log(f"- {nonBlock=}, if True waiting for first kernel to finish...")
 fossils = []
 while nonBlock:
     print("1", end="", flush=True)
-    memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-    out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
+    if len(fossils) < max_fossil_sets:
+        print("a", end="", flush=True)
+        memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+        out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
+        print("b", end="", flush=True)
 
-    runner.memcpy_d2h(
-        out_tensors.ravel(),
-        runner.get_id("genomeBookend"),
-        0,  # x0
-        0,  # y0
-        nCol,  # width
-        nRow,  # height
-        nWav + 2,  # num wavelets
-        streaming=False,
-        data_type=memcpy_dtype,
-        order=MemcpyOrder.ROW_MAJOR,
-        nonblock=False,
-    )
+        runner.memcpy_d2h(
+            out_tensors.ravel(),
+            runner.get_id("genomeBookend"),
+            0,  # x0
+            0,  # y0
+            nCol,  # width
+            nRow,  # height
+            nWav + 2,  # num wavelets
+            streaming=False,
+            data_type=memcpy_dtype,
+            order=MemcpyOrder.ROW_MAJOR,
+            nonblock=False,
+        )
+        print("c", end="", flush=True)
+
+        genome_data = out_tensors.copy()
+        print("d", end="", flush=True)
+        fossils.append(genome_data)
+        print("e", end="", flush=True)
+
     print("2", end="", flush=True)
-
-    genome_data = out_tensors.copy()
-    fossils.append(genome_data)
-    print("3", end="", flush=True)
-
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
     out_tensors = np.zeros((nCol, nRow, 1), np.uint32)
     runner.memcpy_d2h(
@@ -334,11 +342,11 @@ while nonBlock:
         order=MemcpyOrder.ROW_MAJOR,
         nonblock=False,
     )
-    print("4", end="", flush=True)
+    print("3", end="", flush=True)
 
     cycle_counts = out_tensors.ravel().copy()
     num_complete = np.sum(cycle_counts >= nCycleAtLeast)
-    print("5", end="", flush=True)
+    print("4", end="", flush=True)
 
     should_break = num_complete > 0
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
@@ -346,7 +354,7 @@ while nonBlock:
         print("!", flush=True)
         break
     else:
-        print("6", end="", flush=True)
+        print("5", end="", flush=True)
         runner.launch("dorefresh", nonblock=False)
         print("|", end="", flush=True)
         continue
@@ -385,15 +393,11 @@ while nonBlock:
 
 log("fossils ====================================================")
 log(f" - {len(fossils)=}")
+assert len(fossils) <= max_fossil_sets
 
-max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
-log(f" - {max_fossil_sets=}")
-fossils = fossils[:max_fossil_sets]
-log(f" - {len(fossils)=}")
-
-max_fossil_sets_spread = int(os.getenv(
-    "ASYNC_GA_MAX_FOSSIL_SETS_SPREAD", 2**32 - 1
-))
+max_fossil_sets_spread = int(
+    os.getenv("ASYNC_GA_MAX_FOSSIL_SETS_SPREAD", 2**32 - 1)
+)
 log(f" - {max_fossil_sets_spread=}")
 m = min(max_fossil_sets_spread, len(fossils))
 if m < len(fossils):
