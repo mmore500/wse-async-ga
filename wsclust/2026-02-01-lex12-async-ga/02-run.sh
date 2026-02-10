@@ -229,7 +229,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
         for key, value in os.environ.items()
         if key.startswith("ASYNC_GA_") or key.startswith("COMPCONFENV_")
     )
-    command = f"{env_prefix} cs_python client.py --cmaddr %CMADDR% 2>&1 | tee run.log"
+    command = f"{env_prefix} cs_python client.py --cmaddr %CMADDR% --no-process-fossils 2>&1 | tee run.log"
     logging.info(f"command={command}")
     logging.info("running command...")
     response = launcher.run(command)
@@ -254,6 +254,18 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     for filename in response.splitlines():
         target = f"${CONFIG_WORKDIR}/out/{filename}"
         logging.info(f"retrieving file {filename} to {target}...")
+        file_contents = launcher.download_artifact(filename, target)
+        logging.info("... done!")
+
+    logging.info("finding raw files...")
+    response = launcher.run("find raw -type f 2>/dev/null || :")
+    logging.info("... done!")
+    logging.info(response + "\n")
+
+    for filename in response.splitlines():
+        target = f"${CONFIG_WORKDIR}/out/{filename}"
+        logging.info(f"retrieving file {filename} to {target}...")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         file_contents = launcher.download_artifact(filename, target)
         logging.info("... done!")
 

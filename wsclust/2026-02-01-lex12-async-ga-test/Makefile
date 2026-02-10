@@ -30,9 +30,8 @@ resultdir/01-compile: 01-compile.sh resultdir/00-setup
 resultdir/02-run: 02-run.sh resultdir/01-compile
 	./02-run.sh
 
-resultdir/03-getjobinfo: 03-getjobinfo.sh resultdir/02-run
-	./03-getjobinfo.sh
+resultdir/03-postprocess: 03-postprocess.sh resultdir/02-run
+	./03-postprocess.sh
 
-# To add a new step (e.g., 04-analyze.sh):
-# resultdir/04-analyze: 04-analyze.sh resultdir/03-getjobinfo
-# 	./04-analyze.sh
+resultdir/04-getjobinfo: 04-getjobinfo.sh resultdir/02-run
+	./04-getjobinfo.sh
