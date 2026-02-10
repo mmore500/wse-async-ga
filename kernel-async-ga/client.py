@@ -543,7 +543,7 @@ os.makedirs("raw", exist_ok=True)
 np.savez("raw/fossils.npz", *fossils)
 log("- done!")
 file_size_gb = os.path.getsize("raw/fossils.npz") / (1024 * 1024 * 1024)
-log(f"- saved file size: {file_size_gb:.2f} MB")
+log(f"- saved file size: {file_size_gb:.2f} GB")
 
 del fossils
 
