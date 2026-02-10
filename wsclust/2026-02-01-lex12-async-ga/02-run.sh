@@ -257,22 +257,57 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
         file_contents = launcher.download_artifact(filename, target)
         logging.info("... done!")
 
-    logging.info("finding raw files...")
-    response = launcher.run("find raw -type f 2>/dev/null || :")
-    logging.info("... done!")
-    logging.info(response + "\n")
+    logging.info("checking for raw directory...")
+    response = launcher.run("test -d raw && echo exists || echo missing")
+    logging.info(f"raw directory: {response.strip()}")
 
-    for filename in response.splitlines():
-        target = f"${CONFIG_WORKDIR}/out/{filename}"
-        logging.info(f"retrieving file {filename} to {target}...")
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        file_contents = launcher.download_artifact(filename, target)
+    if "exists" in response:
+        logging.info("tarring raw directory...")
+        launcher.run("tar -cf /tmp/raw.tar raw")
         logging.info("... done!")
+
+        logging.info("splitting tar into 1GB chunks...")
+        launcher.run("split -b 1G /tmp/raw.tar /tmp/raw.tar.part.")
+        logging.info("... done!")
+
+        logging.info("listing chunks...")
+        response = launcher.run("ls -la /tmp/raw.tar.part.* && ls /tmp/raw.tar.part.*")
+        logging.info(response + "\n")
+
+        chunks = [line for line in response.splitlines() if line.startswith("/tmp/raw.tar.part.")]
+        logging.info(f"downloading {len(chunks)} chunk(s)...")
+
+        os.makedirs("${CONFIG_WORKDIR}/out/raw_chunks", exist_ok=True)
+        for chunk in chunks:
+            chunk_name = os.path.basename(chunk)
+            target = f"${CONFIG_WORKDIR}/out/raw_chunks/{chunk_name}"
+            logging.info(f"retrieving {chunk} to {target}...")
+            launcher.download_artifact(chunk, target)
+            logging.info("... done!")
 
     logging.info("exiting SdkLauncher")
 
 logging.info("exited SdkLauncher")
 EOF
+
+    ###########################################################################
+    echo
+    echo "reassemble raw tar: ${CONFIG_NAME} ---------------------------------"
+    echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
+    ###########################################################################
+    RAW_CHUNKS_DIR="${CONFIG_WORKDIR}/out/raw_chunks"
+    if [ -d "${RAW_CHUNKS_DIR}" ] && ls "${RAW_CHUNKS_DIR}"/raw.tar.part.* 1>/dev/null 2>&1; then
+        echo "reassembling chunks..."
+        cat "${RAW_CHUNKS_DIR}"/raw.tar.part.* > "${CONFIG_WORKDIR}/out/raw.tar"
+        echo "extracting tar..."
+        tar -xf "${CONFIG_WORKDIR}/out/raw.tar" -C "${CONFIG_WORKDIR}/out"
+        echo "cleaning up..."
+        rm -rf "${RAW_CHUNKS_DIR}" "${CONFIG_WORKDIR}/out/raw.tar"
+        echo "... done!"
+        ls -la "${CONFIG_WORKDIR}/out/raw" || :
+    else
+        echo "no raw chunks found, skipping reassembly"
+    fi
 
     ###########################################################################
     echo
