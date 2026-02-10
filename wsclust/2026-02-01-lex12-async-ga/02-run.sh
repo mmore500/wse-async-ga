@@ -246,7 +246,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     logging.info("finding output files...")
     response = launcher.run(
         "find . -maxdepth 1 -type f "
-        r'\( -name "*.log" -o -name "*.pqt" -o -name "*.json" -o -name "*.npy" \)',
+        r'\( -name "*.log" -o -name "*.pqt" -o -name "*.json" -o -name "*.npy" -o -name "*.npz" -o -name "*.csv" -o -name "*.json.gz" -o -name "*.csv.gz" \)',
     )
     logging.info("... done!")
     logging.info(response + "\n")
