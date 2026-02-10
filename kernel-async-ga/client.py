@@ -278,6 +278,7 @@ log("- configuring argparse")
 parser = argparse.ArgumentParser()
 parser.add_argument("--name", help="the test compile output dir", default="out")
 add_bool_arg(parser, "suptrace", default=True)
+add_bool_arg(parser, "process-fossils", default=None)
 parser.add_argument("--cmaddr", help="IP:port for CS system")
 log("- parsing arguments")
 args = parser.parse_args()
@@ -372,6 +373,12 @@ log(metadata)
 
 max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
 log(f" - {max_fossil_sets=}")
+
+if args.process_fossils is True:
+    log(f" - processing fossils {nWav=}...")
+    process_fossils(nWav)
+    log(" - done! exiting...")
+    sys.exit(0)
 
 log("do run =====================================================")
 # Path to ELF and simulation output files
@@ -535,7 +542,11 @@ log(f"- saved file size: {file_size_mb:.2f} MB")
 del fossils
 
 log("processing fossils =====================================================")
-process_fossils(nWav)
+if args.process_fossils is False:
+    log(" - skipping fossil processing!")
+else:
+    log(f" - processing fossils {nWav=}...")
+    process_fossils(nWav)
 
 log("whoami =====================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
