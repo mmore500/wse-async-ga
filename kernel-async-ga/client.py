@@ -79,6 +79,100 @@ def assemble_genome_bookend_data(
 ) -> "np.ndarray":
     return assemble_binary_data(data, nWav=nWav + 2, verbose=verbose)
 
+def process_fossils(nWav: int) -> None:
+    log("reading fossils ----------------------------------------------------")
+    fossils = np.load("raw/fossils.npz")
+    log("- done!")
+    fossils = [fossils[f"arr_{i}"] for i, __ in enumerate(fossils.files)]
+
+    log("assembling fossils -------------------------------------------------")
+    log(f" - {len(fossils)=}")
+    if fossils:
+        log(f"- {fossils[0].shape=}")
+
+        fossil_filename = "a=rawfossildat+i=0+ext=.npy"
+        log(f"- saving {fossil_filename}...")
+        np.save(fossil_filename, fossils[0])
+
+        log(f"- ... saved {fossil_filename}!")
+
+        file_size_mb = os.path.getsize(fossil_filename) / (1024 * 1024)
+        log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
+
+        log("- example assembly")
+        assemble_genome_bookend_data(fossils[0], verbose=True)
+
+        log(f"- map assemble_genome_bookend_data over {len(fossils)} fossils...")
+        work = map(assemble_genome_bookend_data, fossils)
+        fossils = [*tqdm(work, total=len(fossils), desc="assembling fossils")]
+    else:
+        log("- no fossils to assemble!")
+
+    log("dataframing fossils ------------------------------------------------")
+    log(f" - {len(fossils)=}")
+    if fossils:
+        fossils = np.array(fossils)
+        log(f" - casting genome_raw to object")
+        fossils = fossils.astype(object)
+        log(" - creating indices")
+        layers, positions = np.indices(fossils.shape)
+        log(" - creating DataFrame")
+        df = pl.DataFrame({
+            "data_raw": pl.Series(fossils.ravel(), dtype=pl.Binary),
+            "is_extant": False,
+            "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
+            "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
+        }).with_columns([
+            pl.lit(value, dtype=dtype).alias(key)
+            for key, (value, dtype) in metadata.items()
+        ])
+        log(f" - data_raw: {df['data_raw'].head(3)}")
+        assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
+
+        log(f" - encoding {len(df)} binary fossil rows to hex...")
+        df = df.with_columns(
+            data_hex=pl.col("data_raw").bin.encode("hex"),
+        ).drop("data_raw")
+        log(f" - ... done!")
+
+        log(f" - data_hex: {df['data_hex'].head(3)}")
+        assert (df["data_hex"].str.len_chars() == (nWav + 2) * 8).all()
+        assert (df["data_hex"].str.len_bytes() == (nWav + 2) * 8).all()
+        assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
+
+        len_before = len(df)
+        df = df.filter(
+            pl.col("data_hex").str.head(8) ==  pl.col("data_hex").str.tail(8),
+        )
+        log(
+            " - bookend check removed "
+            f"{len_before - len(df)} / {len_before} "
+            f"({100 * (len_before - len(df)) / len_before:.1f}%) fossils",
+        )
+        log(f" - bookend check retained {len(df)} fossils")
+
+        log(f" - stripping bookends...")
+        df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
+        log(f" - ... done!")
+
+        log(f" - data_hex: {df['data_hex'].head(3)}")
+        assert (df["data_hex"].str.len_chars() == nWav * 8).all()
+        assert (df["data_hex"].str.len_bytes() == nWav * 8).all()
+        assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
+
+        write_parquet_verbose(
+            df,
+            "a=fossils"
+            f"+flavor={genomeFlavor}"
+            f"+seed={globalSeed}"
+            f"+ncycle={nCycleAtLeast}"
+            "+ext=.pqt",
+        )
+
+        del df
+    else:
+        log("- no fossils to process!")
+
 log("- printenv")
 for k, v in sorted(os.environ.items()):
     log(f"  - {k}={v}")
@@ -439,95 +533,10 @@ log("- done!")
 file_size_mb = os.path.getsize("raw/fossils.npz") / (1024 * 1024)
 log(f"- saved file size: {file_size_mb:.2f} MB")
 
-log("reading fossils ========================================================")
-fossils = np.load("raw/fossils.npz")
-log("- done!")
-fossils = [fossils[f"arr_{i}"] for i, __ in enumerate(fossils.files)]
+del fossils
 
 log("processing fossils =====================================================")
-if len(fossils):
-    log(f"- {fossils[0].shape=}")
-
-    fossil_filename = "a=rawfossildat+i=0+ext=.npy"
-    log(f"- saving {fossil_filename}...")
-    np.save(fossil_filename, fossils[0])
-
-    log(f"- ... saved {fossil_filename}!")
-
-    file_size_mb = os.path.getsize(fossil_filename) / (1024 * 1024)
-    log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
-
-    log("- example assembly")
-    assemble_genome_bookend_data(fossils[0], verbose=True)
-
-    log(f"- map assemble_genome_bookend_data over {len(fossils)} fossils...")
-    work = map(assemble_genome_bookend_data, fossils)
-    fossils = [*tqdm(work, total=len(fossils), desc="assembling fossils")]
-
-log(f" - {len(fossils)=}")
-
-if fossils:
-    fossils = np.array(fossils)
-    log(f" - casting genome_raw to object")
-    fossils = fossils.astype(object)
-    log(" - creating indices")
-    layers, positions = np.indices(fossils.shape)
-    log(" - creating DataFrame")
-    df = pl.DataFrame({
-        "data_raw": pl.Series(fossils.ravel(), dtype=pl.Binary),
-        "is_extant": False,
-        "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
-        "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
-    }).with_columns([
-        pl.lit(value, dtype=dtype).alias(key)
-        for key, (value, dtype) in metadata.items()
-    ])
-    log(f" - data_raw: {df['data_raw'].head(3)}")
-    assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
-
-    log(f" - encoding {len(df)} binary fossil rows to hex...")
-    df = df.with_columns(
-        data_hex=pl.col("data_raw").bin.encode("hex"),
-    ).drop("data_raw")
-    log(f" - ... done!")
-
-    log(f" - data_hex: {df['data_hex'].head(3)}")
-    assert (df["data_hex"].str.len_chars() == (nWav + 2) * 8).all()
-    assert (df["data_hex"].str.len_bytes() == (nWav + 2) * 8).all()
-    assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
-
-    len_before = len(df)
-    df = df.filter(
-        pl.col("data_hex").str.head(8) ==  pl.col("data_hex").str.tail(8),
-    )
-    log(
-        " - bookend check removed "
-        f"{len_before - len(df)} / {len_before} "
-        f"({100 * (len_before - len(df)) / len_before:.1f}%) fossils",
-    )
-    log(f" - bookend check retained {len(df)} fossils")
-
-    log(f" - stripping bookends...")
-    df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
-    log(f" - ... done!")
-
-    log(f" - data_hex: {df['data_hex'].head(3)}")
-    assert (df["data_hex"].str.len_chars() == nWav * 8).all()
-    assert (df["data_hex"].str.len_bytes() == nWav * 8).all()
-    assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
-
-    write_parquet_verbose(
-        df,
-        "a=fossils"
-        f"+flavor={genomeFlavor}"
-        f"+seed={globalSeed}"
-        f"+ncycle={nCycleAtLeast}"
-        "+ext=.pqt",
-    )
-
-    del df
-
-del fossils
+process_fossils(nWav)
 
 log("whoami =====================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
