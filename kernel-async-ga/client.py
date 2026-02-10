@@ -401,6 +401,17 @@ while nonBlock:
         print("|", end="", flush=True)
         continue
 
+log("writing fossils ========================================================")
+np.savez("fossils.npz", *fossils)
+log("- done!")
+file_size_mb = os.path.getsize("fossils.npz") / (1024 * 1024)
+log(f"- saved file size: {file_size_mb:.2f} MB")
+
+log("reading fossils ========================================================")
+fossils = np.load("fossils.npz")
+log("- done!")
+fossils = [fossils[f"arr_{i}"] for i, __ in enumerate(fossils.files)]
+
 log("fossils ====================================================")
 log(f" - {len(fossils)=}")
 assert len(fossils) <= max_fossil_sets
