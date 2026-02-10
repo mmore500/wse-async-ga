@@ -311,10 +311,13 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
         f.write(wsjob_id + "\n")
     logging.info("... done!")
 
+    logging.info("recording sha256sum values...")
+    launcher.run("find . -type f -exec sha256sum {} + | tee sha256sums-worker.txt")
+
     logging.info("finding output files...")
     response = launcher.run(
         "find . -maxdepth 1 -type f "
-        r'\( -name "*.log" -o -name "*.pqt" -o -name "*.json" -o -name "*.npy" -o -name "*.npz" -o -name "*.csv" -o -name "*.json.gz" -o -name "*.csv.gz" \)',
+        r'\( -name "*.log" -o -name "*.txt" -o -name "*.pqt" -o -name "*.json" -o -name "*.npy" -o -name "*.npz" -o -name "*.csv" -o -name "*.json.gz" -o -name "*.csv.gz" \)',
     )
     logging.info("... done!")
     logging.info(response + "\n")
@@ -366,6 +369,7 @@ EOF
     echo "closeout: ${CONFIG_NAME} ---------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
+    find "${CONFIG_WORKDIR}/out" -type f -exec sha256sum {} + | tee "${CONFIG_WORKDIR}/out/sha256sums-host.txt"
     find "${CONFIG_WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
     du -ah "${CONFIG_WORKDIR}"/out/*
 
