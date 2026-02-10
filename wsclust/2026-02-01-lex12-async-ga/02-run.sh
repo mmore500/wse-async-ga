@@ -240,8 +240,8 @@ def transfer_file_chunked(launcher, remote_path, local_path, tmp_dir="tmp"):
         logging.info(f"reassembling {local_path} from {len(chunks_downloaded)} chunk(s)...")
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         subprocess.run(
-            f"cat {chunk_dir}/chunk.* > {local_path}",
-            shell=True,
+            ["cat"] + chunks_downloaded,
+            stdout=open(local_path, "wb"),
             check=True,
         )
         for chunk_file in chunks_downloaded:
