@@ -194,7 +194,6 @@ for genome_flavor in genome_purifyingonly genome_purifyingplus; do
     python3 - << EOF
 import logging
 import os
-import uuid
 
 from cerebras.appliance import logger
 from cerebras.sdk.client import SdkLauncher
@@ -263,7 +262,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     logging.info(f"raw directory: {response.strip()}")
 
     if "exists" in response:
-        tmp_dir = f"/tmp/raw_transfer_{uuid.uuid4().hex[:8]}"
+        tmp_dir = "tmp"
         logging.info(f"creating temp directory: {tmp_dir}")
         launcher.run(f"mkdir -p {tmp_dir}")
 
