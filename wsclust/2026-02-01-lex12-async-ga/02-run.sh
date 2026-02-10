@@ -194,6 +194,7 @@ for genome_flavor in genome_purifyingonly genome_purifyingplus; do
     python3 - << EOF
 import logging
 import os
+import uuid
 
 from cerebras.appliance import logger
 from cerebras.sdk.client import SdkLauncher
@@ -262,20 +263,31 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     logging.info(f"raw directory: {response.strip()}")
 
     if "exists" in response:
+        tmp_dir = f"/tmp/raw_transfer_{uuid.uuid4().hex[:8]}"
+        logging.info(f"creating temp directory: {tmp_dir}")
+        launcher.run(f"mkdir -p {tmp_dir}")
+
+        tar_path = f"{tmp_dir}/raw.tar"
         logging.info("tarring raw directory...")
-        launcher.run("tar -cf /tmp/raw.tar raw")
+        launcher.run(f"tar -cf {tar_path} raw")
         logging.info("... done!")
 
+        logging.info("getting tar size...")
+        response = launcher.run(f"du -b {tar_path}")
+        tar_size_bytes = int(response.split()[0])
+        tar_size_gb = tar_size_bytes / (1024**3)
+        logging.info(f"tar size: {tar_size_bytes} bytes ({tar_size_gb:.2f} GB)")
+
         logging.info("splitting tar into 1GB chunks...")
-        launcher.run("split -b 1G /tmp/raw.tar /tmp/raw.tar.part.")
+        launcher.run(f"split -b 1G {tar_path} {tmp_dir}/raw.tar.part.")
         logging.info("... done!")
 
         logging.info("listing chunks...")
-        response = launcher.run("ls -la /tmp/raw.tar.part.* && ls /tmp/raw.tar.part.*")
+        response = launcher.run(f"ls {tmp_dir}/raw.tar.part.*")
         logging.info(response + "\n")
 
-        chunks = [line for line in response.splitlines() if line.startswith("/tmp/raw.tar.part.")]
-        logging.info(f"downloading {len(chunks)} chunk(s)...")
+        chunks = [line.strip() for line in response.splitlines() if line.strip()]
+        logging.info(f"found {len(chunks)} chunk(s) to download")
 
         os.makedirs("${CONFIG_WORKDIR}/out/raw_chunks", exist_ok=True)
         for chunk in chunks:
@@ -284,6 +296,9 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
             logging.info(f"retrieving {chunk} to {target}...")
             launcher.download_artifact(chunk, target)
             logging.info("... done!")
+
+        logging.info(f"cleaning up temp directory: {tmp_dir}")
+        launcher.run(f"rm -rf {tmp_dir}")
 
     logging.info("exiting SdkLauncher")
 
