@@ -13,7 +13,6 @@ import uuid
 import shutil
 import subprocess
 import sys
-import typing
 
 logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
