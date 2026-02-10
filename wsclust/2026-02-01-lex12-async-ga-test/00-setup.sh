@@ -135,7 +135,7 @@ git -C "$(git -C "${FLOWDIR}" rev-parse --show-toplevel)" status \
     > "${RESULTDIR_STEP}/git-status.txt"
 echo "log diff"
 git -C "${FLOWDIR}" --no-pager diff > "${RESULTDIR_STEP}/git-status.diff" || :
-git -C "${FLOWDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git -C "${FLOWDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/git-status.diff" || :
+git -C "${FLOWDIR}" ls-files -z --others --exclude-standard --exclude=resultdir --exclude=workdir | xargs -0 -I {} git -C "${FLOWDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/git-status.diff" || :
 
 echo "setup src..."
 SRCDIR="${WORKDIR}/src"
