@@ -526,7 +526,7 @@ if m < len(fossils):
     log(f" - {len(fossils)=}")
 
 log("writing fossils ========================================================")
-os.mkdir("raw", exist_ok=True)
+os.makedirs("raw", exist_ok=True)
 np.savez("raw/fossils.npz", *fossils)
 log("- done!")
 file_size_mb = os.path.getsize("raw/fossils.npz") / (1024 * 1024)
