@@ -212,8 +212,45 @@ logger.setLevel(logging.DEBUG)
 
 CHUNK_SIZE = 1024 * 1024 * 1024  # 1GB
 
+def transfer_file_chunked(launcher, remote_path, local_path, tmp_dir="tmp"):
+    """Transfer a single file using chunked dd to avoid disk space issues."""
+    logging.info(f"getting size of {remote_path}...")
+    response = launcher.run(f"stat -c %s {remote_path}")
+    file_size = int(response.strip())
+    logging.info(f"file size: {file_size} bytes ({file_size / (1024**3):.2f} GB)")
+
+    num_chunks = math.ceil(file_size / CHUNK_SIZE)
+    logging.info(f"transferring in {num_chunks} chunk(s)...")
+
+    chunk_dir = os.path.dirname(local_path) + "/.chunks"
+    os.makedirs(chunk_dir, exist_ok=True)
+    chunk_path = f"{tmp_dir}/chunk"
+
+    for i in range(num_chunks):
+        logging.info(f"extracting chunk {i+1}/{num_chunks}...")
+        launcher.run(f"dd if={remote_path} of={chunk_path} bs=1G skip={i} count=1 2>/dev/null")
+
+        chunk_target = f"{chunk_dir}/chunk.{i:03d}"
+        logging.info(f"retrieving chunk to {chunk_target}...")
+        launcher.download_artifact(chunk_path, chunk_target)
+
+        launcher.run(f"rm -f {chunk_path}")
+        logging.info("... done!")
+
+    # Reassemble file locally
+    logging.info(f"reassembling {local_path}...")
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    with open(local_path, "wb") as outfile:
+        for i in range(num_chunks):
+            chunk_file = f"{chunk_dir}/chunk.{i:03d}"
+            with open(chunk_file, "rb") as infile:
+                outfile.write(infile.read())
+            os.remove(chunk_file)
+    os.rmdir(chunk_dir)
+    logging.info("... done!")
+
 def transfer_raw_directory(launcher, local_out_dir):
-    """Transfer raw/ directory using chunked dd to avoid disk space issues."""
+    """Transfer raw/ directory file by file using chunked transfers."""
     logging.info("checking for raw directory...")
     response = launcher.run("test -d raw && echo exists || echo missing")
     logging.info(f"raw directory: {response.strip()}")
@@ -225,36 +262,17 @@ def transfer_raw_directory(launcher, local_out_dir):
     tmp_dir = "tmp"
     launcher.run(f"mkdir -p {tmp_dir}")
 
-    tar_path = f"{tmp_dir}/raw.tar"
-    logging.info("tarring raw directory...")
-    launcher.run(f"tar -cf {tar_path} raw")
-    logging.info("... done!")
+    logging.info("listing files in raw/...")
+    response = launcher.run("find raw -type f")
+    files = [f.strip() for f in response.splitlines() if f.strip()]
+    logging.info(f"found {len(files)} file(s) to transfer")
 
-    logging.info("getting tar size...")
-    response = launcher.run(f"stat -c %s {tar_path}")
-    tar_size = int(response.strip())
-    logging.info(f"tar size: {tar_size} bytes ({tar_size / (1024**3):.2f} GB)")
+    for remote_path in files:
+        local_path = f"{local_out_dir}/{remote_path}"
+        transfer_file_chunked(launcher, remote_path, local_path, tmp_dir)
 
-    num_chunks = math.ceil(tar_size / CHUNK_SIZE)
-    logging.info(f"downloading {num_chunks} chunk(s)...")
-
-    os.makedirs(f"{local_out_dir}/raw_chunks", exist_ok=True)
-    chunk_path = f"{tmp_dir}/chunk"
-
-    for i in range(num_chunks):
-        logging.info(f"extracting chunk {i+1}/{num_chunks}...")
-        launcher.run(f"dd if={tar_path} of={chunk_path} bs=1G skip={i} count=1 2>/dev/null")
-
-        target = f"{local_out_dir}/raw_chunks/raw.tar.part.{i:03d}"
-        logging.info(f"retrieving chunk to {target}...")
-        launcher.download_artifact(chunk_path, target)
-
-        launcher.run(f"rm -f {chunk_path}")
-        logging.info("... done!")
-
-    logging.info("cleaning up tar file...")
     launcher.run(f"rm -rf {tmp_dir}")
-    logging.info("... done!")
+    logging.info("raw directory transfer complete!")
 
 logging.info("entering SdkLauncher")
 # Set job_time_sec to 2 hours (7200 seconds) to prevent default 600s timeout
@@ -310,25 +328,6 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
 
 logging.info("exited SdkLauncher")
 EOF
-
-    ###########################################################################
-    echo
-    echo "reassemble raw tar: ${CONFIG_NAME} ---------------------------------"
-    echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
-    ###########################################################################
-    RAW_CHUNKS_DIR="${CONFIG_WORKDIR}/out/raw_chunks"
-    if [ -d "${RAW_CHUNKS_DIR}" ] && ls "${RAW_CHUNKS_DIR}"/raw.tar.part.* 1>/dev/null 2>&1; then
-        echo "reassembling chunks..."
-        cat "${RAW_CHUNKS_DIR}"/raw.tar.part.* > "${CONFIG_WORKDIR}/out/raw.tar"
-        echo "extracting tar..."
-        tar -xf "${CONFIG_WORKDIR}/out/raw.tar" -C "${CONFIG_WORKDIR}/out"
-        echo "cleaning up..."
-        rm -rf "${RAW_CHUNKS_DIR}" "${CONFIG_WORKDIR}/out/raw.tar"
-        echo "... done!"
-        ls -la "${CONFIG_WORKDIR}/out/raw" || :
-    else
-        echo "no raw chunks found, skipping reassembly"
-    fi
 
     ###########################################################################
     echo
