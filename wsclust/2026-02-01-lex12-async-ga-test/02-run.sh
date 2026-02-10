@@ -369,7 +369,7 @@ EOF
     find "${CONFIG_WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
     du -ah "${CONFIG_WORKDIR}"/out/*
 
-    cp "${CONFIG_WORKDIR}"/out/* "${CONFIG_RESULTDIR}"
+    cp -r "${CONFIG_WORKDIR}"/out/* "${CONFIG_RESULTDIR}"
 
     find "${CONFIG_RESULTDIR}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
     du -ah "${CONFIG_RESULTDIR}"/*
