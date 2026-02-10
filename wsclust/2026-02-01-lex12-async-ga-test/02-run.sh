@@ -273,10 +273,8 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
         logging.info("... done!")
 
         logging.info("getting tar size...")
-        response = launcher.run(f"du -b {tar_path}")
-        tar_size_bytes = int(response.split()[0])
-        tar_size_gb = tar_size_bytes / (1024**3)
-        logging.info(f"tar size: {tar_size_bytes} bytes ({tar_size_gb:.2f} GB)")
+        response = launcher.run(f"du -h {tar_path}")
+        logging.info(f"tar size: {response.strip()}")
 
         logging.info("splitting tar into 1GB chunks...")
         launcher.run(f"split -b 1G {tar_path} {tmp_dir}/raw.tar.part.")
@@ -287,7 +285,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
         logging.info(response + "\n")
 
         chunks = [line.strip() for line in response.splitlines() if line.strip()]
-        logging.info(f"found {len(chunks)} chunk(s) to download")
+        logging.info(f"downloading {len(chunks)} chunk(s)...")
 
         os.makedirs("${CONFIG_WORKDIR}/out/raw_chunks", exist_ok=True)
         for chunk in chunks:
