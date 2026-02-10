@@ -401,19 +401,7 @@ while nonBlock:
         print("|", end="", flush=True)
         continue
 
-log("writing fossils ========================================================")
-os.mkdir("raw", exist_ok=True)
-np.savez("raw/fossils.npz", *fossils)
-log("- done!")
-file_size_mb = os.path.getsize("raw/fossils.npz") / (1024 * 1024)
-log(f"- saved file size: {file_size_mb:.2f} MB")
-
-log("reading fossils ========================================================")
-fossils = np.load("raw/fossils.npz")
-log("- done!")
-fossils = [fossils[f"arr_{i}"] for i, __ in enumerate(fossils.files)]
-
-log("fossils ====================================================")
+log("thinning fossils =======================================================")
 log(f" - {len(fossils)=}")
 assert len(fossils) <= max_fossil_sets
 
@@ -444,6 +432,19 @@ if m < len(fossils):
     ]
     log(f" - {len(fossils)=}")
 
+log("writing fossils ========================================================")
+os.mkdir("raw", exist_ok=True)
+np.savez("raw/fossils.npz", *fossils)
+log("- done!")
+file_size_mb = os.path.getsize("raw/fossils.npz") / (1024 * 1024)
+log(f"- saved file size: {file_size_mb:.2f} MB")
+
+log("reading fossils ========================================================")
+fossils = np.load("raw/fossils.npz")
+log("- done!")
+fossils = [fossils[f"arr_{i}"] for i, __ in enumerate(fossils.files)]
+
+log("processing fossils =====================================================")
 if len(fossils):
     log(f"- {fossils[0].shape=}")
 
