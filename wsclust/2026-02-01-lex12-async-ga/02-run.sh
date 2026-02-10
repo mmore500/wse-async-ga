@@ -192,10 +192,12 @@ for genome_flavor in genome_purifyingonly genome_purifyingplus; do
 
     which python3
     python3 - << EOF
+import itertools
 import logging
-import math
 import os
+import subprocess
 
+from tqdm import tqdm
 from cerebras.appliance import logger
 from cerebras.sdk.client import SdkLauncher
 
@@ -210,44 +212,45 @@ logging.basicConfig(
 # Also set appliance logger to DEBUG
 logger.setLevel(logging.DEBUG)
 
-CHUNK_SIZE = 1024 * 1024 * 1024  # 1GB
-
 def transfer_file_chunked(launcher, remote_path, local_path, tmp_dir="tmp"):
     """Transfer a single file using chunked dd to avoid disk space issues."""
-    logging.info(f"getting size of {remote_path}...")
-    response = launcher.run(f"stat -c %s {remote_path}")
-    file_size = int(response.strip())
-    logging.info(f"file size: {file_size} bytes ({file_size / (1024**3):.2f} GB)")
-
-    num_chunks = math.ceil(file_size / CHUNK_SIZE)
-    logging.info(f"transferring in {num_chunks} chunk(s)...")
+    logging.info(f"transferring {remote_path}...")
 
     chunk_dir = os.path.dirname(local_path) + "/.chunks"
     os.makedirs(chunk_dir, exist_ok=True)
     chunk_path = f"{tmp_dir}/chunk"
+    chunks_downloaded = []
 
-    for i in range(num_chunks):
-        logging.info(f"extracting chunk {i+1}/{num_chunks}...")
+    for i in tqdm(itertools.count(), desc=f"chunking {os.path.basename(remote_path)}"):
         launcher.run(f"dd if={remote_path} of={chunk_path} bs=1G skip={i} count=1 2>/dev/null")
 
         chunk_target = f"{chunk_dir}/chunk.{i:03d}"
-        logging.info(f"retrieving chunk to {chunk_target}...")
         launcher.download_artifact(chunk_path, chunk_target)
-
         launcher.run(f"rm -f {chunk_path}")
-        logging.info("... done!")
 
-    # Reassemble file locally
-    logging.info(f"reassembling {local_path}...")
-    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-    with open(local_path, "wb") as outfile:
-        for i in range(num_chunks):
-            chunk_file = f"{chunk_dir}/chunk.{i:03d}"
-            with open(chunk_file, "rb") as infile:
-                outfile.write(infile.read())
+        # Check if chunk is empty (end of file)
+        if os.path.getsize(chunk_target) == 0:
+            os.remove(chunk_target)
+            break
+
+        chunks_downloaded.append(chunk_target)
+
+    # Reassemble file locally using cat
+    if chunks_downloaded:
+        logging.info(f"reassembling {local_path} from {len(chunks_downloaded)} chunk(s)...")
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        subprocess.run(
+            f"cat {chunk_dir}/chunk.* > {local_path}",
+            shell=True,
+            check=True,
+        )
+        for chunk_file in chunks_downloaded:
             os.remove(chunk_file)
-    os.rmdir(chunk_dir)
-    logging.info("... done!")
+        os.rmdir(chunk_dir)
+        logging.info("... done!")
+    else:
+        logging.info(f"no chunks for {remote_path}, skipping")
+        os.rmdir(chunk_dir)
 
 def transfer_raw_directory(launcher, local_out_dir):
     """Transfer raw/ directory file by file using chunked transfers."""
@@ -267,7 +270,7 @@ def transfer_raw_directory(launcher, local_out_dir):
     files = [f.strip() for f in response.splitlines() if f.strip()]
     logging.info(f"found {len(files)} file(s) to transfer")
 
-    for remote_path in files:
+    for remote_path in tqdm(files, desc="transferring raw files"):
         local_path = f"{local_out_dir}/{remote_path}"
         transfer_file_chunked(launcher, remote_path, local_path, tmp_dir)
 
