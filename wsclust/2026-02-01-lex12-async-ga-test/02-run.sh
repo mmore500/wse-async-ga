@@ -192,7 +192,7 @@ for genome_flavor in genome_purifyingonly genome_purifyingplus; do
 
     which python3
     python3 - << EOF
-import itertools
+import itertools as it
 import logging
 import os
 import subprocess
@@ -221,7 +221,7 @@ def transfer_file_chunked(launcher, remote_path, local_path, tmp_dir="tmp"):
     chunk_path = f"{tmp_dir}/chunk"
     chunks_downloaded = []
 
-    for i in tqdm(itertools.count(), desc=f"chunking {os.path.basename(remote_path)}"):
+    for i in tqdm(it.count(), desc=f"chunking {os.path.basename(remote_path)}"):
         launcher.run(f"dd if={remote_path} of={chunk_path} bs=1G skip={i} count=1 2>/dev/null")
 
         chunk_target = f"{chunk_dir}/chunk.{i:03d}"
