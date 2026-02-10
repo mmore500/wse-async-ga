@@ -193,6 +193,7 @@ for genome_flavor in genome_purifyingonly genome_purifyingplus; do
     which python3
     python3 - << EOF
 import logging
+import math
 import os
 
 from cerebras.appliance import logger
@@ -208,6 +209,52 @@ logging.basicConfig(
 
 # Also set appliance logger to DEBUG
 logger.setLevel(logging.DEBUG)
+
+CHUNK_SIZE = 1024 * 1024 * 1024  # 1GB
+
+def transfer_raw_directory(launcher, local_out_dir):
+    """Transfer raw/ directory using chunked dd to avoid disk space issues."""
+    logging.info("checking for raw directory...")
+    response = launcher.run("test -d raw && echo exists || echo missing")
+    logging.info(f"raw directory: {response.strip()}")
+
+    if "exists" not in response:
+        logging.info("raw directory not found, skipping transfer")
+        return
+
+    tmp_dir = "tmp"
+    launcher.run(f"mkdir -p {tmp_dir}")
+
+    tar_path = f"{tmp_dir}/raw.tar"
+    logging.info("tarring raw directory...")
+    launcher.run(f"tar -cf {tar_path} raw")
+    logging.info("... done!")
+
+    logging.info("getting tar size...")
+    response = launcher.run(f"stat -c %s {tar_path}")
+    tar_size = int(response.strip())
+    logging.info(f"tar size: {tar_size} bytes ({tar_size / (1024**3):.2f} GB)")
+
+    num_chunks = math.ceil(tar_size / CHUNK_SIZE)
+    logging.info(f"downloading {num_chunks} chunk(s)...")
+
+    os.makedirs(f"{local_out_dir}/raw_chunks", exist_ok=True)
+    chunk_path = f"{tmp_dir}/chunk"
+
+    for i in range(num_chunks):
+        logging.info(f"extracting chunk {i+1}/{num_chunks}...")
+        launcher.run(f"dd if={tar_path} of={chunk_path} bs=1G skip={i} count=1 2>/dev/null")
+
+        target = f"{local_out_dir}/raw_chunks/raw.tar.part.{i:03d}"
+        logging.info(f"retrieving chunk to {target}...")
+        launcher.download_artifact(chunk_path, target)
+
+        launcher.run(f"rm -f {chunk_path}")
+        logging.info("... done!")
+
+    logging.info("cleaning up tar file...")
+    launcher.run(f"rm -rf {tmp_dir}")
+    logging.info("... done!")
 
 logging.info("entering SdkLauncher")
 # Set job_time_sec to 2 hours (7200 seconds) to prevent default 600s timeout
@@ -257,45 +304,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
         file_contents = launcher.download_artifact(filename, target)
         logging.info("... done!")
 
-    logging.info("checking for raw directory...")
-    response = launcher.run("test -d raw && echo exists || echo missing")
-    logging.info(f"raw directory: {response.strip()}")
-
-    if "exists" in response:
-        tmp_dir = "tmp"
-        logging.info(f"creating temp directory: {tmp_dir}")
-        launcher.run(f"mkdir -p {tmp_dir}")
-
-        tar_path = f"{tmp_dir}/raw.tar"
-        logging.info("tarring raw directory...")
-        launcher.run(f"tar -cf {tar_path} raw")
-        logging.info("... done!")
-
-        logging.info("getting tar size...")
-        response = launcher.run(f"du -h {tar_path}")
-        logging.info(f"tar size: {response.strip()}")
-
-        logging.info("splitting tar into 1GB chunks...")
-        launcher.run(f"split -b 1G {tar_path} {tmp_dir}/raw.tar.part.")
-        logging.info("... done!")
-
-        logging.info("listing chunks...")
-        response = launcher.run(f"ls {tmp_dir}/raw.tar.part.*")
-        logging.info(response + "\n")
-
-        chunks = [line.strip() for line in response.splitlines() if line.strip()]
-        logging.info(f"downloading {len(chunks)} chunk(s)...")
-
-        os.makedirs("${CONFIG_WORKDIR}/out/raw_chunks", exist_ok=True)
-        for chunk in chunks:
-            chunk_name = os.path.basename(chunk)
-            target = f"${CONFIG_WORKDIR}/out/raw_chunks/{chunk_name}"
-            logging.info(f"retrieving {chunk} to {target}...")
-            launcher.download_artifact(chunk, target)
-            logging.info("... done!")
-
-        logging.info(f"cleaning up temp directory: {tmp_dir}")
-        launcher.run(f"rm -rf {tmp_dir}")
+    transfer_raw_directory(launcher, "${CONFIG_WORKDIR}/out")
 
     logging.info("exiting SdkLauncher")
 
