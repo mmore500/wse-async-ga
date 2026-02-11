@@ -247,8 +247,11 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     log(f"- saved file size: {file_size_mb:.2f} MB")
 
     lazy_frame = pl.scan_parquet(tmp_file)
-    log("- LazyFrame describe:")
-    log(lazy_frame.describe())
+    if file_size_mb <= 1024:
+        log("- LazyFrame describe:")
+        log(lazy_frame.describe())
+    else:
+        log("- LazyFrame describe skipped due to large file size")
 
     original_row_count = df.shape[0]
     lazy_row_count = lazy_frame.select(pl.count()).collect().item()
