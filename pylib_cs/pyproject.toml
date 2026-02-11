@@ -17,6 +17,11 @@ dependencies = [
     "rich",
     # workflow dependencies
     "compconf==0.6.5",
+    "numpy",
+    "pandas",
+    "polars",
+    "scipy",
+    "tqdm",
     # dev dependencies
     "black==22.10.0",
     "pytest",

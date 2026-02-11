@@ -152,6 +152,7 @@ for CONFIG_DIR in "${WORKDIR_RUN}"/*/; do
     # Source env to get ASYNC_GA_* variables
     source "${WORKDIR_COMPILE}/env.sh"
 
+    echo "which python3 $(which python3)"
     python3 "${SRCDIR}/kernel-async-ga/client.py" --process-fossils 2>&1 \
         | tee "${CONFIG_WORKDIR}/postprocess.log"
 

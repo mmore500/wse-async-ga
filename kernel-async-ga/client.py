@@ -184,31 +184,37 @@ temp_dir = f"{os.getenv('ASYNC_GA_LOCAL_PATH', 'local')}/tmp/{uuid.uuid4()}"
 os.makedirs(temp_dir, exist_ok=True)
 atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
 log(f"  - {temp_dir=}")
-log("- installing polars")
-for attempt in range(4):
-    try:
-        subprocess.check_call(
-            [
-                "pip",
-                "install",
-                f"--target={temp_dir}",
-                "--no-cache-dir",
-                "polars==1.6.0",
-            ],
-            env={
-                **os.environ,
-                "TMPDIR": temp_dir,
-            },
-        )
-        log("- pip install succeeded!")
-        break
-    except subprocess.CalledProcessError as e:
-        log(e)
-        log(f"retrying {attempt=}...")
-else:
-    raise e
-log(f"- extending sys path with temp dir {temp_dir=}")
-sys.path.append(temp_dir)
+
+try:
+    import polars  # type: ignore
+    log("- polars already installed, skipping installation")
+    del polars
+except ImportError:
+    log("- installing polars")
+    for attempt in range(4):
+        try:
+            subprocess.check_call(
+                [
+                    "pip",
+                    "install",
+                    f"--target={temp_dir}",
+                    "--no-cache-dir",
+                    "polars==1.6.0",
+                ],
+                env={
+                    **os.environ,
+                    "TMPDIR": temp_dir,
+                },
+            )
+            log("- pip install succeeded!")
+            break
+        except subprocess.CalledProcessError as e:
+            log(e)
+            log(f"retrying {attempt=}...")
+    else:
+        raise e
+    log(f"- extending sys path with temp dir {temp_dir=}")
+    sys.path.append(temp_dir)
 
 log("- importing third-party dependencies")
 import numpy as np
@@ -219,13 +225,6 @@ from scipy import stats as sps
 log("  - scipy")
 from tqdm import tqdm
 log("  - tqdm")
-
-log("- importing cerebras depencencies")
-from cerebras.sdk.runtime.sdkruntimepybind import (
-    MemcpyDataType,
-    MemcpyOrder,
-    SdkRuntime,
-)  # pylint: disable=no-name-in-module
 
 log("- defining helper functions")
 def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
@@ -385,6 +384,13 @@ if args.process_fossils is True:
     process_fossils(nWav)
     log(" - done! exiting...")
     sys.exit(0)
+
+log("- importing cerebras depencencies")
+from cerebras.sdk.runtime.sdkruntimepybind import (
+    MemcpyDataType,
+    MemcpyOrder,
+    SdkRuntime,
+)  # pylint: disable=no-name-in-module
 
 log("do run =====================================================")
 # Path to ELF and simulation output files
