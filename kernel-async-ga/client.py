@@ -137,9 +137,13 @@ def process_fossils(nWav: int) -> None:
         log(f" - ... done!")
 
         log(f" - data_hex: {df['data_hex'].head(3)}")
+        log(" - validation check 0/3...")
         assert (df["data_hex"].str.len_chars() == (nWav + 2) * 8).all()
+        log(" - validation check 1/3...")
         assert (df["data_hex"].str.len_bytes() == (nWav + 2) * 8).all()
+        log(" - validation check 2/3...")
         assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
+        log(" - validation check 3/3 complete!")
 
         len_before = len(df)
         df = df.filter(
@@ -157,9 +161,13 @@ def process_fossils(nWav: int) -> None:
         log(f" - ... done!")
 
         log(f" - data_hex: {df['data_hex'].head(3)}")
+        log(" - validation check 0/3...")
         assert (df["data_hex"].str.len_chars() == nWav * 8).all()
+        log(" - validation check 1/3...")
         assert (df["data_hex"].str.len_bytes() == nWav * 8).all()
+        log(" - validation check 2/3...")
         assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
+        log(" - validation check 3/3 complete!")
 
         write_parquet_verbose(
             df,
