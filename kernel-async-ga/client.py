@@ -84,7 +84,7 @@ def process_fossils(nWav: int) -> None:
     log(f"- raw/fossils.npz file size: {file_size_gb:.2f} GB")
     fossils = np.load("raw/fossils.npz")
     log("- done!")
-    fossils = [fossils[f"arr_{i}"] for i, __ in enumerate(fossils.files)]
+    fossils = [fossils[f"arr_{i}"] for i, __ in tqdm(enumerate(fossils.files))]
 
     log("assembling fossils -------------------------------------------------")
     log(f" - {len(fossils)=}")
