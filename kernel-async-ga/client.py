@@ -113,7 +113,7 @@ def process_fossils(nWav: int) -> None:
     log(f" - {len(fossils)=}")
     if fossils:
         fossils = np.array(fossils)
-        log(f" - casting genome_raw to object")
+        log(" - casting fossils to object")
         fossils = fossils.astype(object)
         log(" - creating indices")
         layers, positions = np.indices(fossils.shape)
