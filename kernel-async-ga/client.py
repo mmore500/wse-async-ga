@@ -1007,6 +1007,7 @@ log("recv counter sum ===========================================")
 recvSum = [*map(sum, zip(recvN.ravel(), recvS.ravel(), recvE.ravel(), recvW.ravel()))]
 log(recvSum[:100])
 log(f"{np.mean(recvSum)=} {np.std(recvSum)=} {sps.sem(recvSum)=}")
+log(f"{np.median(recvSum)=} {np.min(recvSum)=} {np.max(recvSum)=}")
 
 log("send counter N ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1092,6 +1093,7 @@ log("send counter sum ===========================================")
 sendSum = [*map(sum, zip(sendN.ravel(), sendS.ravel(), sendE.ravel(), sendW.ravel()))]
 log(sendSum[:100])
 log(f"{np.mean(sendSum)=} {np.std(sendSum)=} {sps.sem(sendSum)=}")
+log(f"{np.median(sendSum)=} {np.min(sendSum)=} {np.max(sendSum)=}")
 
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
