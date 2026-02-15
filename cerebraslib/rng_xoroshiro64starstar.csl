@@ -10,6 +10,33 @@ fn _rotl(x: u32, comptime k: u32) u32 {
     return (x << k) | (x >> (32 - k));
 }
 
+/// Seed a PE for a given experiment, producing non-overlapping streams.
+/// Resets to genesis state, then applies:
+///   long_jumps = global_seed * 16 + pe_uid / 65536
+///   short_jumps = pe_uid % 65536
+/// Maximum 4096 experiments before streams could overlap (period = 2^64).
+fn _seed_pe_(s: [*]u32, global_seed: u16, pe_uid: u32) void {
+    @assert(global_seed < 4096);
+    // for >wse3 support, would need to double-check pe_uid < 2^20
+    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
+    @assert(pe_uid < 1048576);
+
+    // genesis state
+    seed_(s, 0, 0);
+
+    // calculate required jumps
+    // apply long jumps (each = 2^48 steps)
+    const n_long = (@as(u32, global_seed) << 4) + (pe_uid >> 16);
+    for (@range(u32, n_long)) |i| {
+        jump_65536_epochs_(s);
+    }
+    // apply short jumps (each = 2^32 steps)
+    const n_short = pe_uid & 0xFFFF;
+    for (@range(u32, n_short)) |i| {
+        jump_one_epoch_(s);
+    }
+}
+
 // local state API ============================================================
 
 /// Advance the state by one step (discarding the output).
@@ -89,33 +116,6 @@ fn seed_(s: [*]u32, seed0: u32, seed1: u32) void {
     if (s[0] == 0 and s[1] == 0) {
         s[0] = 0x12345678;
         s[1] = 0x9ABCDEF0;
-    }
-}
-
-/// Seed a PE for a given experiment, producing non-overlapping streams.
-/// Resets to genesis state, then applies:
-///   long_jumps = global_seed * 16 + pe_uid / 65536
-///   short_jumps = pe_uid % 65536
-/// Maximum 4096 experiments before streams could overlap (period = 2^64).
-fn _seed_pe_(s: [*]u32, global_seed: u16, pe_uid: u32) void {
-    @assert(global_seed < 4096);
-    // for >wse3 support, would need to double-check pe_uid < 2^20
-    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
-    @assert(pe_uid < 1048576);
-
-    // genesis state
-    seed_(s, 0, 0);
-    // calculate required jumps
-    const e = @as(u32, global_seed);
-    const n_long = (e << 4) + (pe_uid >> 16);
-    const n_short = pe_uid & 0xFFFF;
-    // apply long jumps (each = 2^48 steps)
-    for (@range(u32, n_long)) |i| {
-        jump_65536_epochs_(s);
-    }
-    // apply short jumps (each = 2^32 steps)
-    for (@range(u32, n_short)) |i| {
-        jump_one_epoch_(s);
     }
 }
 
