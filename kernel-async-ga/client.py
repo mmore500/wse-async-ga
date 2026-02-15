@@ -3,6 +3,7 @@ print("######################################################################")
 import argparse
 import atexit
 from collections import Counter
+import functools
 import itertools as it
 import json
 import logging
@@ -13,6 +14,7 @@ import uuid
 import shutil
 import subprocess
 import sys
+import time
 
 logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -20,10 +22,17 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-def log(msg, *args, **kwargs):
-    msg = str(msg)
-    msg = msg.replace("\n", "\n" + " " * 29)
+
+def log(msg: str, *args, **kwargs) -> None:
+    msg = str(msg).replace("\n", "\n" + " " * 29)
     logging.info(msg, *args, **kwargs)
+
+
+@functools.lru_cache(maxsize=None)
+def log_once(msg: str, *args, **kwargs) -> bool:
+    before = log_once.cache_info().hits
+    log(msg, *args, **kwargs)
+    return log_once.cache_info().hits == before
 
 
 def removeprefix(text: str, prefix: str) -> str:
@@ -387,14 +396,24 @@ metadata = {
 }
 log(metadata)
 
-max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
-log(f" - {max_fossil_sets=}")
-
 if args.process_fossils is True:
     log(f" - processing fossils {nWav=}...")
     process_fossils(nWav)
     log(" - done! exiting...")
     sys.exit(0)
+
+log("- setting up fossil storage")
+
+max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
+log(f" - {max_fossil_sets=}")
+
+fossils = []
+fossil_mmap = np.memmap(
+    f"{temp_dir}/fossils.dat",
+    dtype=np.uint32,
+    mode="w+",
+    shape=(max_fossil_sets, nCol, nRow, nWav + 2),
+)
 
 log("- importing cerebras depencencies")
 from cerebras.sdk.runtime.sdkruntimepybind import (
@@ -417,18 +436,17 @@ runner.run()
 log("- runner run ran")
 
 runner.launch("dolaunch", nonblock=False)
-log("- runner launch complete")
+launch_ns = time.time_ns()
+log(f"- runner launch complete {launch_ns=}")
 
 log(f"- {nonBlock=}, if True waiting for first kernel to finish...")
-fossils = []
-fossil_mmap = np.memmap(
-    f"{temp_dir}/fossils.dat",
-    dtype=np.uint32,
-    mode="w+",
-    shape=(max_fossil_sets, nCol, nRow, nWav + 2),
-)
-fossil_count = 0
-while nonBlock:
+for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
+    elapsed_ns = time.time_ns() - launch_ns
+    log_cycle = elapsed_ns // (10**9 * 20)
+    if log_once(f"\n - {20 * log_cycle} seconds elapsed"):
+        log(f" ! phase=1 {log_cycle=} {cycle=} {len(fossils)=} {elapsed_ns=}")
+        print(flush=True)
+
     print("1", end="", flush=True)
     if len(fossils) < max_fossil_sets:
         print(f"({len(fossils)})", end="", flush=True)
@@ -484,6 +502,8 @@ while nonBlock:
     should_break = num_complete > 0
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
     if should_break:
+        phase1_elapsed_ns = time.time_ns() - launch_ns
+        phase1_elapsed_cycles = cycle
         print("!", flush=True)
         break
     else:
@@ -493,7 +513,13 @@ while nonBlock:
         continue
 
 log(f"- {nonBlock=}, if True waiting for last kernel to finish...")
-while nonBlock:
+for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
+    elapsed_ns = time.time_ns() - launch_ns
+    log_cycle = elapsed_ns // (10**9 * 20)
+    if log_once(f"\n - {20 * log_cycle} seconds elapsed"):
+        log(f" ! phase=2 {log_cycle=} {cycle=} {len(fossils)=} {elapsed_ns=}")
+        print(flush=True)
+
     print("1", end="", flush=True)
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
     out_tensors = np.zeros((nCol, nRow, 1), np.uint32)
@@ -515,14 +541,33 @@ while nonBlock:
     cycle_counts = out_tensors.ravel().copy()
     num_complete = np.sum(cycle_counts >= nCycleAtLeast)
     print("3", end="", flush=True)
-    should_break = (num_complete == cycle_counts.size)
+    should_break = num_complete == cycle_counts.size
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
     if should_break:
+        phase2_elapsed_ns = time.time_ns() - launch_ns
+        phase2_elapsed_cycles = cycle
         print("!", flush=True)
         break
     else:
         print("|", end="", flush=True)
         continue
+
+log("- run complete!")
+log(f" - run elapsed seconds: {(time.time_ns() - launch_ns) / (10 ** 9):.3f}")
+if nonBlock:
+    total_elapsed_ns = phase1_elapsed_ns + phase2_elapsed_ns
+    log(f" - {phase1_elapsed_ns=}")
+    log(f" - {phase1_elapsed_ns / total_elapsed_ns=}")
+    log(f" - {phase2_elapsed_ns=}")
+    log(f" - {phase2_elapsed_ns / total_elapsed_ns=}")
+    log(f" - {total_elapsed_ns=}")
+
+    total_elapsed_cycles = phase1_elapsed_cycles + phase2_elapsed_cycles
+    log(f"- {phase1_elapsed_cycles=}")
+    log(f"- {phase1_elapsed_cycles / total_elapsed_cycles=}")
+    log(f"- {phase2_elapsed_cycles=}")
+    log(f"- {phase2_elapsed_cycles / total_elapsed_cycles=}")
+    log(f"- {total_elapsed_cycles=}")
 
 log("thinning fossils =======================================================")
 log(f" - {len(fossils)=}")
