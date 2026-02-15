@@ -1,4 +1,4 @@
-// Fabric-unique PE identifiers for Cerebras WSE.
+// Fabric-unique PE identifiers.
 // Provides row-major and column-major UIDs derived from PE coordinates.
 //
 // Fabric dimensions (width x height):
@@ -6,7 +6,7 @@
 //   WSE3: 762 x 1176
 //
 // WSE3 is strictly larger than WSE2 in both dimensions, so we use WSE3
-// dimensions for both architectures to keep UIDs consistent across chips.
+// dimensions for both architectures.
 
 const layout_module = @import_module("<layout>");
 

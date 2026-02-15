@@ -84,9 +84,9 @@ fn test_cmajor_x_stride() void {
 
 // === Cross-checks ===========================================================
 
-// max corner uid equals width*height - 1 for both orderings
+// max corner uid equals width * height - 1 for both orderings
 fn test_max_uid() void {
-    // (761, 1175): both orderings give 762*1176 - 1 = 896,111
+    // (761, 1175): both orderings give 762 * 1176 - 1 = 896,111
     @assert(fabric_uid._get_rmajor_uid(761, 1175) == 896111);
     @assert(fabric_uid._get_cmajor_uid(761, 1175) == 896111);
     @assert(fabric_uid._get_rmajor_uid(761, 1175) < 762 * 1176);
