@@ -1,0 +1,163 @@
+// XOROSHIRO64** (StarStar) PRNG (Blackman and Vigna)
+
+const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
+
+// global state ===============================================================
+var state = [2]u32{ 0x12345678, 0x9ABCDEF0 }; // default non-zero state
+
+// internal helpers ===========================================================
+fn _rotl(x: u32, comptime k: u32) u32 {
+    return (x << k) | (x >> (32 - k));
+}
+
+// local state API ============================================================
+
+/// Advance the state by one step (discarding the output).
+fn advance_(s: [*]u32) void {
+    const s0 = s[0];
+    var s1 = s[1];
+
+    s1 ^= s0;
+    s[0] = _rotl(s0, 26) ^ s1 ^ (s1 << 9);
+    s[1] = _rotl(s1, 13);
+}
+
+/// Generate the next pseudo-random 32-bit value and advance the state.
+fn next_(s: [*]u32) u32 {
+    const s0 = s[0];
+    const result = _rotl(s0 * 0x9E3779BB, 5) * 5;
+    advance_(s);
+    return result;
+}
+
+/// Jump the state forward by 2^32 steps (one jump epoch).
+fn jump_one_epoch_(s: [*]u32) void {
+    const JUMP = [2]u32{ 0x77fcd1a0, 0x4cbf99bd };
+
+    var s0: u32 = 0;
+    var s1: u32 = 0;
+    for (@range(u32, 2)) |i| {
+        for (@range(u32, 32)) |b| {
+            if (JUMP[i] & (@as(u32, 1) << b) != 0) {
+                s0 ^= s[0];
+                s1 ^= s[1];
+            }
+            advance_(s);
+        }
+    }
+    s[0] = s0;
+    s[1] = s1;
+}
+
+/// Jump the state forward by 2^48 steps (65536 jump epochs).
+fn jump_65536_epochs_(s: [*]u32) void {
+    const LONG_JUMP = [2]u32{ 0x3f1f8b95, 0xb4e7e463 };
+
+    var s0: u32 = 0;
+    var s1: u32 = 0;
+    for (@range(u32, 2)) |i| {
+        for (@range(u32, 32)) |b| {
+            if (LONG_JUMP[i] & (@as(u32, 1) << b) != 0) {
+                s0 ^= s[0];
+                s1 ^= s[1];
+            }
+            advance_(s);
+        }
+    }
+    s[0] = s0;
+    s[1] = s1;
+}
+
+/// Jump the state forward by n * 2^32 steps (n epochs).
+/// Uses jump_65536_epochs_ for large strides and jump_one_epoch_ for the remainder.
+fn jump_n_epochs_(s: [*]u32, n: u32) void {
+    const n_long = n >> 16;
+    const n_short = n & 0xFFFF;
+    for (@range(u32, n_long)) |i| {
+        jump_65536_epochs_(s);
+    }
+    for (@range(u32, n_short)) |i| {
+        jump_one_epoch_(s);
+    }
+}
+
+/// Set the PRNG state from two seed values.
+/// If both seeds are zero, uses a default non-zero state.
+fn seed_(s: [*]u32, seed0: u32, seed1: u32) void {
+    s[0] = seed0;
+    s[1] = seed1;
+    if (s[0] == 0 and s[1] == 0) {
+        s[0] = 0x12345678;
+        s[1] = 0x9ABCDEF0;
+    }
+}
+
+/// Seed a PE for a given experiment, producing non-overlapping streams.
+/// Resets to genesis state, then applies:
+///   long_jumps = global_seed * 16 + pe_uid / 65536
+///   short_jumps = pe_uid % 65536
+/// Maximum 4096 experiments before streams could overlap (period = 2^64).
+fn _seed_pe_(s: [*]u32, global_seed: u16, pe_uid: u32) void {
+    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
+    @assert(global_seed < 4096);
+    // genesis state
+    seed_(s, 0, 0);
+    // calculate required jumps
+    const e = @as(u32, global_seed);
+    const n_long = (e << 4) + (pe_uid >> 16);
+    const n_short = pe_uid & 0xFFFF;
+    // apply long jumps (each = 2^48 steps)
+    for (@range(u32, n_long)) |i| {
+        jump_65536_epochs_(s);
+    }
+    // apply short jumps (each = 2^32 steps)
+    for (@range(u32, n_short)) |i| {
+        jump_one_epoch_(s);
+    }
+}
+
+/// Seed a PE for a given experiment, producing non-overlapping streams.
+/// Resets to genesis state, then applies:
+///   long_jumps = global_seed * 16 + pe_uid / 65536
+///   short_jumps = pe_uid % 65536
+/// Maximum 4096 experiments before streams could overlap (period = 2^64).
+fn seed_pe_(s: [*]u32, global_seed: u16) void {
+    _seed_pe_(s, global_seed, fabric_uid.get_rmajor_uid());
+}
+
+// global-state API ==========================================================
+
+/// Advance the global state by one step (discarding the output).
+fn advance() void {
+    advance_(@ptrcast([*]u32, &state));
+}
+
+/// Generate the next pseudo-random 32-bit value using global state.
+fn next() u32 {
+    return next_(@ptrcast([*]u32, &state));
+}
+
+/// Jump the global state forward by 2^32 steps (one epoch).
+fn jump_one_epoch() void {
+    jump_one_epoch_(@ptrcast([*]u32, &state));
+}
+
+/// Jump the global state forward by 2^48 steps (65536 epochs).
+fn jump_65536_epochs() void {
+    jump_65536_epochs_(@ptrcast([*]u32, &state));
+}
+
+/// Jump the global state forward by n * 2^32 steps (n epochs).
+fn jump_n_epochs(n: u32) void {
+    jump_n_epochs_(@ptrcast([*]u32, &state), n);
+}
+
+/// Set the global PRNG state from two seed values.
+fn seed(seed0: u32, seed1: u32) void {
+    seed_(@ptrcast([*]u32, &state), seed0, seed1);
+}
+
+/// Seed the global state for this PE using its row-major fabric UID.
+fn seed_pe(global_seed: u16) void {
+    seed_pe_(@ptrcast([*]u32, &state), global_seed);
+}
