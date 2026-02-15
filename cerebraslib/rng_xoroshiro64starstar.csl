@@ -98,8 +98,11 @@ fn seed_(s: [*]u32, seed0: u32, seed1: u32) void {
 ///   short_jumps = pe_uid % 65536
 /// Maximum 4096 experiments before streams could overlap (period = 2^64).
 fn _seed_pe_(s: [*]u32, global_seed: u16, pe_uid: u32) void {
-    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
     @assert(global_seed < 4096);
+    // for >wse3 support, would need to double-check pe_uid < 2^20
+    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
+    @assert(pe_uid < 1048576);
+
     // genesis state
     seed_(s, 0, 0);
     // calculate required jumps
