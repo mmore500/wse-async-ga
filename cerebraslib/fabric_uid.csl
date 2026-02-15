@@ -1,0 +1,40 @@
+// Fabric-unique PE identifiers for Cerebras WSE.
+// Provides row-major and column-major UIDs derived from PE coordinates.
+
+const layout_module = @import_module("<layout>");
+
+/// Helper function for testability.
+fn _get_rmajor_uid(x: u16, y: u16) u32 {
+    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
+    if (@is_arch("wse2")) {
+        return @as(u32, y) * 757 + @as(u32, x);
+    } else if (@is_arch("wse3")) {
+        return @as(u32, y) * 762 + @as(u32, x);
+    } else {
+        @assert(false); // unreachable, guarded by comptime_assert above
+        return 0;
+    }
+}
+
+/// Helper function for testability.
+fn _get_cmajor_uid(x: u16, y: u16) u32 {
+    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
+    if (@is_arch("wse2")) {
+        return @as(u32, x) * 996 + @as(u32, y);
+    } else if (@is_arch("wse3")) {
+        return @as(u32, x) * 1176 + @as(u32, y);
+    } else {
+        @assert(false); // unreachable, guarded by comptime_assert above
+        return 0;
+    }
+}
+
+/// Column-major UID: x * fabric_height + y.
+fn get_cmajor_uid() u32 {
+    return _get_cmajor_uid(layout_module.get_x_coord(), layout_module.get_y_coord());
+}
+
+/// Row-major UID: y * fabric_width + x.
+fn get_rmajor_uid() u32 {
+    return _get_rmajor_uid(layout_module.get_x_coord(), layout_module.get_y_coord());
+}
