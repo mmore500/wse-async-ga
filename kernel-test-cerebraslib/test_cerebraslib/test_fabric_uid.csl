@@ -2,7 +2,7 @@ const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
 
 // === Test _get_rmajor_uid ===================================================
 
-// At origin: y * width + x = 0
+// At origin: y * 762 + x = 0
 fn test_rmajor_origin() void {
     @assert(fabric_uid._get_rmajor_uid(0, 0) == 0);
 }
@@ -13,54 +13,37 @@ fn test_rmajor_x_only() void {
     @assert(fabric_uid._get_rmajor_uid(5, 0) == 5);
 }
 
-// x=0 y=1: uid = fabric_width (757 for wse2, 762 for wse3)
+// x=0 y=1: uid = 762
 fn test_rmajor_y_only() void {
-    if (@is_arch("wse2")) {
-        @assert(fabric_uid._get_rmajor_uid(0, 1) == 757);
-        @assert(fabric_uid._get_rmajor_uid(0, 2) == 1514);
-    }
-    if (@is_arch("wse3")) {
-        @assert(fabric_uid._get_rmajor_uid(0, 1) == 762);
-        @assert(fabric_uid._get_rmajor_uid(0, 2) == 1524);
-    }
+    @assert(fabric_uid._get_rmajor_uid(0, 1) == 762);
+    @assert(fabric_uid._get_rmajor_uid(0, 2) == 1524);
 }
 
-// general case: y * width + x
+// general case: y * 762 + x
 fn test_rmajor_general() void {
-    if (@is_arch("wse2")) {
-        // (3, 2): 2 * 757 + 3 = 1517
-        @assert(fabric_uid._get_rmajor_uid(3, 2) == 1517);
-        // (756, 995): 995 * 757 + 756 = 753,971
-        @assert(fabric_uid._get_rmajor_uid(756, 995) == 753971);
-        // (100, 500): 500 * 757 + 100 = 378,600
-        @assert(fabric_uid._get_rmajor_uid(100, 500) == 378600);
-    }
-    if (@is_arch("wse3")) {
-        // (3, 2): 2 * 762 + 3 = 1527
-        @assert(fabric_uid._get_rmajor_uid(3, 2) == 1527);
-        // (761, 1175): 1175 * 762 + 761 = 896,111
-        @assert(fabric_uid._get_rmajor_uid(761, 1175) == 896111);
-    }
+    // (3, 2): 2 * 762 + 3 = 1527
+    @assert(fabric_uid._get_rmajor_uid(3, 2) == 1527);
+    // (761, 1175): 1175 * 762 + 761 = 896,111
+    @assert(fabric_uid._get_rmajor_uid(761, 1175) == 896111);
+    // (100, 500): 500 * 762 + 100 = 381,100
+    @assert(fabric_uid._get_rmajor_uid(100, 500) == 381100);
 }
 
 // consecutive x values differ by 1
 fn test_rmajor_x_stride() void {
-    @assert(fabric_uid._get_rmajor_uid(11, 7) - fabric_uid._get_rmajor_uid(10, 7) == 1);
+    const base_uid = fabric_uid._get_rmajor_uid(10, 7);
+    @assert(fabric_uid._get_rmajor_uid(11, 7) - base_uid == 1);
 }
 
-// consecutive y values differ by fabric_width
+// consecutive y values differ by 762
 fn test_rmajor_y_stride() void {
-    if (@is_arch("wse2")) {
-        @assert(fabric_uid._get_rmajor_uid(10, 8) - fabric_uid._get_rmajor_uid(10, 7) == 757);
-    }
-    if (@is_arch("wse3")) {
-        @assert(fabric_uid._get_rmajor_uid(10, 8) - fabric_uid._get_rmajor_uid(10, 7) == 762);
-    }
+    const base_uid = fabric_uid._get_rmajor_uid(10, 7);
+    @assert(fabric_uid._get_rmajor_uid(10, 8) - base_uid == 762);
 }
 
 // === Test _get_cmajor_uid ===================================================
 
-// At origin: x * height + y = 0
+// At origin: x * 1176 + y = 0
 fn test_cmajor_origin() void {
     @assert(fabric_uid._get_cmajor_uid(0, 0) == 0);
 }
@@ -71,65 +54,43 @@ fn test_cmajor_y_only() void {
     @assert(fabric_uid._get_cmajor_uid(0, 5) == 5);
 }
 
-// x=1 y=0: uid = fabric_height (996 for wse2, 1176 for wse3)
+// x=1 y=0: uid = 1176
 fn test_cmajor_x_only() void {
-    if (@is_arch("wse2")) {
-        @assert(fabric_uid._get_cmajor_uid(1, 0) == 996);
-        @assert(fabric_uid._get_cmajor_uid(2, 0) == 1992);
-    }
-    if (@is_arch("wse3")) {
-        @assert(fabric_uid._get_cmajor_uid(1, 0) == 1176);
-        @assert(fabric_uid._get_cmajor_uid(2, 0) == 2352);
-    }
+    @assert(fabric_uid._get_cmajor_uid(1, 0) == 1176);
+    @assert(fabric_uid._get_cmajor_uid(2, 0) == 2352);
 }
 
-// general case: x * height + y
+// general case: x * 1176 + y
 fn test_cmajor_general() void {
-    if (@is_arch("wse2")) {
-        // (3, 2): 3 * 996 + 2 = 2990
-        @assert(fabric_uid._get_cmajor_uid(3, 2) == 2990);
-        // (756, 995): 756 * 996 + 995 = 753,971
-        @assert(fabric_uid._get_cmajor_uid(756, 995) == 753971);
-        // (100, 500): 100 * 996 + 500 = 100,100
-        @assert(fabric_uid._get_cmajor_uid(100, 500) == 100100);
-    }
-    if (@is_arch("wse3")) {
-        // (3, 2): 3 * 1176 + 2 = 3530
-        @assert(fabric_uid._get_cmajor_uid(3, 2) == 3530);
-        // (761, 1175): 761 * 1176 + 1175 = 896,111
-        @assert(fabric_uid._get_cmajor_uid(761, 1175) == 896111);
-    }
+    // (3, 2): 3 * 1176 + 2 = 3530
+    @assert(fabric_uid._get_cmajor_uid(3, 2) == 3530);
+    // (761, 1175): 761 * 1176 + 1175 = 896,111
+    @assert(fabric_uid._get_cmajor_uid(761, 1175) == 896111);
+    // (100, 500): 100 * 1176 + 500 = 118,100
+    @assert(fabric_uid._get_cmajor_uid(100, 500) == 118100);
 }
 
 // consecutive y values differ by 1
 fn test_cmajor_y_stride() void {
-    @assert(fabric_uid._get_cmajor_uid(7, 11) - fabric_uid._get_cmajor_uid(7, 10) == 1);
+    const base_uid = fabric_uid._get_cmajor_uid(7, 10);
+    @assert(fabric_uid._get_cmajor_uid(7, 11) - base_uid == 1);
 }
 
-// consecutive x values differ by fabric_height
+// consecutive x values differ by 1176
 fn test_cmajor_x_stride() void {
-    if (@is_arch("wse2")) {
-        @assert(fabric_uid._get_cmajor_uid(8, 10) - fabric_uid._get_cmajor_uid(7, 10) == 996);
-    }
-    if (@is_arch("wse3")) {
-        @assert(fabric_uid._get_cmajor_uid(8, 10) - fabric_uid._get_cmajor_uid(7, 10) == 1176);
-    }
+    const base_uid = fabric_uid._get_cmajor_uid(7, 10);
+    @assert(fabric_uid._get_cmajor_uid(8, 10) - base_uid == 1176);
 }
 
 // === Cross-checks ===========================================================
 
-// max corner uid is below width*height for both orderings
+// max corner uid equals width*height - 1 for both orderings
 fn test_max_uid() void {
-    if (@is_arch("wse2")) {
-        @assert(fabric_uid._get_rmajor_uid(756, 995) == 753971);
-        @assert(fabric_uid._get_cmajor_uid(756, 995) == 753971);
-        @assert(fabric_uid._get_rmajor_uid(756, 995) < 757 * 996);
-        @assert(fabric_uid._get_cmajor_uid(756, 995) < 757 * 996);
-    }
-    if (@is_arch("wse3")) {
-        @assert(fabric_uid._get_rmajor_uid(761, 1175) < 762 * 1176);
-        @assert(fabric_uid._get_cmajor_uid(761, 1175) < 762 * 1176);
-    }
+    // (761, 1175): both orderings give 762*1176 - 1 = 896,111
+    @assert(fabric_uid._get_rmajor_uid(761, 1175) == 896111);
+    @assert(fabric_uid._get_cmajor_uid(761, 1175) == 896111);
+    @assert(fabric_uid._get_rmajor_uid(761, 1175) < 762 * 1176);
+    @assert(fabric_uid._get_cmajor_uid(761, 1175) < 762 * 1176);
 }
 
 // the public wrappers should work at origin (the only coord available in test)
