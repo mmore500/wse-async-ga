@@ -3,7 +3,7 @@
 // byte 1
 // byte 2
 // byte 3
-// byte 4 COUNTER (u32, 4 bytes)
+// byte 4 DSTREAM_T COUNTER (u32, 4 bytes)
 // byte 5
 // byte 6
 // byte 7
