@@ -124,7 +124,7 @@ fn elapse_inheritance_of(genome: genomePtr_t) void {
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
-    return @ptrcast(*f32, genome).* * 8.0;
+    return @ptrcast(*f32, genome).* * 8.0;  // times eight allows sanity check
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 {
