@@ -132,7 +132,7 @@ fn seed_pe_(s: [*]u32, global_seed: u16) void {
 
 /// Advance the global state by one step (discarding the output).
 fn advance() void {
-    advance_(@ptrcast([*]u32, &state));
+    advance_(@ptrcast([*]u32, &_state));
 }
 
 /// Generate the next pseudo-random 32-bit value using global state.
