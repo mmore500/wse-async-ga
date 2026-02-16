@@ -48,12 +48,10 @@ comptime {  // access via get_value for logging...
   const _ = compconf.get_value("ASYNC_GA_GENOME_FLAVOR", comptime_string);
 }  // ... raw string works around sdk v1.0.0 limitation
 const compconf_raw = @import_module("<compconf_raw>");
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
 const genome_ = @import_module(
-  @strcat(
-    "cerebraslib/genome/",
-    compconf_raw.ASYNC_GA_GENOME_FLAVOR,
-    ".csl",
-  ),
+  @strcat("cerebraslib/genome/", compconf_raw.ASYNC_GA_GENOME_FLAVOR, ".csl"),
+  .{ .rng = rng },
 );
 // TODO why can't this be genomes have an even number of words?
 // TODO see https://github.com/mmore500/wse-async-ga/issues/4
@@ -702,6 +700,8 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     @as(u32, globalSeed) * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1
   );
   random.set_global_prng_seed(localSeed);  // zero seed seems to break RNG...
+  rng.seed_pe(globalSeed);
+
   desync();
   population.init_module();
   // initialize genome telemetry
