@@ -701,11 +701,8 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     @as(u32, globalSeed) * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1
   );
   random.set_global_prng_seed(localSeed);  // zero seed seems to break RNG...
-  if (@is_arch("wse2")) {  // ...workaround for apparent WSE2 stack exhaustion
-    rng.seed(localSeed, @as(u32, globalSeed));
-  } else {
-    rng.seed_pe(globalSeed);
-  }
+  // rng.seed_pe(globalSeed);  // works, but very slow... especially on wse 2
+  rng.seed(localSeed, @as(u32, globalSeed));  // use naive approach instead
 
   desync();
   population.init_module();
