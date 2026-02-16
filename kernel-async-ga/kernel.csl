@@ -66,15 +66,8 @@ const pExtinction = compconf.get_value_or(
 );
 
 const population = @import_module("cerebraslib/population.csl", .{
-  .gSize = genome_.gSize, .popSize = popSize,
-  .pExtinction = pExtinction,
-  .tournamentSize = tournSize,
-  .fitFun = genome_.calc_fitness_of,
-  .immClobber = genome_.hasImmClobber,
-  .immClobberFun = genome_.clobber_immigrant,
-  .inheritFun = genome_.elapse_inheritance_of,
-  .initFun = genome_.initialize_one,
-  .traitFun = genome_.get_trait_value,
+  .genome = genome_, .popSize = popSize,
+  .pExtinction = pExtinction, .tournamentSize = tournSize,
 });
 const wildtypeLogger = @import_module(
   "cerebraslib/traitlogger.csl", .{ .symbolName = "wildtypeLoggerRecord" }

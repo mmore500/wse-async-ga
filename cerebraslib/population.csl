@@ -1,14 +1,8 @@
 // module params ==============================================================
-param gSize: u16;
 param popSize: u16;
 param pExtinction: f32;
 param tournamentSize: f32;
-param immClobber: bool;
-param immClobberFun: fn([*]u32, [*]u32) void;
-param fitFun: fn([*]u32) f32;
-param inheritFun: fn([*]u32) void;
-param initFun: fn([*]u32) void;
-param traitFun: fn([*]u32) u32;
+param genome: imported_module;
 
 // module imports =============================================================
 const math = @import_module("<math>");
@@ -19,14 +13,14 @@ const opdsd = @import_module("cerebraslib/opdsd.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 
 // global state ===============================================================
-const bufSize = popSize * gSize;
+const bufSize = popSize * genome.gSize;
 
 var buffer = @zeros([bufSize]u32);
 const bufferDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{bufSize} -> buffer[i],
 });
 const genomeDsd = @get_dsd(mem1d_dsd, .{
-    .tensor_access = |i|{popSize} -> buffer[i * @as(i16, gSize)],
+    .tensor_access = |i|{popSize} -> buffer[i * @as(i16, genome.gSize)],
 });
 
 var swap = @zeros([bufSize]u32);
@@ -34,7 +28,7 @@ const swapDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{bufSize} -> swap[i],
 });
 const swapGenomeDsd = @get_dsd(mem1d_dsd, .{
-    .tensor_access = |i|{bufSize} -> swap[i * @as(i16, gSize)],
+    .tensor_access = |i|{bufSize} -> swap[i * @as(i16, genome.gSize)],
 });
 var fitBuf = @zeros([popSize]f32);
 const fitBufDsd = @get_dsd(mem1d_dsd, .{
@@ -49,21 +43,29 @@ const indexBufDsd = @get_dsd(mem1d_dsd, .{
 ///////////////////////////////////////////////////////////////////////////////
 
 // internal accessors ==========================================================
-fn _calc_ith_fitness(i: u16) f32 { return fitFun(_get_ith_genome(i)); }
-
-fn _elapse_ith_inheritance(i: u16) void { inheritFun(_get_ith_genome(i)); }
-
-fn _get_ith_genome(i: u16) [*]u32 {
-    return @ptrcast([*]u32, &buffer[i * gSize]);
+fn _calc_ith_fitness(i: u16) f32 {
+    return genome.calc_fitness_of(_get_ith_genome(i));
 }
 
-fn _get_ith_trait_value(i: u16) u32 { return traitFun(_get_ith_genome(i)); }
+fn _elapse_ith_inheritance(i: u16) void {
+    genome.elapse_inheritance_of(_get_ith_genome(i));
+}
+
+fn _get_ith_genome(i: u16) [*]u32 {
+    return @ptrcast([*]u32, &buffer[i * genome.gSize]);
+}
+
+fn _get_ith_trait_value(i: u16) u32 {
+    return genome.get_trait_value(_get_ith_genome(i));
+}
 
 fn _get_population_word(i: u32) u32 { return buffer[i]; }
 
 fn _get_swap_word(i: u16) u32 { return swap[i]; }
 
-fn _initialize_ith_genome(i: u16) void { initFun(_get_ith_genome(i)); }
+fn _initialize_ith_genome(i: u16) void {
+    genome.initialize_one(_get_ith_genome(i));
+}
 
 fn _sample_one_tournament() u16 {
     var bestFit: f32 = math.NEGATIVE_INF(f32);
@@ -78,11 +80,11 @@ fn _sample_one_tournament() u16 {
             bestIdx = idx;
         }
     }
-    return bestIdx * gSize;  // returns word index, not genome index
+    return bestIdx * genome.gSize;  // returns word index, not genome index
 }
 
 // implement directly to save DSRs
-fn _scale_by_genome_words(i: u16) u16 { return i * gSize; }
+fn _scale_by_genome_words(i: u16) u16 { return i * genome.gSize; }
 
 fn _put_population_word(data: u32, loc: u32) void { buffer[loc] = data; }
 
@@ -124,7 +126,7 @@ fn _perform_selection_all() void {
 
     // DSD-based implementation
     // inject indices for selected genomes' words into main buffer
-    // for (@range(i16, gSize)) |w| {
+    // for (@range(i16, genome.gSize)) |w| {
     //     const wordDsd = @increment_dsd_offset(genomeDsd, w, u32);
     //     // copy selected genomes from swap buffer to main buffer
     //     // this replaces indices for words with the actual words themselves
@@ -134,9 +136,9 @@ fn _perform_selection_all() void {
     // }
 
     // alternate loop-based implementation
-    for (@range(u16, gSize)) |w| {
+    for (@range(u16, genome.gSize)) |w| {
         for (@range(u16, popSize)) |i| {
-            buffer[i * gSize + w] = swap[indexBuf[i] + w];
+            buffer[i * genome.gSize + w] = swap[indexBuf[i] + w];
         }
     }
 }
@@ -155,12 +157,12 @@ fn _sample_n(n: u16) void {
     @map(_scale_by_genome_words, popIndexDsd, popIndexDsd);
 
     // set swap buffer to within-genome offsets
-    const sampleWords = n * gSize;
+    const sampleWords = n * genome.gSize;
     const swapDsd_ = @set_dsd_length(swapDsd, sampleWords);
 
     // add sampled word indices to word offsets
     @mov32(swapDsd_, 0);
-    for (@range(i16, gSize)) |w| {
+    for (@range(i16, genome.gSize)) |w| {
         const wordDsd = @set_dsd_length(
             @increment_dsd_offset(swapGenomeDsd, w, u32),
             n,
@@ -174,7 +176,7 @@ fn _sample_n(n: u16) void {
 // public API =================================================================
 fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
     _sample_n(nGenomes);
-    const nWords = nGenomes * gSize;
+    const nWords = nGenomes * genome.gSize;
     const swapDsd_ = @set_dsd_length(swapDsd, nWords);
     @map(_get_population_word, swapDsd_, toDsd);
 }
@@ -182,20 +184,20 @@ fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
 fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) void {
     _sample_n(nGenomes);
 
-    if (immClobber) {
+    if (genome.hasImmClobber) {
         for (@range(u16, nGenomes)) |i| {
-            immClobberFun(
-                @ptrcast([*]u32, &buffer[swap[i * gSize]]),
-                @ptrcast([*]u32, &fromBuf[i * gSize]),
+            genome.clobber_immigrant(
+                @ptrcast([*]u32, &buffer[swap[i * genome.gSize]]),
+                @ptrcast([*]u32, &fromBuf[i * genome.gSize]),
             );
         }
     }
 
     const fromDsd = @get_dsd(mem1d_dsd, .{
         .base_address = fromBuf,
-        .extent = nGenomes * gSize,
+        .extent = nGenomes * genome.gSize,
     });
-    const nWords = nGenomes * gSize;
+    const nWords = nGenomes * genome.gSize;
     const swapDsd_ = @set_dsd_length(swapDsd, nWords);
     @map(_put_population_word, fromDsd, swapDsd_);
 }
