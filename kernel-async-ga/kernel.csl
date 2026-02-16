@@ -51,7 +51,7 @@ const compconf_raw = @import_module("<compconf_raw>");
 const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
 const genome_ = @import_module(
   @strcat("cerebraslib/genome/", compconf_raw.ASYNC_GA_GENOME_FLAVOR, ".csl"),
-  .{ .rng = rng },
+  // TODO .{ .rng = rng },
 );
 // TODO why can't this be genomes have an even number of words?
 // TODO see https://github.com/mmore500/wse-async-ga/issues/4
