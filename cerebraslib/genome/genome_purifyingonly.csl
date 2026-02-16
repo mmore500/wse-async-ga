@@ -15,10 +15,12 @@
 // byte 13
 // byte 14
 // byte 15
-// TOTAL: 4 words -> 16 bytes
+// byte 16 GENERATION COUNTER (u32, 4 bytes)
+// byte 17
+// byte 18
+// byte 19
+// TOTAL: 5 words -> 20 bytes
 
-// TODO why can't this be 4 words?
-// TODO see https://github.com/mmore500/wse-async-ga/issues/4
 //! {
 //!     "dstream_algo": (
 //!         "dstream." + compconf_data.get(
@@ -31,6 +33,10 @@
 //!     "dstream_T_bitoffset": (32, pl.UInt8),
 //!     "dstream_T_bitwidth": (32, pl.UInt8),
 //!     "dstream_S": (64, pl.UInt8),
+//!     "hstrat_T_dilation": (
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
 //!     "nWav": (5, pl.UInt8),
 //! }
 
@@ -53,6 +59,10 @@ else
     "tilted_algo");
 const dstream_algo = @import_module(
     @strcat("<downstream/dstream/", dstream_algo_name, ">"),
+);
+const hsrat_dilation = compconf.get_value_or(
+    "CEREBRASLIB_HSTRAT_T_DILATION",
+    @as(u32, 1),
 );
 
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
@@ -80,31 +90,39 @@ fn _apply_mutation(genome: genomePtr_t) void {
     @ptrcast(*f32, genome).* = mutated;
 }
 
-fn _step_instrumentation(genome: genomePtr_t) void {
+fn _do_step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     if (opscalar.unifbool()) {
         const T = @ptrcast([*]u32, genome)[1];
-        const site = dstream_algo.assign_storage_site(64, T);
+        const site = dstream_algo.assign_storage_site(S, T);
 
         const offset_bits: u16 = (4 + 4) * 8;
         const target_bit = @as(u16, site) + offset_bits;
 
         const genome_bytes = @ptrcast([*]u8, genome);
-        if (site != S) bitmanip.flip_nth_bit_with_swaps(
-            genome_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true }
-        );
+        if (site != S) bitmanip.flip_nth_bit_with_swaps(genome_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true });
     }
 
     // elapse generation in counter
     @ptrcast([*]u32, genome)[1] += 1;
 }
 
-// public API =================================================================
-fn elapse_inheritance_of(genome: genomePtr_t) void {
-    _apply_mutation(genome); _step_instrumentation(genome);
+fn _step_instrumentation(genome: genomePtr_t) void {
+    if (@ptrcast([*]u32, genome)[4] % hsrat_dilation == 0) {
+        _do_step_instrumentation(genome);
+    }
+    @ptrcast([*]u32, genome)[4] += 1;
 }
 
-fn calc_fitness_of(genome: genomePtr_t) f32 { return @ptrcast(*f32, genome).*; }
+// public API =================================================================
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    _apply_mutation(genome);
+    _step_instrumentation(genome);
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    return @ptrcast(*f32, genome).*;
+}
 
 fn get_trait_value(genome: genomePtr_t) u32 {
     return 0;
@@ -115,7 +133,9 @@ fn initialize_one(genome: genomePtr_t) void {
     bitmanip.randomize(@ptrcast([*]u16, genome), gHalfWords);
     @ptrcast(*f32, genome).* = 0.0;
     @ptrcast([*]u32, genome)[1] = 0;
-    for (@range(u16, S)) |_| { _step_instrumentation(genome); }
+    for (@range(u16, S)) |_| {
+        _do_step_instrumentation(genome);
+    }
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void {}
