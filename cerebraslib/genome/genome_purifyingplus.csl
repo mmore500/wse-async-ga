@@ -60,7 +60,7 @@ else
 const dstream_algo = @import_module(
     @strcat("<downstream/dstream/", dstream_algo_name, ">"),
 );
-const hsrat_dilation = compconf.get_value_or(
+const hstrat_T_dilation = compconf.get_value_or(
     "CEREBRASLIB_HSTRAT_T_DILATION",
     @as(u32, 1),
 );
@@ -110,7 +110,7 @@ fn _do_step_instrumentation(genome: genomePtr_t) void {
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
-    if (@ptrcast([*]u32, genome)[4] % hsrat_dilation == 0) {
+    if (@ptrcast([*]u32, genome)[4] % hstrat_T_dilation == 0) {
         _do_step_instrumentation(genome);
     }
     @ptrcast([*]u32, genome)[4] += 1;
