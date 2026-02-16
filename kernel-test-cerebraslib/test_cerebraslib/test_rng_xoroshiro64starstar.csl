@@ -1,0 +1,580 @@
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+
+// === Test seed and next with pointer-based API ==============================
+fn test_seed_and_next_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    // seed(0x12345678, 0x9ABCDEF0)
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    @assert(s[0] == 0x12345678);
+    @assert(s[1] == 0x9ABCDEF0);
+
+    // first 5 next() values
+    @assert(rng.next_(sp) == 0x0d2d0969);
+    @assert(rng.next_(sp) == 0x0b50eb58);
+    @assert(rng.next_(sp) == 0xad54366b);
+    @assert(rng.next_(sp) == 0xc9889723);
+    @assert(rng.next_(sp) == 0x14fa95eb);
+}
+
+// === Test seed with zero inputs (should use default) ========================
+fn test_seed_zero_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0, 0);
+    @assert(s[0] == 0x12345678);
+    @assert(s[1] == 0x9ABCDEF0);
+
+    // should produce same first value as seed(0x12345678, 0x9ABCDEF0)
+    @assert(rng.next_(sp) == 0x0d2d0969);
+}
+
+// === Test next with sparse seed =============================================
+fn test_next_sparse_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x00000001, 0x00000002);
+    @assert(rng.next_(sp) == 0xe2ac153f);
+    @assert(rng.next_(sp) == 0x30817eaa);
+    @assert(rng.next_(sp) == 0x607a3436);
+    @assert(rng.next_(sp) == 0xb030543b);
+    @assert(rng.next_(sp) == 0xc1e30385);
+}
+
+// === Test next with dense seed ==============================================
+fn test_next_dense_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0xFFFFFFFF, 0xFFFFFFFE);
+    @assert(rng.next_(sp) == 0x1d53eb5c);
+    @assert(rng.next_(sp) == 0xe27e1672);
+    @assert(rng.next_(sp) == 0x11c6fc76);
+    @assert(rng.next_(sp) == 0x337d5472);
+    @assert(rng.next_(sp) == 0x360d83df);
+}
+
+// === Test jump_one with pointer-based API ===================================
+fn test_jump_one_epoch_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_one_epoch_(sp);
+    @assert(s[0] == 0x15df0d0f);
+    @assert(s[1] == 0x7e9ee400);
+    @assert(rng.next_(sp) == 0x94449966);
+}
+
+fn test_jump_one_epoch_sparse_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x00000001, 0x00000002);
+    rng.jump_one_epoch_(sp);
+    @assert(s[0] == 0xc8dfb488);
+    @assert(s[1] == 0x97453862);
+}
+
+fn test_jump_one_epoch_dense_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0xFFFFFFFF, 0xFFFFFFFE);
+    rng.jump_one_epoch_(sp);
+    @assert(s[0] == 0xf125726b);
+    @assert(s[1] == 0x5fe9dc5d);
+}
+
+// === Test jump_65536 with pointer-based API =================================
+fn test_jump_65536_epochs_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_65536_epochs_(sp);
+    @assert(s[0] == 0x1227743b);
+    @assert(s[1] == 0xfc70a517);
+    @assert(rng.next_(sp) == 0x253e4fcd);
+}
+
+fn test_jump_65536_epochs_sparse_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x00000001, 0x00000002);
+    rng.jump_65536_epochs_(sp);
+    @assert(s[0] == 0x346fafe7);
+    @assert(s[1] == 0x7afcf612);
+}
+
+fn test_jump_65536_epochs_dense_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0xFFFFFFFF, 0xFFFFFFFE);
+    rng.jump_65536_epochs_(sp);
+    @assert(s[0] == 0x5cac8983);
+    @assert(s[1] == 0x400cab5a);
+}
+
+// === Test jump_n with pointer-based API =====================================
+
+// jump_n(0) should not change state
+fn test_jump_n_epochs_zero_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 0);
+    @assert(s[0] == 0x12345678);
+    @assert(s[1] == 0x9ABCDEF0);
+}
+
+// jump_n(1) should equal jump_one
+fn test_jump_n_epochs_one_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 1);
+    @assert(s[0] == 0x15df0d0f);
+    @assert(s[1] == 0x7e9ee400);
+}
+
+// jump_n(2)
+fn test_jump_n_epochs_two_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 2);
+    @assert(s[0] == 0x0efd6151);
+    @assert(s[1] == 0x3517f89d);
+}
+
+// jump_n(3)
+fn test_jump_n_epochs_three_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 3);
+    @assert(s[0] == 0x34a40b8d);
+    @assert(s[1] == 0x916d3820);
+}
+
+// jump_n(7) — small odd number, exercises only jump_one path
+fn test_jump_n_epochs_seven_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 7);
+    @assert(s[0] == 0x5171a3ab);
+    @assert(s[1] == 0xf3dd9a6f);
+}
+
+// jump_n(65536) should equal jump_65536 (exercises only long_jump path)
+fn test_jump_n_epochs_65536_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 65536);
+    @assert(s[0] == 0x1227743b);
+    @assert(s[1] == 0xfc70a517);
+}
+
+// jump_n(65537) = 1 long_jump + 1 jump (exercises both paths)
+fn test_jump_n_epochs_65537_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 65537);
+    @assert(s[0] == 0xd750a142);
+    @assert(s[1] == 0x7933a5a2);
+}
+
+// jump_n(131075) = 2 long_jumps + 3 jumps (exercises both paths, larger n)
+fn test_jump_n_epochs_131075_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs_(sp, 131075);
+    @assert(s[0] == 0xdbe3d398);
+    @assert(s[1] == 0xbbbe2e15);
+}
+
+// jump_n with sparse seed
+fn test_jump_n_epochs_sparse_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x00000001, 0x00000002);
+    rng.jump_n_epochs_(sp, 3);
+    @assert(s[0] == 0x0d9a7542);
+    @assert(s[1] == 0xc4c969bf);
+}
+
+fn test_jump_n_epochs_sparse_mixed_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng.seed_(sp, 0x00000001, 0x00000002);
+    rng.jump_n_epochs_(sp, 65537);
+    @assert(s[0] == 0xec3c2834);
+    @assert(s[1] == 0x98a4b170);
+}
+
+// === Test global-state API ==================================================
+fn test_seed_and_next_global() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    @assert(rng.state[0] == 0x12345678);
+    @assert(rng.state[1] == 0x9ABCDEF0);
+
+    @assert(rng.next() == 0x0d2d0969);
+    @assert(rng.next() == 0x0b50eb58);
+    @assert(rng.next() == 0xad54366b);
+}
+
+fn test_advance_global() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    // advance discards output but changes state the same as next
+    rng.advance();
+    // state should match what it would be after one next() call
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    rng.advance_(sp);
+    @assert(rng.state[0] == s[0]);
+    @assert(rng.state[1] == s[1]);
+    // next value after advance should be the second value in the sequence
+    @assert(rng.next() == 0x0b50eb58);
+}
+
+fn test_jump_one_epoch_global() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    rng.jump_one_epoch();
+    @assert(rng.state[0] == 0x15df0d0f);
+    @assert(rng.state[1] == 0x7e9ee400);
+}
+
+fn test_jump_65536_epochs_global() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    rng.jump_65536_epochs();
+    @assert(rng.state[0] == 0x1227743b);
+    @assert(rng.state[1] == 0xfc70a517);
+}
+
+fn test_jump_n_epochs_global() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    rng.jump_n_epochs(65537);
+    @assert(rng.state[0] == 0xd750a142);
+    @assert(rng.state[1] == 0x7933a5a2);
+}
+
+// === Test that pointer and global APIs are independent =======================
+fn test_independence() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    // seed global and local to different values
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    rng.seed_(sp, 0x00000001, 0x00000002);
+
+    // advance global
+    const global_val = rng.next();
+    @assert(global_val == 0x0d2d0969);
+
+    // local should still produce its own sequence
+    const local_val = rng.next_(sp);
+    @assert(local_val == 0xe2ac153f);
+}
+
+// === Test seed_pe with pointer-based API ====================================
+
+// e=0, p=0: no jumps, genesis state unchanged
+fn test_seed_pe_origin_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 0, 0);
+    @assert(s[0] == 0x12345678);
+    @assert(s[1] == 0x9ABCDEF0);
+    @assert(rng.next_(sp) == 0x0d2d0969);
+}
+
+// e=0, p=1: 1 short jump (same as jump_one from genesis)
+fn test_seed_pe_p1_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 0, 1);
+    @assert(s[0] == 0x15df0d0f);
+    @assert(s[1] == 0x7e9ee400);
+    @assert(rng.next_(sp) == 0x94449966);
+}
+
+// e=0, p=3: 3 short jumps
+fn test_seed_pe_p3_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 0, 3);
+    @assert(s[0] == 0x34a40b8d);
+    @assert(s[1] == 0x916d3820);
+    @assert(rng.next_(sp) == 0x1d2d1fab);
+}
+
+// e=1, p=0: 16 long jumps, 0 short jumps
+fn test_seed_pe_e1_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 1, 0);
+    @assert(s[0] == 0xf211fce1);
+    @assert(s[1] == 0x3713c605);
+    @assert(rng.next_(sp) == 0xc0aad930);
+}
+
+// e=1, p=3: 16 long jumps + 3 short jumps
+fn test_seed_pe_e1_p3_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 1, 3);
+    @assert(s[0] == 0x2b19ff40);
+    @assert(s[1] == 0xda478fcc);
+    @assert(rng.next_(sp) == 0xbdb0580f);
+}
+
+// e=2, p=5: 32 long jumps + 5 short jumps
+fn test_seed_pe_e2_p5_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 2, 5);
+    @assert(s[0] == 0x6009c4a3);
+    @assert(s[1] == 0x4aa50a3f);
+    @assert(rng.next_(sp) == 0xcf6ccaff);
+}
+
+// e=0, p=65536: 1 long jump only (same as jump_65536 from genesis)
+fn test_seed_pe_p65536_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 0, 65536);
+    @assert(s[0] == 0x1227743b);
+    @assert(s[1] == 0xfc70a517);
+    @assert(rng.next_(sp) == 0x253e4fcd);
+}
+
+// e=0, p=65537: 1 long + 1 short (exercises both paths)
+fn test_seed_pe_p65537_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 0, 65537);
+    @assert(s[0] == 0xd750a142);
+    @assert(s[1] == 0x7933a5a2);
+    @assert(rng.next_(sp) == 0x4f7e4238);
+}
+
+// e=1, p=65537: 17 long + 1 short (both paths with experiment offset)
+fn test_seed_pe_e1_p65537_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+
+    rng._seed_pe_(sp, 1, 65537);
+    @assert(s[0] == 0x338cccd6);
+    @assert(s[1] == 0x715a7875);
+    @assert(rng.next_(sp) == 0xa6fbf36d);
+}
+
+// different (e, p) pairs must produce different states
+fn test_seed_pe_independence_() void {
+    var s1 = [2]u32{ 0, 0 };
+    var s2 = [2]u32{ 0, 0 };
+    const sp1 = @ptrcast([*]u32, &s1);
+    const sp2 = @ptrcast([*]u32, &s2);
+
+    rng._seed_pe_(sp1, 0, 0);
+    rng._seed_pe_(sp2, 0, 1);
+    @assert(s1[0] != s2[0] or s1[1] != s2[1]);
+
+    rng._seed_pe_(sp1, 0, 0);
+    rng._seed_pe_(sp2, 1, 0);
+    @assert(s1[0] != s2[0] or s1[1] != s2[1]);
+
+    rng._seed_pe_(sp1, 1, 3);
+    rng._seed_pe_(sp2, 2, 3);
+    @assert(s1[0] != s2[0] or s1[1] != s2[1]);
+}
+
+// global seed_pe at origin (pe_uid=0) should match seed_pe_(_, 0, 0)
+fn test_seed_pe_global() void {
+    rng.seed_pe(0);
+    @assert(rng.state[0] == 0x12345678);
+    @assert(rng.state[1] == 0x9ABCDEF0);
+    @assert(rng.next() == 0x0d2d0969);
+}
+
+// global seed_pe with experiment 1 at origin
+fn test_seed_pe_global_e1() void {
+    rng.seed_pe(1);
+    @assert(rng.state[0] == 0xf211fce1);
+    @assert(rng.state[1] == 0x3713c605);
+    @assert(rng.next() == 0xc0aad930);
+}
+
+// === Lightweight statistical tests ==========================================
+
+// Check that output values are not degenerate (not all same, not all zero)
+fn test_nondegeneracy() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    const first = rng.next();
+    var all_same = true;
+    var all_zero = true;
+    for (@range(u16, 99)) |i| {
+        const val = rng.next();
+        if (val != first) {
+            all_same = false;
+        }
+        if (val != 0) {
+            all_zero = false;
+        }
+    }
+    @assert(!all_same);
+    @assert(!all_zero);
+}
+
+// Check that each bit position is set roughly half the time.
+// Over 1000 samples, each bit should be set between 350 and 650 times
+// (a very loose bound; true expected is 500 +/- ~16 for 1 sigma).
+fn test_bit_uniformity() void {
+    rng.seed(0xABCD1234, 0x5678EF00);
+    var lo_count: u32 = 0; // count of bit 0 being set
+    var hi_count: u32 = 0; // count of bit 31 being set
+    var mid_count: u32 = 0; // count of bit 16 being set
+    for (@range(u16, 100)) |i| {
+        const val = rng.next();
+        lo_count += val & 1;
+        hi_count += (val >> 31) & 1;
+        mid_count += (val >> 16) & 1;
+    }
+    @assert(lo_count > 35);
+    @assert(lo_count < 65);
+    @assert(hi_count > 35);
+    @assert(hi_count < 65);
+    @assert(mid_count > 35);
+    @assert(mid_count < 65);
+}
+
+// Check that high and low 16-bit halves are both well-distributed.
+// Sum the top halves and bottom halves separately over many samples;
+// each half's mean should be near 0x8000 (32768).
+// Over 1000 samples with mean 32768, loose bound: sum in [25M, 40M].
+fn test_half_balance() void {
+    rng.seed(0x55555555, 0xAAAAAAAA);
+    var sum_lo: u32 = 0;
+    var sum_hi: u32 = 0;
+    for (@range(u16, 100)) |i| {
+        const val = rng.next();
+        sum_lo += val & 0xFFFF;
+        sum_hi += val >> 16;
+    }
+    @assert(sum_lo > 2500000);
+    @assert(sum_lo < 4000000);
+    @assert(sum_hi > 2500000);
+    @assert(sum_hi < 4000000);
+}
+
+// Check that consecutive values are not always monotonically ordered
+// (i.e., the sequence is not a trivial counter).
+fn test_nonmonotonic() void {
+    rng.seed(0xDEADBEEF, 0xCAFEBABE);
+    var prev = rng.next();
+    var ups: u32 = 0;
+    var downs: u32 = 0;
+    for (@range(u16, 99)) |i| {
+        const cur = rng.next();
+        if (cur > prev) {
+            ups += 1;
+        }
+        if (cur < prev) {
+            downs += 1;
+        }
+        prev = cur;
+    }
+    // both directions should appear frequently
+    @assert(ups > 35);
+    @assert(downs > 35);
+}
+
+// Check that different seeds produce different sequences.
+fn test_seed_sensitivity() void {
+    rng.seed(0x00000001, 0x00000000);
+    const a0 = rng.next();
+    const a1 = rng.next();
+
+    rng.seed(0x00000002, 0x00000000);
+    const b0 = rng.next();
+    const b1 = rng.next();
+
+    // at least one of the first two outputs should differ
+    @assert(a0 != b0 or a1 != b1);
+}
+
+// test runner ================================================================
+fn do_test() void {
+    test_seed_and_next_();
+    test_seed_zero_();
+    test_next_sparse_();
+    test_next_dense_();
+    test_jump_one_epoch_();
+    test_jump_one_epoch_sparse_();
+    test_jump_one_epoch_dense_();
+    test_jump_65536_epochs_();
+    test_jump_65536_epochs_sparse_();
+    test_jump_65536_epochs_dense_();
+    test_jump_n_epochs_zero_();
+    test_jump_n_epochs_one_();
+    test_jump_n_epochs_two_();
+    test_jump_n_epochs_three_();
+    test_jump_n_epochs_seven_();
+    test_jump_n_epochs_65536_();
+    test_jump_n_epochs_65537_();
+    test_jump_n_epochs_131075_();
+    test_jump_n_epochs_sparse_();
+    test_jump_n_epochs_sparse_mixed_();
+    test_seed_and_next_global();
+    test_advance_global();
+    test_jump_one_epoch_global();
+    test_jump_65536_epochs_global();
+    test_jump_n_epochs_global();
+    test_independence();
+    test_seed_pe_origin_();
+    test_seed_pe_p1_();
+    test_seed_pe_p3_();
+    test_seed_pe_e1_();
+    test_seed_pe_e1_p3_();
+    test_seed_pe_e2_p5_();
+    test_seed_pe_p65536_();
+    test_seed_pe_p65537_();
+    test_seed_pe_e1_p65537_();
+    test_seed_pe_independence_();
+    test_seed_pe_global();
+    test_seed_pe_global_e1();
+    test_nondegeneracy();
+    test_bit_uniformity();
+    test_half_balance();
+    test_nonmonotonic();
+    test_seed_sensitivity();
+}

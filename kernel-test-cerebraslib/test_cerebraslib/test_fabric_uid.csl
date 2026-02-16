@@ -1,0 +1,118 @@
+const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
+
+// === Test _get_rmajor_uid ===================================================
+
+// At origin: y * 762 + x = 0
+fn test_rmajor_origin() void {
+    @assert(fabric_uid._get_rmajor_uid(0, 0) == 0);
+}
+
+// x=1 y=0: uid = 1
+fn test_rmajor_x_only() void {
+    @assert(fabric_uid._get_rmajor_uid(1, 0) == 1);
+    @assert(fabric_uid._get_rmajor_uid(5, 0) == 5);
+}
+
+// x=0 y=1: uid = 762
+fn test_rmajor_y_only() void {
+    @assert(fabric_uid._get_rmajor_uid(0, 1) == 762);
+    @assert(fabric_uid._get_rmajor_uid(0, 2) == 1524);
+}
+
+// general case: y * 762 + x
+fn test_rmajor_general() void {
+    // (3, 2): 2 * 762 + 3 = 1527
+    @assert(fabric_uid._get_rmajor_uid(3, 2) == 1527);
+    // (761, 1175): 1175 * 762 + 761 = 896,111
+    @assert(fabric_uid._get_rmajor_uid(761, 1175) == 896111);
+    // (100, 500): 500 * 762 + 100 = 381,100
+    @assert(fabric_uid._get_rmajor_uid(100, 500) == 381100);
+}
+
+// consecutive x values differ by 1
+fn test_rmajor_x_stride() void {
+    const base_uid = fabric_uid._get_rmajor_uid(10, 7);
+    @assert(fabric_uid._get_rmajor_uid(11, 7) - base_uid == 1);
+}
+
+// consecutive y values differ by 762
+fn test_rmajor_y_stride() void {
+    const base_uid = fabric_uid._get_rmajor_uid(10, 7);
+    @assert(fabric_uid._get_rmajor_uid(10, 8) - base_uid == 762);
+}
+
+// === Test _get_cmajor_uid ===================================================
+
+// At origin: x * 1176 + y = 0
+fn test_cmajor_origin() void {
+    @assert(fabric_uid._get_cmajor_uid(0, 0) == 0);
+}
+
+// x=0 y=1: uid = 1
+fn test_cmajor_y_only() void {
+    @assert(fabric_uid._get_cmajor_uid(0, 1) == 1);
+    @assert(fabric_uid._get_cmajor_uid(0, 5) == 5);
+}
+
+// x=1 y=0: uid = 1176
+fn test_cmajor_x_only() void {
+    @assert(fabric_uid._get_cmajor_uid(1, 0) == 1176);
+    @assert(fabric_uid._get_cmajor_uid(2, 0) == 2352);
+}
+
+// general case: x * 1176 + y
+fn test_cmajor_general() void {
+    // (3, 2): 3 * 1176 + 2 = 3530
+    @assert(fabric_uid._get_cmajor_uid(3, 2) == 3530);
+    // (761, 1175): 761 * 1176 + 1175 = 896,111
+    @assert(fabric_uid._get_cmajor_uid(761, 1175) == 896111);
+    // (100, 500): 100 * 1176 + 500 = 118,100
+    @assert(fabric_uid._get_cmajor_uid(100, 500) == 118100);
+}
+
+// consecutive y values differ by 1
+fn test_cmajor_y_stride() void {
+    const base_uid = fabric_uid._get_cmajor_uid(7, 10);
+    @assert(fabric_uid._get_cmajor_uid(7, 11) - base_uid == 1);
+}
+
+// consecutive x values differ by 1176
+fn test_cmajor_x_stride() void {
+    const base_uid = fabric_uid._get_cmajor_uid(7, 10);
+    @assert(fabric_uid._get_cmajor_uid(8, 10) - base_uid == 1176);
+}
+
+// === Cross-checks ===========================================================
+
+// max corner uid equals width * height - 1 for both orderings
+fn test_max_uid() void {
+    // (761, 1175): both orderings give 762 * 1176 - 1 = 896,111
+    @assert(fabric_uid._get_rmajor_uid(761, 1175) == 896111);
+    @assert(fabric_uid._get_cmajor_uid(761, 1175) == 896111);
+    @assert(fabric_uid._get_rmajor_uid(761, 1175) < 762 * 1176);
+    @assert(fabric_uid._get_cmajor_uid(761, 1175) < 762 * 1176);
+}
+
+// the public wrappers should work at origin (the only coord available in test)
+fn test_public_api() void {
+    @assert(fabric_uid.get_rmajor_uid() == 0);
+    @assert(fabric_uid.get_cmajor_uid() == 0);
+}
+
+// test runner ================================================================
+fn do_test() void {
+    test_rmajor_origin();
+    test_rmajor_x_only();
+    test_rmajor_y_only();
+    test_rmajor_general();
+    test_rmajor_x_stride();
+    test_rmajor_y_stride();
+    test_cmajor_origin();
+    test_cmajor_y_only();
+    test_cmajor_x_only();
+    test_cmajor_general();
+    test_cmajor_y_stride();
+    test_cmajor_x_stride();
+    test_max_uid();
+    test_public_api();
+}

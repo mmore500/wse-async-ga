@@ -1,0 +1,35 @@
+// Fabric-unique PE identifiers.
+// Provides row-major and column-major UIDs derived from PE coordinates.
+//
+// Fabric dimensions (width x height):
+//   WSE2: 757 x 996
+//   WSE3: 762 x 1176
+//
+// WSE3 is strictly larger than WSE2 in both dimensions, so we use WSE3
+// dimensions for both architectures.
+
+const layout_module = @import_module("<layout>");
+
+/// Helper function for testability.
+/// Row-major UID: y * 762 + x.
+fn _get_rmajor_uid(x: u16, y: u16) u32 {
+    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
+    return @as(u32, y) * 762 + @as(u32, x);
+}
+
+/// Helper function for testability.
+/// Column-major UID: x * 1176 + y.
+fn _get_cmajor_uid(x: u16, y: u16) u32 {
+    @comptime_assert(@is_arch("wse2") or @is_arch("wse3"));
+    return @as(u32, x) * 1176 + @as(u32, y);
+}
+
+/// Column-major UID: x * 1176 + y.
+fn get_cmajor_uid() u32 {
+    return _get_cmajor_uid(layout_module.get_x_coord(), layout_module.get_y_coord());
+}
+
+/// Row-major UID: y * 762 + x.
+fn get_rmajor_uid() u32 {
+    return _get_rmajor_uid(layout_module.get_x_coord(), layout_module.get_y_coord());
+}
