@@ -700,7 +700,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     @as(u32, globalSeed) * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1
   );
   random.set_global_prng_seed(localSeed);  // zero seed seems to break RNG...
-  rng._seed_pe_(&rng._state, globalSeed, 9);  // TODO
+  rng.seed_pe_(&rng._state, globalSeed);  // .seed_pe exhausts WSE2 stack...
 
   desync();
   population.init_module();
