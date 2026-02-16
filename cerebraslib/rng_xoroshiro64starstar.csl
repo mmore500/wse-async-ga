@@ -52,9 +52,8 @@ fn advance_(s: [*]u32) void {
 /// Generate the next pseudo-random 32-bit value and advance the state.
 fn next_(s: [*]u32) u32 {
     const s0 = s[0];
-    const result = _rotl(s0 * 0x9E3779BB, 5) * 5;
     advance_(s);
-    return result;
+    return _rotl(s0 * 0x9E3779BB, 5) * 5;
 }
 
 /// Jump the state forward by 2^32 steps (one jump epoch).
