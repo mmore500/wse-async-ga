@@ -235,8 +235,8 @@ fn test_jump_n_epochs_sparse_mixed_() void {
 // === Test global-state API ==================================================
 fn test_seed_and_next_global() void {
     rng.seed(0x12345678, 0x9ABCDEF0);
-    @assert(rng.state[0] == 0x12345678);
-    @assert(rng.state[1] == 0x9ABCDEF0);
+    @assert(rng._state[0] == 0x12345678);
+    @assert(rng._state[1] == 0x9ABCDEF0);
 
     @assert(rng.next() == 0x0d2d0969);
     @assert(rng.next() == 0x0b50eb58);
@@ -252,8 +252,8 @@ fn test_advance_global() void {
     const sp = @ptrcast([*]u32, &s);
     rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
     rng.advance_(sp);
-    @assert(rng.state[0] == s[0]);
-    @assert(rng.state[1] == s[1]);
+    @assert(rng._state[0] == s[0]);
+    @assert(rng._state[1] == s[1]);
     // next value after advance should be the second value in the sequence
     @assert(rng.next() == 0x0b50eb58);
 }
@@ -261,22 +261,22 @@ fn test_advance_global() void {
 fn test_jump_one_epoch_global() void {
     rng.seed(0x12345678, 0x9ABCDEF0);
     rng.jump_one_epoch();
-    @assert(rng.state[0] == 0x15df0d0f);
-    @assert(rng.state[1] == 0x7e9ee400);
+    @assert(rng._state[0] == 0x15df0d0f);
+    @assert(rng._state[1] == 0x7e9ee400);
 }
 
 fn test_jump_65536_epochs_global() void {
     rng.seed(0x12345678, 0x9ABCDEF0);
     rng.jump_65536_epochs();
-    @assert(rng.state[0] == 0x1227743b);
-    @assert(rng.state[1] == 0xfc70a517);
+    @assert(rng._state[0] == 0x1227743b);
+    @assert(rng._state[1] == 0xfc70a517);
 }
 
 fn test_jump_n_epochs_global() void {
     rng.seed(0x12345678, 0x9ABCDEF0);
     rng.jump_n_epochs(65537);
-    @assert(rng.state[0] == 0xd750a142);
-    @assert(rng.state[1] == 0x7933a5a2);
+    @assert(rng._state[0] == 0xd750a142);
+    @assert(rng._state[1] == 0x7933a5a2);
 }
 
 // === Test that pointer and global APIs are independent =======================
@@ -421,16 +421,16 @@ fn test_seed_pe_independence_() void {
 // global seed_pe at origin (pe_uid=0) should match seed_pe_(_, 0, 0)
 fn test_seed_pe_global() void {
     rng.seed_pe(0);
-    @assert(rng.state[0] == 0x12345678);
-    @assert(rng.state[1] == 0x9ABCDEF0);
+    @assert(rng._state[0] == 0x12345678);
+    @assert(rng._state[1] == 0x9ABCDEF0);
     @assert(rng.next() == 0x0d2d0969);
 }
 
 // global seed_pe with experiment 1 at origin
 fn test_seed_pe_global_e1() void {
     rng.seed_pe(1);
-    @assert(rng.state[0] == 0xf211fce1);
-    @assert(rng.state[1] == 0x3713c605);
+    @assert(rng._state[0] == 0xf211fce1);
+    @assert(rng._state[1] == 0x3713c605);
     @assert(rng.next() == 0xc0aad930);
 }
 
