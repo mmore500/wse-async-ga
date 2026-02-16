@@ -44,7 +44,6 @@ param rng: imported_module;
 
 // module imports =============================================================
 const math = @import_module("<math>");
-const random = @import_module("<random>");
 
 const compconf = @import_module("<compconf>");
 comptime { // access via get_value for logging...
@@ -67,7 +66,6 @@ const hstrat_T_dilation = compconf.get_value_or(
     @as(u32, 1),
 );
 
-
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 
@@ -81,8 +79,12 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
 
 // internal functions =========================================================
+fn _calc_fitness_of(genome: genomePtr_t) f32 {
+    return @ptrcast(*f32, genome).*;
+}
+
 fn _apply_mutation(genome: genomePtr_t) void {
-    var mutated = calc_fitness_of(genome);
+    var mutated = _calc_fitness_of(genome);
 
     if (rng.next() == 1) {
         mutated += 1.0 + @as(f32, rng.next() & 0xFF);
@@ -120,11 +122,12 @@ fn _step_instrumentation(genome: genomePtr_t) void {
 
 // public API =================================================================
 fn elapse_inheritance_of(genome: genomePtr_t) void {
-    _apply_mutation(genome); _step_instrumentation(genome);
+    _apply_mutation(genome);
+    _step_instrumentation(genome);
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
-    return @ptrcast(*f32, genome).* * 8.0;  // times eight allows sanity check
+    return _calc_fitness_of(genome) * 8.0;  // times eight allows sanity check
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 {
@@ -137,7 +140,9 @@ fn initialize_one(genome: genomePtr_t) void {
     @ptrcast(*f32, genome).* = 0.0;
     @ptrcast([*]u32, genome)[1] = 0;
     @ptrcast([*]u32, genome)[4] = 0;
-    for (@range(u16, S)) |_| { _do_step_instrumentation(genome); }
+    for (@range(u16, S)) |_| {
+        _do_step_instrumentation(genome);
+    }
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void {}
