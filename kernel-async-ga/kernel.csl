@@ -48,12 +48,10 @@ comptime {  // access via get_value for logging...
   const _ = compconf.get_value("ASYNC_GA_GENOME_FLAVOR", comptime_string);
 }  // ... raw string works around sdk v1.0.0 limitation
 const compconf_raw = @import_module("<compconf_raw>");
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
 const genome_ = @import_module(
-  @strcat(
-    "cerebraslib/genome/",
-    compconf_raw.ASYNC_GA_GENOME_FLAVOR,
-    ".csl",
-  ),
+  @strcat("cerebraslib/genome/", compconf_raw.ASYNC_GA_GENOME_FLAVOR, ".csl"),
+  .{ .rng = rng },
 );
 // TODO why can't this be genomes have an even number of words?
 // TODO see https://github.com/mmore500/wse-async-ga/issues/4
@@ -66,20 +64,14 @@ const pExtinction = compconf.get_value_or(
 );
 
 const population = @import_module("cerebraslib/population.csl", .{
-  .gSize = genome_.gSize, .popSize = popSize,
-  .pExtinction = pExtinction,
-  .tournamentSize = tournSize,
-  .fitFun = genome_.calc_fitness_of,
-  .immClobber = genome_.hasImmClobber,
-  .immClobberFun = genome_.clobber_immigrant,
-  .inheritFun = genome_.elapse_inheritance_of,
-  .initFun = genome_.initialize_one,
-  .traitFun = genome_.get_trait_value,
+  .genome = genome_, .popSize = popSize,
+  .pExtinction = pExtinction, .tournamentSize = tournSize,
 });
 const wildtypeLogger = @import_module(
   "cerebraslib/traitlogger.csl", .{ .symbolName = "wildtypeLoggerRecord" }
 );
 const ctrl = @import_module("cerebraslib/ctrl.csl");
+const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
 const optime = @import_module("cerebraslib/optime.csl");
 
 // global output variables ====================================================
@@ -114,10 +106,10 @@ var ptr_traitCycles: [*]u32 = &traitCycles;
 var traitValues = @zeros([nTraitVals]u32);
 var ptr_traitValues: [*]u32 = &traitValues;
 
-var genome = @zeros([population.gSize]u32);  // samples 0th population element
+var genome = @zeros([genome_.gSize]u32);  // samples 0th population element
 var ptr_genome : [*]u32 = &genome;  // (which is convenient)
 
-var genomeBookend = @zeros([population.gSize + 2]u32);  // w/ bookend validation
+var genomeBookend = @zeros([genome_.gSize + 2]u32);  // w/ bookend validation
 var ptr_genomeBookend : [*]u32 = &genomeBookend;  // for async memcpy
 
 var fitness = @zeros([1]f32);  // samples 0th population element (convenient)
@@ -217,7 +209,7 @@ const cycleTaskID: local_task_id = @get_local_task_id(19);
 // asynchronously send genomes sampled from population to neighbors
 ///////////////////////////////////////////////////////////////////////////////
 const sendNumGenomes: u16 = 1;  // how many genomes to batch sending together?
-const sendBufSize: u16 = sendNumGenomes * population.gSize;
+const sendBufSize: u16 = sendNumGenomes * genome_.gSize;
 
 // send NORTH =================================================================
 var sendFlag_N: u8; // need refill? initialized at startup
@@ -419,7 +411,7 @@ fn dispatchSend_W() bool {
 // which are then harvested from buffer & immigrated into the population
 ///////////////////////////////////////////////////////////////////////////////
 const recvNumGenomes: u16 = 4;  // how many genomes to batch together?
-const recvBufSize: u16 = recvNumGenomes * population.gSize;
+const recvBufSize: u16 = recvNumGenomes * genome_.gSize;
 
 // recv NORTH =================================================================
 var recvFlag_N: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
@@ -644,7 +636,7 @@ task cycleTask() void {
 
     // sample 0th element of population for telemetry
     const genome_ptr = population._get_ith_genome(0);
-    for(@range(u16, population.gSize)) |i| {
+    for(@range(u16, genome_.gSize)) |i| {
       genome[i] = genome_ptr[i];
     }
 
@@ -662,8 +654,8 @@ fn desync() void { for (@range(u16, @random16() % 256)) |i| { @random16(); } }
 
 fn genomerefresh() void {
   const genome_ptr = population._get_ith_genome(0);
-  genomeBookend[population.gSize + 1] += 1;
-  for(@range(u16, population.gSize)) |i| {
+  genomeBookend[genome_.gSize + 1] += 1;
+  for(@range(u16, genome_.gSize)) |i| {
     genomeBookend[i + 1] = genome_ptr[i];
   }
   genomeBookend[0] += 1;
@@ -709,6 +701,9 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     @as(u32, globalSeed) * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1
   );
   random.set_global_prng_seed(localSeed);  // zero seed seems to break RNG...
+  // rng.seed_pe(globalSeed);  // works, but very slow... especially on wse 2
+  rng.seed(localSeed, @as(u32, globalSeed));  // use naive approach instead
+
   desync();
   population.init_module();
   // initialize genome telemetry

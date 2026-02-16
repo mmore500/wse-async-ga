@@ -83,6 +83,7 @@ jobs:
           - genome_purifyingonly
           - genome_purifyingonly_dstream_validation
           - genome_purifyingplus
+          - genome_purifyingsweep
           - genome_purifyingstripped
           - genome_hypermutator
           - genome_mls_2025_08_15

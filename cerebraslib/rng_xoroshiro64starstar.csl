@@ -3,7 +3,7 @@
 const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
 
 // global state ===============================================================
-var state = [2]u32{ 0x12345678, 0x9ABCDEF0 }; // default non-zero state
+var _state = [2]u32{ 0x12345678, 0x9ABCDEF0 }; // default non-zero state
 
 // internal helpers ===========================================================
 fn _rotl(x: u32, comptime k: u32) u32 {
@@ -52,9 +52,8 @@ fn advance_(s: [*]u32) void {
 /// Generate the next pseudo-random 32-bit value and advance the state.
 fn next_(s: [*]u32) u32 {
     const s0 = s[0];
-    const result = _rotl(s0 * 0x9E3779BB, 5) * 5;
     advance_(s);
-    return result;
+    return _rotl(s0 * 0x9E3779BB, 5) * 5;
 }
 
 /// Jump the state forward by 2^32 steps (one jump epoch).
@@ -132,35 +131,35 @@ fn seed_pe_(s: [*]u32, global_seed: u16) void {
 
 /// Advance the global state by one step (discarding the output).
 fn advance() void {
-    advance_(@ptrcast([*]u32, &state));
+    advance_(@ptrcast([*]u32, &_state));
 }
 
 /// Generate the next pseudo-random 32-bit value using global state.
 fn next() u32 {
-    return next_(@ptrcast([*]u32, &state));
+    return next_(@ptrcast([*]u32, &_state));
 }
 
 /// Jump the global state forward by 2^32 steps (one epoch).
 fn jump_one_epoch() void {
-    jump_one_epoch_(@ptrcast([*]u32, &state));
+    jump_one_epoch_(@ptrcast([*]u32, &_state));
 }
 
 /// Jump the global state forward by 2^48 steps (65536 epochs).
 fn jump_65536_epochs() void {
-    jump_65536_epochs_(@ptrcast([*]u32, &state));
+    jump_65536_epochs_(@ptrcast([*]u32, &_state));
 }
 
 /// Jump the global state forward by n * 2^32 steps (n epochs).
 fn jump_n_epochs(n: u32) void {
-    jump_n_epochs_(@ptrcast([*]u32, &state), n);
+    jump_n_epochs_(@ptrcast([*]u32, &_state), n);
 }
 
 /// Set the global PRNG state from two seed values.
 fn seed(seed0: u32, seed1: u32) void {
-    seed_(@ptrcast([*]u32, &state), seed0, seed1);
+    seed_(@ptrcast([*]u32, &_state), seed0, seed1);
 }
 
 /// Seed the global state for this PE using its row-major fabric UID.
 fn seed_pe(global_seed: u16) void {
-    seed_pe_(@ptrcast([*]u32, &state), global_seed);
+    seed_pe_(@ptrcast([*]u32, &_state), global_seed);
 }

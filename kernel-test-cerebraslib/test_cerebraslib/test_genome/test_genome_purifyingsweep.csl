@@ -1,15 +1,18 @@
 const random = @import_module("<random>");
 
-const genome = @import_module("cerebraslib/genome/genome_purifyingonly.csl");
-
-fn test_elapse_inheritance_of() void {
-    var g = @zeros(genome.genome_t);
-    genome.elapse_inheritance_of(&g);
-}
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const genome = @import_module(
+    "cerebraslib/genome/genome_purifyingsweep.csl", .{.rng = rng}
+);
 
 fn test_calc_fitness_of() void {
     var g = @zeros(genome.genome_t);
     @assert(genome.calc_fitness_of(&g) == 0.0);
+}
+
+fn test_elapse_inheritance_of() void {
+    var g = @zeros(genome.genome_t);
+    genome.elapse_inheritance_of(&g);
 }
 
 fn test_get_trait_value() void {
@@ -21,6 +24,7 @@ fn test_get_trait_value() void {
 fn test_initialize_one() void {
     var g = @zeros(genome.genome_t);
     genome.initialize_one(&g);
+    @assert(genome.calc_fitness_of(&g) == 0.0);
 }
 
 fn do_test() void {

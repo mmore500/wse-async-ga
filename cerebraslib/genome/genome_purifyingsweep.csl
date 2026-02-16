@@ -40,9 +40,10 @@
 //!     "nWav": (5, pl.UInt8),
 //! }
 
+param rng: imported_module;
+
 // module imports =============================================================
 const math = @import_module("<math>");
-const random = @import_module("<random>");
 
 const compconf = @import_module("<compconf>");
 comptime { // access via get_value for logging...
@@ -78,15 +79,18 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
 
 // internal functions =========================================================
-fn _apply_mutation(genome: genomePtr_t) void {
-    var mutated = calc_fitness_of(genome);
-    const scale = (mutated + 1.0) / 1024.0;
+fn _calc_fitness_of(genome: genomePtr_t) f32 {
+    return @ptrcast(*f32, genome).*;
+}
 
-    if (opscalar.p(0.003)) {
-        mutated += math.abs(random.random_normal_f32()) * scale;
+fn _apply_mutation(genome: genomePtr_t) void {
+    var mutated = _calc_fitness_of(genome);
+
+    if (rng.next() == 1) {
+        mutated += 1.0 + @as(f32, rng.next() & 0xFF);
     }
-    if (opscalar.p(0.3)) {
-        mutated -= math.abs(random.random_normal_f32()) * scale;
+    else if (opscalar.p(0.3)) {
+        mutated -= 1.0;
     }
     // mutate fitness value
     @ptrcast(*f32, genome).* = mutated;
@@ -123,7 +127,7 @@ fn elapse_inheritance_of(genome: genomePtr_t) void {
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
-    return @ptrcast(*f32, genome).*;
+    return _calc_fitness_of(genome) * 8.0;  // times eight allows sanity check
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 {
