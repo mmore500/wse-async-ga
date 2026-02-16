@@ -1,8 +1,6 @@
 const random = @import_module("<random>");
 
-const genome_mls = @import_module("cerebraslib/genome/genome_mls_2025_08_15.csl", .{
-    .peId = 0,
-});
+const genome_mls = @import_module("cerebraslib/genome/genome_mls_2025_08_15.csl");
 
 
 fn test_builtin_random_seeding() void {

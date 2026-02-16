@@ -1,8 +1,6 @@
 const random = @import_module("<random>");
 
-const genome_frozenliteral2 = @import_module("cerebraslib/genome/genome_frozenliteral2.csl", .{
-    .peId = 0,
-});
+const genome_frozenliteral2 = @import_module("cerebraslib/genome/genome_frozenliteral2.csl");
 
 fn test_elapse_inheritance_of() void {
     var genome = @zeros(genome_frozenliteral2.genome_t);
