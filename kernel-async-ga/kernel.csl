@@ -71,6 +71,7 @@ const wildtypeLogger = @import_module(
   "cerebraslib/traitlogger.csl", .{ .symbolName = "wildtypeLoggerRecord" }
 );
 const ctrl = @import_module("cerebraslib/ctrl.csl");
+const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
 const optime = @import_module("cerebraslib/optime.csl");
 
 // global output variables ====================================================
@@ -700,7 +701,10 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     @as(u32, globalSeed) * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1
   );
   random.set_global_prng_seed(localSeed);  // zero seed seems to break RNG...
-  rng.seed_pe_(&rng._state, globalSeed);  // .seed_pe exhausts WSE2 stack...
+  const _pe_uid = fabric_uid._get_cmajor_uid(
+    layout_module.get_x_coord(), layout_module.get_y_coord()
+  );  // calling .seed_pe directly ...
+  rng._seed_pe_(&rng._state, globalSeed, _pe_uid);  // ...exhausts WSE2 stack
 
   desync();
   population.init_module();
