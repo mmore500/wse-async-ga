@@ -82,3 +82,51 @@ fn unif16(upper: u16) u16 {
 
 /// Draw a random boolean value (even coin flip)..
 fn unifbool() bool { return p(0.5); }
+
+/// Return the n-th next representable f32 toward +Inf (Julia semantics).
+fn nextf32(x: f32, n: u32) f32 {
+    const bits = @bitcast(u32, x);
+    const mag = bits & 0x7FFFFFFF;
+    if (mag > 0x7F800000) return x; // NaN: pass through
+    if (bits < 0x80000000) // non-negative: increment mag, clamp at +Inf
+        return @bitcast(f32, mag + math.min(n, 0x7F800000 - mag));
+    // negative: decrement mag toward zero
+    if (n <= mag) return @bitcast(f32, 0x80000000 | (mag - n));
+    return @bitcast(f32, math.min(n - mag, @as(u32, 0x7F800000))); // cross zero into positive
+}
+
+/// Return the n-th previous representable f32 toward -Inf (Julia semantics).
+fn prevf32(x: f32, n: u32) f32 {
+    const bits = @bitcast(u32, x);
+    const mag = bits & 0x7FFFFFFF;
+    if (mag > 0x7F800000) return x; // NaN: pass through
+    if (bits >= 0x80000000) // negative: increment mag, clamp at -Inf
+        return @bitcast(f32, 0x80000000 | (mag + math.min(n, 0x7F800000 - mag)));
+    // non-negative: decrement mag toward zero
+    if (n <= mag) return @bitcast(f32, mag - n);
+    return @bitcast(f32, 0x80000000 | math.min(n - mag, @as(u32, 0x7F800000))); // cross zero into negative
+}
+
+/// Return the n-th next representable f16 toward +Inf (Julia semantics).
+fn nextf16(x: f16, n: u16) f16 {
+    const bits = @bitcast(u16, x);
+    const mag = bits & 0x7FFF;
+    if (mag > 0x7C00) return x; // NaN: pass through
+    if (bits < 0x8000) // non-negative: increment mag, clamp at +Inf
+        return @bitcast(f16, mag + math.min(n, 0x7C00 - mag));
+    // negative: decrement mag toward zero
+    if (n <= mag) return @bitcast(f16, 0x8000 | (mag - n));
+    return @bitcast(f16, math.min(n - mag, @as(u16, 0x7C00))); // cross zero into positive
+}
+
+/// Return the n-th previous representable f16 toward -Inf (Julia semantics).
+fn prevf16(x: f16, n: u16) f16 {
+    const bits = @bitcast(u16, x);
+    const mag = bits & 0x7FFF;
+    if (mag > 0x7C00) return x; // NaN: pass through
+    if (bits >= 0x8000) // negative: increment mag, clamp at -Inf
+        return @bitcast(f16, 0x8000 | (mag + math.min(n, 0x7C00 - mag)));
+    // non-negative: decrement mag toward zero
+    if (n <= mag) return @bitcast(f16, mag - n);
+    return @bitcast(f16, 0x8000 | math.min(n - mag, @as(u16, 0x7C00))); // cross zero into negative
+}

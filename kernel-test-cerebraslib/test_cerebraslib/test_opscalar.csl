@@ -175,6 +175,306 @@ fn test_unifbool() void {
 }
 
 
+// === bitcast sanity =========================================================
+
+fn test_bitcast_f32() void {
+    @assert(@bitcast(u32, @as(f32, 0.0)) == 0x00000000);
+    @assert(@bitcast(u32, @as(f32, 1.0)) == 0x3F800000);
+    @assert(@bitcast(u32, @as(f32, -1.0)) == 0xBF800000);
+    @assert(@bitcast(u32, @as(f32, 2.0)) == 0x40000000);
+    @assert(@bitcast(f32, @as(u32, 0x3F800000)) == 1.0);
+    @assert(@bitcast(f32, @as(u32, 0x40000000)) == 2.0);
+}
+
+fn test_bitcast_f16() void {
+    @assert(@bitcast(u16, @as(f16, 0.0)) == 0x0000);
+    @assert(@bitcast(u16, @as(f16, 1.0)) == 0x3C00);
+    @assert(@bitcast(u16, @as(f16, -1.0)) == 0xBC00);
+    @assert(@bitcast(f16, @as(u16, 0x3C00)) == @as(f16, 1.0));
+}
+
+// === nextf32 ================================================================
+
+fn test_nextf32_pos_zero() void {
+    @assert(@bitcast(u32, opscalar.nextf32(0.0, 1)) == 0x00000001);
+}
+
+fn test_nextf32_neg_zero() void {
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0x80000000)), 1)) == 0x00000001);
+}
+
+fn test_nextf32_one() void {
+    @assert(@bitcast(u32, opscalar.nextf32(1.0, 1)) == 0x3F800001);
+}
+
+fn test_nextf32_neg_one() void {
+    // -1.0 = 0xBF800000, next toward +inf = 0xBF7FFFFF
+    @assert(@bitcast(u32, opscalar.nextf32(-1.0, 1)) == 0xBF7FFFFF);
+}
+
+fn test_nextf32_two() void {
+    @assert(@bitcast(u32, opscalar.nextf32(2.0, 1)) == 0x40000001);
+}
+
+fn test_nextf32_max_to_inf() void {
+    // max finite -> +Inf
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0x7F7FFFFF)), 1)) == 0x7F800000);
+}
+
+fn test_nextf32_pos_inf() void {
+    // +Inf -> +Inf (fixed point)
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0x7F800000)), 1)) == 0x7F800000);
+}
+
+fn test_nextf32_neg_inf() void {
+    // -Inf -> -max finite
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0xFF800000)), 1)) == 0xFF7FFFFF);
+}
+
+fn test_nextf32_neg_denorm_to_neg_zero() void {
+    // -smallest denormal -> -0.0
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0x80000001)), 1)) == 0x80000000);
+}
+
+fn test_nextf32_smallest_denorm() void {
+    // smallest denormal -> next denormal
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0x00000001)), 1)) == 0x00000002);
+}
+
+fn test_nextf32_nan() void {
+    // NaN -> NaN (preserved)
+    const nan_bits: u32 = 0x7FC00000;
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, nan_bits), 1)) == nan_bits);
+}
+
+// === prevf32 ================================================================
+
+fn test_prevf32_pos_zero() void {
+    @assert(@bitcast(u32, opscalar.prevf32(0.0, 1)) == 0x80000001);
+}
+
+fn test_prevf32_neg_zero() void {
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, @as(u32, 0x80000000)), 1)) == 0x80000001);
+}
+
+fn test_prevf32_one() void {
+    @assert(@bitcast(u32, opscalar.prevf32(1.0, 1)) == 0x3F7FFFFF);
+}
+
+fn test_prevf32_neg_one() void {
+    // -1.0 = 0xBF800000, prev toward -inf = 0xBF800001
+    @assert(@bitcast(u32, opscalar.prevf32(-1.0, 1)) == 0xBF800001);
+}
+
+fn test_prevf32_neg_max_to_neg_inf() void {
+    // -max finite -> -Inf
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, @as(u32, 0xFF7FFFFF)), 1)) == 0xFF800000);
+}
+
+fn test_prevf32_neg_inf() void {
+    // -Inf -> -Inf (fixed point)
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, @as(u32, 0xFF800000)), 1)) == 0xFF800000);
+}
+
+fn test_prevf32_pos_inf() void {
+    // +Inf -> max finite
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, @as(u32, 0x7F800000)), 1)) == 0x7F7FFFFF);
+}
+
+fn test_prevf32_smallest_denorm_to_zero() void {
+    // smallest denormal -> +0.0
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, @as(u32, 0x00000001)), 1)) == 0x00000000);
+}
+
+fn test_prevf32_nan() void {
+    const nan_bits: u32 = 0x7FC00000;
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, nan_bits), 1)) == nan_bits);
+}
+
+// === nextf32/prevf32 roundtrips =============================================
+
+fn test_f32_roundtrip() void {
+    @assert(opscalar.prevf32(opscalar.nextf32(1.0, 1), 1) == 1.0);
+    @assert(opscalar.nextf32(opscalar.prevf32(1.0, 1), 1) == 1.0);
+    @assert(opscalar.prevf32(opscalar.nextf32(-1.0, 1), 1) == -1.0);
+    @assert(opscalar.nextf32(opscalar.prevf32(-1.0, 1), 1) == -1.0);
+    @assert(opscalar.prevf32(opscalar.nextf32(2.0, 1), 1) == 2.0);
+}
+
+// === nextf32/prevf32 ordering ===============================================
+
+fn test_f32_ordering() void {
+    @assert(opscalar.nextf32(1.0, 1) > 1.0);
+    @assert(opscalar.prevf32(1.0, 1) < 1.0);
+    @assert(opscalar.nextf32(-1.0, 1) > -1.0);
+    @assert(opscalar.prevf32(-1.0, 1) < -1.0);
+    @assert(opscalar.nextf32(0.0, 1) > 0.0);
+    @assert(opscalar.prevf32(0.0, 1) < 0.0);
+}
+
+// === nextf32/prevf32 multi-step =============================================
+
+fn test_nextf32_n_zero() void {
+    @assert(opscalar.nextf32(1.0, 0) == 1.0);
+    @assert(opscalar.nextf32(-1.0, 0) == -1.0);
+}
+
+fn test_nextf32_n_multi_pos() void {
+    // 1.0 = 0x3F800000, +3 steps = 0x3F800003
+    @assert(@bitcast(u32, opscalar.nextf32(1.0, 3)) == 0x3F800003);
+    // 0.0 +5 steps = 0x00000005
+    @assert(@bitcast(u32, opscalar.nextf32(0.0, 5)) == 0x00000005);
+}
+
+fn test_nextf32_n_zero_crossing() void {
+    // -2nd denorm (0x80000002), +5: mag=2, remaining=3 -> 0x00000003
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0x80000002)), 5)) == 0x00000003);
+}
+
+fn test_nextf32_n_saturate() void {
+    // max finite +2 -> +Inf (room=1)
+    @assert(@bitcast(u32, opscalar.nextf32(@bitcast(f32, @as(u32, 0x7F7FFFFF)), 2)) == 0x7F800000);
+}
+
+fn test_prevf32_n_zero() void {
+    @assert(opscalar.prevf32(1.0, 0) == 1.0);
+    @assert(opscalar.prevf32(-1.0, 0) == -1.0);
+}
+
+fn test_prevf32_n_multi_neg() void {
+    // -1.0 = 0xBF800000, -3 steps = 0xBF800003
+    @assert(@bitcast(u32, opscalar.prevf32(-1.0, 3)) == 0xBF800003);
+    // 0.0 -5 steps = 0x80000005
+    @assert(@bitcast(u32, opscalar.prevf32(0.0, 5)) == 0x80000005);
+}
+
+fn test_prevf32_n_zero_crossing() void {
+    // 2nd denorm (0x00000002), -5: mag=2, remaining=3 -> 0x80000003
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, @as(u32, 0x00000002)), 5)) == 0x80000003);
+}
+
+fn test_prevf32_n_saturate() void {
+    // -max finite -2 -> -Inf (room=1)
+    @assert(@bitcast(u32, opscalar.prevf32(@bitcast(f32, @as(u32, 0xFF7FFFFF)), 2)) == 0xFF800000);
+}
+
+fn test_f32_roundtrip_n() void {
+    @assert(opscalar.prevf32(opscalar.nextf32(1.0, 5), 5) == 1.0);
+    @assert(opscalar.nextf32(opscalar.prevf32(1.0, 5), 5) == 1.0);
+    @assert(opscalar.prevf32(opscalar.nextf32(-1.0, 5), 5) == -1.0);
+    @assert(opscalar.nextf32(opscalar.prevf32(-1.0, 5), 5) == -1.0);
+}
+
+// === nextf16 ================================================================
+
+fn test_nextf16_pos_zero() void {
+    @assert(@bitcast(u16, opscalar.nextf16(@as(f16, 0.0), 1)) == 0x0001);
+}
+
+fn test_nextf16_neg_zero() void {
+    @assert(@bitcast(u16, opscalar.nextf16(@bitcast(f16, @as(u16, 0x8000)), 1)) == 0x0001);
+}
+
+fn test_nextf16_one() void {
+    @assert(@bitcast(u16, opscalar.nextf16(@as(f16, 1.0), 1)) == 0x3C01);
+}
+
+fn test_nextf16_neg_one() void {
+    @assert(@bitcast(u16, opscalar.nextf16(@as(f16, -1.0), 1)) == 0xBBFF);
+}
+
+fn test_nextf16_max_to_inf() void {
+    @assert(@bitcast(u16, opscalar.nextf16(@bitcast(f16, @as(u16, 0x7BFF)), 1)) == 0x7C00);
+}
+
+fn test_nextf16_pos_inf() void {
+    @assert(@bitcast(u16, opscalar.nextf16(@bitcast(f16, @as(u16, 0x7C00)), 1)) == 0x7C00);
+}
+
+fn test_nextf16_neg_inf() void {
+    @assert(@bitcast(u16, opscalar.nextf16(@bitcast(f16, @as(u16, 0xFC00)), 1)) == 0xFBFF);
+}
+
+fn test_nextf16_nan() void {
+    const nan_bits: u16 = 0x7E00;
+    @assert(@bitcast(u16, opscalar.nextf16(@bitcast(f16, nan_bits), 1)) == nan_bits);
+}
+
+// === prevf16 ================================================================
+
+fn test_prevf16_pos_zero() void {
+    @assert(@bitcast(u16, opscalar.prevf16(@as(f16, 0.0), 1)) == 0x8001);
+}
+
+fn test_prevf16_neg_zero() void {
+    @assert(@bitcast(u16, opscalar.prevf16(@bitcast(f16, @as(u16, 0x8000)), 1)) == 0x8001);
+}
+
+fn test_prevf16_one() void {
+    @assert(@bitcast(u16, opscalar.prevf16(@as(f16, 1.0), 1)) == 0x3BFF);
+}
+
+fn test_prevf16_neg_one() void {
+    @assert(@bitcast(u16, opscalar.prevf16(@as(f16, -1.0), 1)) == 0xBC01);
+}
+
+fn test_prevf16_neg_max_to_neg_inf() void {
+    @assert(@bitcast(u16, opscalar.prevf16(@bitcast(f16, @as(u16, 0xFBFF)), 1)) == 0xFC00);
+}
+
+fn test_prevf16_neg_inf() void {
+    @assert(@bitcast(u16, opscalar.prevf16(@bitcast(f16, @as(u16, 0xFC00)), 1)) == 0xFC00);
+}
+
+fn test_prevf16_pos_inf() void {
+    @assert(@bitcast(u16, opscalar.prevf16(@bitcast(f16, @as(u16, 0x7C00)), 1)) == 0x7BFF);
+}
+
+fn test_prevf16_nan() void {
+    const nan_bits: u16 = 0x7E00;
+    @assert(@bitcast(u16, opscalar.prevf16(@bitcast(f16, nan_bits), 1)) == nan_bits);
+}
+
+// === nextf16/prevf16 roundtrips =============================================
+
+fn test_f16_roundtrip() void {
+    @assert(opscalar.prevf16(opscalar.nextf16(@as(f16, 1.0), 1), 1) == @as(f16, 1.0));
+    @assert(opscalar.nextf16(opscalar.prevf16(@as(f16, 1.0), 1), 1) == @as(f16, 1.0));
+    @assert(opscalar.prevf16(opscalar.nextf16(@as(f16, -1.0), 1), 1) == @as(f16, -1.0));
+    @assert(opscalar.nextf16(opscalar.prevf16(@as(f16, -1.0), 1), 1) == @as(f16, -1.0));
+}
+
+// === nextf16/prevf16 ordering ===============================================
+
+fn test_f16_ordering() void {
+    @assert(opscalar.nextf16(@as(f16, 1.0), 1) > @as(f16, 1.0));
+    @assert(opscalar.prevf16(@as(f16, 1.0), 1) < @as(f16, 1.0));
+    @assert(opscalar.nextf16(@as(f16, -1.0), 1) > @as(f16, -1.0));
+    @assert(opscalar.prevf16(@as(f16, -1.0), 1) < @as(f16, -1.0));
+}
+
+// === nextf16/prevf16 multi-step =============================================
+
+fn test_nextf16_n_multi() void {
+    @assert(opscalar.nextf16(@as(f16, 1.0), 0) == @as(f16, 1.0));
+    // 1.0 = 0x3C00, +3 = 0x3C03
+    @assert(@bitcast(u16, opscalar.nextf16(@as(f16, 1.0), 3)) == 0x3C03);
+    @assert(@bitcast(u16, opscalar.nextf16(@as(f16, 0.0), 5)) == 0x0005);
+}
+
+fn test_prevf16_n_multi() void {
+    @assert(opscalar.prevf16(@as(f16, 1.0), 0) == @as(f16, 1.0));
+    // 1.0 = 0x3C00, -3 = 0x3BFD
+    @assert(@bitcast(u16, opscalar.prevf16(@as(f16, 1.0), 3)) == 0x3BFD);
+    @assert(@bitcast(u16, opscalar.prevf16(@as(f16, 0.0), 5)) == 0x8005);
+}
+
+fn test_f16_roundtrip_n() void {
+    @assert(opscalar.prevf16(opscalar.nextf16(@as(f16, 1.0), 5), 5) == @as(f16, 1.0));
+    @assert(opscalar.nextf16(opscalar.prevf16(@as(f16, 1.0), 5), 5) == @as(f16, 1.0));
+}
+
+// test runner ================================================================
 fn do_test() void {
     test_add32();
     test_as();
@@ -191,4 +491,58 @@ fn do_test() void {
     test_popcnt32();
     test_unif16();
     test_unifbool();
+    test_bitcast_f32();
+    test_bitcast_f16();
+    test_nextf32_pos_zero();
+    test_nextf32_neg_zero();
+    test_nextf32_one();
+    test_nextf32_neg_one();
+    test_nextf32_two();
+    test_nextf32_max_to_inf();
+    test_nextf32_pos_inf();
+    test_nextf32_neg_inf();
+    test_nextf32_neg_denorm_to_neg_zero();
+    test_nextf32_smallest_denorm();
+    test_nextf32_nan();
+    test_prevf32_pos_zero();
+    test_prevf32_neg_zero();
+    test_prevf32_one();
+    test_prevf32_neg_one();
+    test_prevf32_neg_max_to_neg_inf();
+    test_prevf32_neg_inf();
+    test_prevf32_pos_inf();
+    test_prevf32_smallest_denorm_to_zero();
+    test_prevf32_nan();
+    test_f32_roundtrip();
+    test_f32_ordering();
+    test_nextf32_n_zero();
+    test_nextf32_n_multi_pos();
+    test_nextf32_n_zero_crossing();
+    test_nextf32_n_saturate();
+    test_prevf32_n_zero();
+    test_prevf32_n_multi_neg();
+    test_prevf32_n_zero_crossing();
+    test_prevf32_n_saturate();
+    test_f32_roundtrip_n();
+    test_nextf16_pos_zero();
+    test_nextf16_neg_zero();
+    test_nextf16_one();
+    test_nextf16_neg_one();
+    test_nextf16_max_to_inf();
+    test_nextf16_pos_inf();
+    test_nextf16_neg_inf();
+    test_nextf16_nan();
+    test_prevf16_pos_zero();
+    test_prevf16_neg_zero();
+    test_prevf16_one();
+    test_prevf16_neg_one();
+    test_prevf16_neg_max_to_neg_inf();
+    test_prevf16_neg_inf();
+    test_prevf16_pos_inf();
+    test_prevf16_nan();
+    test_f16_roundtrip();
+    test_f16_ordering();
+    test_nextf16_n_multi();
+    test_prevf16_n_multi();
+    test_f16_roundtrip_n();
 }
