@@ -3,6 +3,7 @@ print("######################################################################")
 import argparse
 import atexit
 from collections import Counter
+import functools
 import itertools as it
 import json
 import logging
@@ -13,7 +14,7 @@ import uuid
 import shutil
 import subprocess
 import sys
-import typing
+import time
 
 logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -21,10 +22,17 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-def log(msg, *args, **kwargs):
-    msg = str(msg)
-    msg = msg.replace("\n", "\n" + " " * 29)
+
+def log(msg: str, *args, **kwargs) -> None:
+    msg = str(msg).replace("\n", "\n" + " " * 29)
     logging.info(msg, *args, **kwargs)
+
+
+@functools.lru_cache(maxsize=None)
+def log_once(msg: str, *args, **kwargs) -> bool:
+    before = log_once.cache_info().hits
+    log(msg, *args, **kwargs)
+    return log_once.cache_info().hits == before
 
 
 def removeprefix(text: str, prefix: str) -> str:
@@ -79,6 +87,110 @@ def assemble_genome_bookend_data(
 ) -> "np.ndarray":
     return assemble_binary_data(data, nWav=nWav + 2, verbose=verbose)
 
+def process_fossils(nWav: int) -> None:
+    log("reading fossils ----------------------------------------------------")
+    file_size_gb = os.path.getsize("raw/fossils.npz") / (1024 * 1024 * 1024)
+    log(f"- raw/fossils.npz file size: {file_size_gb:.2f} GB")
+    fossils = np.load("raw/fossils.npz")
+    log("- done!")
+    fossils = [fossils[f"arr_{i}"] for i, __ in tqdm(enumerate(fossils.files))]
+
+    log("assembling fossils -------------------------------------------------")
+    log(f" - {len(fossils)=}")
+    if fossils:
+        log(f"- {fossils[0].shape=}")
+
+        fossil_filename = "a=rawfossildat+i=0+ext=.npy"
+        log(f"- saving {fossil_filename}...")
+        np.save(fossil_filename, fossils[0])
+
+        log(f"- ... saved {fossil_filename}!")
+
+        file_size_mb = os.path.getsize(fossil_filename) / (1024 * 1024)
+        log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
+
+        log("- example assembly")
+        assemble_genome_bookend_data(fossils[0], verbose=True)
+
+        log(f"- map assemble_genome_bookend_data over {len(fossils)} fossils...")
+        work = map(assemble_genome_bookend_data, fossils)
+        fossils = [*tqdm(work, total=len(fossils), desc="assembling fossils")]
+    else:
+        log("- no fossils to assemble!")
+
+    log("dataframing fossils ------------------------------------------------")
+    log(f" - {len(fossils)=}")
+    if fossils:
+        fossils = np.array(fossils)
+        log(" - casting fossils to object")
+        fossils = fossils.astype(object)
+        log(" - creating indices")
+        layers, positions = np.indices(fossils.shape)
+        log(" - creating DataFrame")
+        df = pl.DataFrame({
+            "data_raw": pl.Series(fossils.ravel(), dtype=pl.Binary),
+            "is_extant": False,
+            "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
+            "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
+        }).with_columns([
+            pl.lit(value, dtype=dtype).alias(key)
+            for key, (value, dtype) in metadata.items()
+        ])
+        log(f" - data_raw: {df['data_raw'].head(3)}")
+        assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
+
+        log(f" - encoding {len(df)} binary fossil rows to hex...")
+        df = df.with_columns(
+            data_hex=pl.col("data_raw").bin.encode("hex"),
+        ).drop("data_raw")
+        log(f" - ... done!")
+
+        log(f" - data_hex: {df['data_hex'].head(3)}")
+        log(" - validation check 0/3...")
+        assert (df["data_hex"].str.len_chars() == (nWav + 2) * 8).all()
+        log(" - validation check 1/3...")
+        assert (df["data_hex"].str.len_bytes() == (nWav + 2) * 8).all()
+        log(" - validation check 2/3...")
+        assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
+        log(" - validation check 3/3 complete!")
+
+        len_before = len(df)
+        df = df.filter(
+            pl.col("data_hex").str.head(8) ==  pl.col("data_hex").str.tail(8),
+        )
+        log(
+            " - bookend check removed "
+            f"{len_before - len(df)} / {len_before} "
+            f"({100 * (len_before - len(df)) / len_before:.1f}%) fossils",
+        )
+        log(f" - bookend check retained {len(df)} fossils")
+
+        log(f" - stripping bookends...")
+        df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
+        log(f" - ... done!")
+
+        log(f" - data_hex: {df['data_hex'].head(3)}")
+        log(" - validation check 0/3...")
+        assert (df["data_hex"].str.len_chars() == nWav * 8).all()
+        log(" - validation check 1/3...")
+        assert (df["data_hex"].str.len_bytes() == nWav * 8).all()
+        log(" - validation check 2/3...")
+        assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
+        log(" - validation check 3/3 complete!")
+
+        write_parquet_verbose(
+            df,
+            "a=fossils"
+            f"+flavor={genomeFlavor}"
+            f"+seed={globalSeed}"
+            f"+ncycle={nCycleAtLeast}"
+            "+ext=.pqt",
+        )
+
+        del df
+    else:
+        log("- no fossils to process!")
+
 log("- printenv")
 for k, v in sorted(os.environ.items()):
     log(f"  - {k}={v}")
@@ -89,31 +201,37 @@ temp_dir = f"{os.getenv('ASYNC_GA_LOCAL_PATH', 'local')}/tmp/{uuid.uuid4()}"
 os.makedirs(temp_dir, exist_ok=True)
 atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
 log(f"  - {temp_dir=}")
-log("- installing polars")
-for attempt in range(4):
-    try:
-        subprocess.check_call(
-            [
-                "pip",
-                "install",
-                f"--target={temp_dir}",
-                "--no-cache-dir",
-                "polars==1.6.0",
-            ],
-            env={
-                **os.environ,
-                "TMPDIR": temp_dir,
-            },
-        )
-        log("- pip install succeeded!")
-        break
-    except subprocess.CalledProcessError as e:
-        log(e)
-        log(f"retrying {attempt=}...")
-else:
-    raise e
-log(f"- extending sys path with temp dir {temp_dir=}")
-sys.path.append(temp_dir)
+
+try:
+    import polars  # type: ignore
+    log("- polars already installed, skipping installation")
+    del polars
+except ImportError:
+    log("- installing polars")
+    for attempt in range(4):
+        try:
+            subprocess.check_call(
+                [
+                    "pip",
+                    "install",
+                    f"--target={temp_dir}",
+                    "--no-cache-dir",
+                    "polars==1.6.0",
+                ],
+                env={
+                    **os.environ,
+                    "TMPDIR": temp_dir,
+                },
+            )
+            log("- pip install succeeded!")
+            break
+        except subprocess.CalledProcessError as e:
+            log(e)
+            log(f"retrying {attempt=}...")
+    else:
+        raise e
+    log(f"- extending sys path with temp dir {temp_dir=}")
+    sys.path.append(temp_dir)
 
 log("- importing third-party dependencies")
 import numpy as np
@@ -124,13 +242,6 @@ from scipy import stats as sps
 log("  - scipy")
 from tqdm import tqdm
 log("  - tqdm")
-
-log("- importing cerebras depencencies")
-from cerebras.sdk.runtime.sdkruntimepybind import (
-    MemcpyDataType,
-    MemcpyOrder,
-    SdkRuntime,
-)  # pylint: disable=no-name-in-module
 
 log("- defining helper functions")
 def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
@@ -145,8 +256,11 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     log(f"- saved file size: {file_size_mb:.2f} MB")
 
     lazy_frame = pl.scan_parquet(tmp_file)
-    log("- LazyFrame describe:")
-    log(lazy_frame.describe())
+    if file_size_mb <= 1024:
+        log("- LazyFrame describe:")
+        log(lazy_frame.describe())
+    else:
+        log("- LazyFrame describe skipped due to large file size")
 
     original_row_count = df.shape[0]
     lazy_row_count = lazy_frame.select(pl.count()).collect().item()
@@ -163,8 +277,12 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
 # adapted from https://stackoverflow.com/a/31347222/17332200
 def add_bool_arg(parser, name, default=False):
     group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument("--" + name, dest=name, action="store_true")
-    group.add_argument("--no-" + name, dest=name, action="store_false")
+    group.add_argument(
+        "--" + name, dest=name.replace("-", "_"), action="store_true"
+    )
+    group.add_argument(
+        "--no-" + name, dest=name.replace("-", "_"), action="store_false"
+    )
     parser.set_defaults(**{name: default})
 
 log("- reading env variables")
@@ -185,6 +303,7 @@ log("- configuring argparse")
 parser = argparse.ArgumentParser()
 parser.add_argument("--name", help="the test compile output dir", default="out")
 add_bool_arg(parser, "suptrace", default=True)
+add_bool_arg(parser, "process-fossils", default=None)
 parser.add_argument("--cmaddr", help="IP:port for CS system")
 log("- parsing arguments")
 args = parser.parse_args()
@@ -277,6 +396,32 @@ metadata = {
 }
 log(metadata)
 
+if args.process_fossils is True:
+    log(f" - processing fossils {nWav=}...")
+    process_fossils(nWav)
+    log(" - done! exiting...")
+    sys.exit(0)
+
+log("- setting up fossil storage")
+
+max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
+log(f" - {max_fossil_sets=}")
+
+fossils = []
+fossil_mmap = np.memmap(
+    f"{temp_dir}/fossils.dat",
+    dtype=np.uint32,
+    mode="w+",
+    shape=(max_fossil_sets, nCol, nRow, nWav + 2),
+)
+
+log("- importing cerebras depencencies")
+from cerebras.sdk.runtime.sdkruntimepybind import (
+    MemcpyDataType,
+    MemcpyOrder,
+    SdkRuntime,
+)  # pylint: disable=no-name-in-module
+
 log("do run =====================================================")
 # Path to ELF and simulation output files
 runner = SdkRuntime(
@@ -291,34 +436,48 @@ runner.run()
 log("- runner run ran")
 
 runner.launch("dolaunch", nonblock=False)
-log("- runner launch complete")
+launch_ns = time.time_ns()
+log(f"- runner launch complete {launch_ns=}")
 
 log(f"- {nonBlock=}, if True waiting for first kernel to finish...")
-fossils = []
-while nonBlock:
+for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
+    elapsed_ns = time.time_ns() - launch_ns
+    log_cycle = elapsed_ns // (10**9 * 20)
+    if log_once(f"\n - {20 * log_cycle} seconds elapsed"):
+        log(f" ! phase=1 {log_cycle=} {cycle=} {len(fossils)=} {elapsed_ns=}")
+        print(flush=True)
+
     print("1", end="", flush=True)
-    memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-    out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
+    if len(fossils) < max_fossil_sets:
+        print(f"({len(fossils)})", end="", flush=True)
+        print("a", end="", flush=True)
+        memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+        out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
+        print("b", end="", flush=True)
 
-    runner.memcpy_d2h(
-        out_tensors.ravel(),
-        runner.get_id("genomeBookend"),
-        0,  # x0
-        0,  # y0
-        nCol,  # width
-        nRow,  # height
-        nWav + 2,  # num wavelets
-        streaming=False,
-        data_type=memcpy_dtype,
-        order=MemcpyOrder.ROW_MAJOR,
-        nonblock=False,
-    )
+        runner.memcpy_d2h(
+            out_tensors.ravel(),
+            runner.get_id("genomeBookend"),
+            0,  # x0
+            0,  # y0
+            nCol,  # width
+            nRow,  # height
+            nWav + 2,  # num wavelets
+            streaming=False,
+            data_type=memcpy_dtype,
+            order=MemcpyOrder.ROW_MAJOR,
+            nonblock=False,
+        )
+        print("c", end="", flush=True)
+
+        genome_data = out_tensors.copy()
+        print("d", end="", flush=True)
+        fossil_mmap[len(fossils), :, :, :] = genome_data
+        print("e", end="", flush=True)
+        fossils.append(fossil_mmap[len(fossils)])
+        print("f", end="", flush=True)
+
     print("2", end="", flush=True)
-
-    genome_data = out_tensors.copy()
-    fossils.append(genome_data)
-    print("3", end="", flush=True)
-
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
     out_tensors = np.zeros((nCol, nRow, 1), np.uint32)
     runner.memcpy_d2h(
@@ -334,25 +493,33 @@ while nonBlock:
         order=MemcpyOrder.ROW_MAJOR,
         nonblock=False,
     )
-    print("4", end="", flush=True)
+    print("3", end="", flush=True)
 
     cycle_counts = out_tensors.ravel().copy()
     num_complete = np.sum(cycle_counts >= nCycleAtLeast)
-    print("5", end="", flush=True)
+    print("4", end="", flush=True)
 
     should_break = num_complete > 0
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
     if should_break:
+        phase1_elapsed_ns = time.time_ns() - launch_ns
+        phase1_elapsed_cycles = cycle
         print("!", flush=True)
         break
     else:
-        print("6", end="", flush=True)
+        print("5", end="", flush=True)
         runner.launch("dorefresh", nonblock=False)
         print("|", end="", flush=True)
         continue
 
 log(f"- {nonBlock=}, if True waiting for last kernel to finish...")
-while nonBlock:
+for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
+    elapsed_ns = time.time_ns() - launch_ns
+    log_cycle = elapsed_ns // (10**9 * 20)
+    if log_once(f"\n - {20 * log_cycle} seconds elapsed"):
+        log(f" ! phase=2 {log_cycle=} {cycle=} {len(fossils)=} {elapsed_ns=}")
+        print(flush=True)
+
     print("1", end="", flush=True)
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
     out_tensors = np.zeros((nCol, nRow, 1), np.uint32)
@@ -374,26 +541,41 @@ while nonBlock:
     cycle_counts = out_tensors.ravel().copy()
     num_complete = np.sum(cycle_counts >= nCycleAtLeast)
     print("3", end="", flush=True)
-    should_break = (num_complete == cycle_counts.size)
+    should_break = num_complete == cycle_counts.size
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
     if should_break:
+        phase2_elapsed_ns = time.time_ns() - launch_ns
+        phase2_elapsed_cycles = cycle
         print("!", flush=True)
         break
     else:
         print("|", end="", flush=True)
         continue
 
-log("fossils ====================================================")
-log(f" - {len(fossils)=}")
+log("- run complete!")
+log(f" - run elapsed seconds: {(time.time_ns() - launch_ns) / (10 ** 9):.3f}")
+if nonBlock:
+    total_elapsed_ns = phase1_elapsed_ns + phase2_elapsed_ns
+    log(f" - {phase1_elapsed_ns=}")
+    log(f" - {phase1_elapsed_ns / total_elapsed_ns=}")
+    log(f" - {phase2_elapsed_ns=}")
+    log(f" - {phase2_elapsed_ns / total_elapsed_ns=}")
+    log(f" - {total_elapsed_ns=}")
 
-max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
-log(f" - {max_fossil_sets=}")
-fossils = fossils[:max_fossil_sets]
-log(f" - {len(fossils)=}")
+    total_elapsed_cycles = phase1_elapsed_cycles + phase2_elapsed_cycles
+    log(f"- {phase1_elapsed_cycles=}")
+    log(f"- {phase1_elapsed_cycles / total_elapsed_cycles=}")
+    log(f"- {phase2_elapsed_cycles=}")
+    log(f"- {phase2_elapsed_cycles / total_elapsed_cycles=}")
+    log(f"- {total_elapsed_cycles=}")
 
-max_fossil_sets_spread = int(os.getenv(
-    "ASYNC_GA_MAX_FOSSIL_SETS_SPREAD", 2**32 - 1
-))
+log("thinning fossils =======================================================")
+log(f" - {len(fossils)=}")
+assert len(fossils) <= max_fossil_sets
+
+max_fossil_sets_spread = int(
+    os.getenv("ASYNC_GA_MAX_FOSSIL_SETS_SPREAD", 2**32 - 1)
+)
 log(f" - {max_fossil_sets_spread=}")
 m = min(max_fossil_sets_spread, len(fossils))
 if m < len(fossils):
@@ -418,89 +600,21 @@ if m < len(fossils):
     ]
     log(f" - {len(fossils)=}")
 
-if len(fossils):
-    log(f"- {fossils[0].shape=}")
-
-    fossil_filename = "a=rawfossildat+i=0+ext=.npy"
-    log(f"- saving {fossil_filename}...")
-    np.save(fossil_filename, fossils[0])
-
-    log(f"- ... saved {fossil_filename}!")
-
-    file_size_mb = os.path.getsize(fossil_filename) / (1024 * 1024)
-    log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
-
-    log("- example assembly")
-    assemble_genome_bookend_data(fossils[0], verbose=True)
-
-    log(f"- map assemble_genome_bookend_data over {len(fossils)} fossils...")
-    work = map(assemble_genome_bookend_data, fossils)
-    fossils = [*tqdm(work, total=len(fossils), desc="assembling fossils")]
-
-log(f" - {len(fossils)=}")
-
-if fossils:
-    fossils = np.array(fossils)
-    log(f" - casting genome_raw to object")
-    fossils = fossils.astype(object)
-    log(" - creating indices")
-    layers, positions = np.indices(fossils.shape)
-    log(" - creating DataFrame")
-    df = pl.DataFrame({
-        "data_raw": pl.Series(fossils.ravel(), dtype=pl.Binary),
-        "is_extant": False,
-        "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
-        "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
-    }).with_columns([
-        pl.lit(value, dtype=dtype).alias(key)
-        for key, (value, dtype) in metadata.items()
-    ])
-    log(f" - data_raw: {df['data_raw'].head(3)}")
-    assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
-
-    log(f" - encoding {len(df)} binary fossil rows to hex...")
-    df = df.with_columns(
-        data_hex=pl.col("data_raw").bin.encode("hex"),
-    ).drop("data_raw")
-    log(f" - ... done!")
-
-    log(f" - data_hex: {df['data_hex'].head(3)}")
-    assert (df["data_hex"].str.len_chars() == (nWav + 2) * 8).all()
-    assert (df["data_hex"].str.len_bytes() == (nWav + 2) * 8).all()
-    assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
-
-    len_before = len(df)
-    df = df.filter(
-        pl.col("data_hex").str.head(8) ==  pl.col("data_hex").str.tail(8),
-    )
-    log(
-        " - bookend check removed "
-        f"{len_before - len(df)} / {len_before} "
-        f"({100 * (len_before - len(df)) / len_before:.1f}%) fossils",
-    )
-    log(f" - bookend check retained {len(df)} fossils")
-
-    log(f" - stripping bookends...")
-    df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
-    log(f" - ... done!")
-
-    log(f" - data_hex: {df['data_hex'].head(3)}")
-    assert (df["data_hex"].str.len_chars() == nWav * 8).all()
-    assert (df["data_hex"].str.len_bytes() == nWav * 8).all()
-    assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
-
-    write_parquet_verbose(
-        df,
-        "a=fossils"
-        f"+flavor={genomeFlavor}"
-        f"+seed={globalSeed}"
-        f"+ncycle={nCycleAtLeast}"
-        "+ext=.pqt",
-    )
-
-    del df
+log("writing fossils ========================================================")
+os.makedirs("raw", exist_ok=True)
+np.savez("raw/fossils.npz", *fossils)
+log("- done!")
+file_size_gb = os.path.getsize("raw/fossils.npz") / (1024 * 1024 * 1024)
+log(f"- saved file size: {file_size_gb:.2f} GB")
 
 del fossils
+
+log("processing fossils =====================================================")
+if args.process_fossils is False:
+    log(" - skipping fossil processing!")
+else:
+    log(f" - processing fossils {nWav=}...")
+    process_fossils(nWav)
 
 log("whoami =====================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -893,6 +1007,7 @@ log("recv counter sum ===========================================")
 recvSum = [*map(sum, zip(recvN.ravel(), recvS.ravel(), recvE.ravel(), recvW.ravel()))]
 log(recvSum[:100])
 log(f"{np.mean(recvSum)=} {np.std(recvSum)=} {sps.sem(recvSum)=}")
+log(f"{np.median(recvSum)=} {np.min(recvSum)=} {np.max(recvSum)=}")
 
 log("send counter N ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -978,6 +1093,7 @@ log("send counter sum ===========================================")
 sendSum = [*map(sum, zip(sendN.ravel(), sendS.ravel(), sendE.ravel(), sendW.ravel()))]
 log(sendSum[:100])
 log(f"{np.mean(sendSum)=} {np.std(sendSum)=} {sps.sem(sendSum)=}")
+log(f"{np.median(sendSum)=} {np.min(sendSum)=} {np.max(sendSum)=}")
 
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
