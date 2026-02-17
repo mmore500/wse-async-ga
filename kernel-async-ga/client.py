@@ -112,7 +112,7 @@ def process_fossils(nWav: int) -> None:
         log("- done!")
 
         if layer_T:
-            log("example fossil -------------------------------------------------")
+            log("example fossil ---------------------------------------------")
             example_fossil = fossils[str(layer_T[0])]
 
             fossil_filename = "a=rawfossildat+i=0+ext=.npy"
@@ -130,7 +130,7 @@ def process_fossils(nWav: int) -> None:
             del example_fossil
             gc.collect()
 
-        log("assembling fossils -------------------------------------------------")
+        log("assembling fossils ---------------------------------------------")
         assembled_fossils = []
         for i, fossil_batch in tqdm(
             enumerate(batched((fossils[str(i)] for i in layer_T), 100)),
