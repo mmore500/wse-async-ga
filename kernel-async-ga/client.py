@@ -221,12 +221,9 @@ def process_fossils(nWav: int) -> None:
             pl.col("data_hex").str.contains("^[0-9a-fA-F]+$"),
             pl.col("data_hex").str.head(8) == pl.col("data_hex").str.tail(8),
         ]
-        validation_result = (
-            df.select(
-                pl.all_horizontal(validation_exprs).all(),
-            )
-            .collect()
-            .item()
+        validation_result = all(
+            df.filter(~validation_expr).collect().is_empty()
+            for validation_expr in tqdm(validation_exprs, desc="validation")
         )
         log(f" - {validation_result=}")
         if not validation_result:
