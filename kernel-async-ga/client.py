@@ -4,6 +4,7 @@ import argparse
 import atexit
 from collections import Counter
 import functools
+import gc
 import itertools as it
 import json
 import logging
@@ -37,8 +38,19 @@ def log_once(msg: str, *args, **kwargs) -> bool:
 
 def removeprefix(text: str, prefix: str) -> str:
     if text.startswith(prefix):
-        return text[len(prefix):]
+        return text[len(prefix) :]
     return text
+
+
+# adapted from https://docs.python.org/3/library/itertools.html#itertools.batched
+def batched(iterable, n: int):
+    # batched('ABCDEFG', 3) → ABC DEF G
+    iterator = iter(iterable)
+    while True:
+        batch = tuple(tqdm(it.islice(iterator, n), desc="loading batch"))
+        if not batch:
+            break
+        yield batch
 
 
 def assemble_binary_data(
@@ -55,7 +67,9 @@ def assemble_binary_data(
 
         for word in range(nWav):
             log(f"---------------------------------------- binary word {word}")
-            values = (inner[word] for outer in raw_binary_data for inner in outer)
+            values = (
+                inner[word] for outer in raw_binary_data for inner in outer
+            )
             log(str([*it.islice(values, 10)]))
 
     binary_ints = np.ascontiguousarray(raw_binary_data.astype(">u4").ravel())
@@ -65,8 +79,8 @@ def assemble_binary_data(
         for binary_int in binary_ints[:10]:
             log(f"{len(binary_ints)=} {binary_int=}")
 
-    binary_strings = binary_ints.view(f'V{nWav * 4}')
-    assert binary_strings.shape == (nRow * nCol, )
+    binary_strings = binary_ints.view(f"V{nWav * 4}")
+    assert binary_strings.shape == (nRow * nCol,)
     if verbose:
         log("------------------------------------------------- binary strings")
         log(f"  - target dtype: V{nWav * 4}")
@@ -77,7 +91,7 @@ def assemble_binary_data(
 
 
 def assemble_genome_data(
-        data: "np.ndarray", verbose: bool = False
+    data: "np.ndarray", verbose: bool = False
 ) -> "np.ndarray":
     return assemble_binary_data(data, nWav=nWav, verbose=verbose)
 
@@ -95,16 +109,14 @@ def process_fossils(nWav: int) -> None:
     fossils = np.load("raw/fossils.npz")
     layer_T = sorted(map(int, fossils.files))
     log("- done!")
-    fossils = [fossils[str(i)] for i in tqdm(layer_T, desc="loading fossils")]
 
-    log("assembling fossils -------------------------------------------------")
-    log(f" - {len(fossils)=}")
-    if fossils:
-        log(f"- {fossils[0].shape=}")
+    if layer_T:
+        log("example fossil -------------------------------------------------")
+        example_fossil = fossils[str(layer_T[0])]
 
         fossil_filename = "a=rawfossildat+i=0+ext=.npy"
         log(f"- saving {fossil_filename}...")
-        np.save(fossil_filename, fossils[0])
+        np.save(fossil_filename, example_fossil)
 
         log(f"- ... saved {fossil_filename}!")
 
@@ -112,20 +124,40 @@ def process_fossils(nWav: int) -> None:
         log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
 
         log("- example assembly")
-        assemble_genome_bookend_data(fossils[0], verbose=True)
+        assemble_genome_bookend_data(example_fossil, verbose=True)
 
-        log(f"- map assemble_genome_bookend_data over {len(fossils)=}...")
-        work = map(assemble_genome_bookend_data, fossils)
-        fossils = [*tqdm(work, total=len(fossils), desc="assembling fossils")]
-    else:
-        log("- no fossils to assemble!")
+        del example_fossil
+        gc.collect()
+
+    log("assembling fossils -------------------------------------------------")
+    assembled_fossils = []
+    for i, fossil_batch in tqdm(
+        enumerate(batched((fossils[str(i)] for i in layer_T), 100)),
+        desc="fossil batches",
+        total=(len(layer_T) + 99) // 100,
+    ):
+        log(f" - batch {i=} {len(fossil_batch)=}")
+
+        log(f"- map assemble_genome_bookend_data over {len(fossil_batch)=}...")
+        work = map(assemble_genome_bookend_data, fossil_batch)
+        assembled_fossils.extend(
+            tqdm(work, total=len(fossil_batch), desc="assembling fossils"),
+        )
+        del fossil_batch
+        gc.collect()
+
+    fossils = assembled_fossils
+    del assembled_fossils
+    gc.collect()
 
     log("dataframing fossils ------------------------------------------------")
     log(f" - {len(fossils)=}")
     if fossils:
         fossils = np.array(fossils)
+        gc.collect()
         log(" - casting fossils to object")
         fossils = fossils.astype(object)
+        gc.collect()
         log(" - creating indices")
         layers, positions = np.indices(fossils.shape)
         log(" - creating DataFrame")
@@ -136,14 +168,16 @@ def process_fossils(nWav: int) -> None:
                 "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
                 "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
             },
-        ).with_columns(
-            [
-                pl.lit(value, dtype=dtype).alias(key)
-                for key, (value, dtype) in metadata.items()
-            ],
-            layer_T=pl.col("layer").map_elements(
+        )
+        del fossils, layers, positions
+        gc.collect()
+        log(" - filling DataFrame")
+        df = df.with_columns(
+            layer_T=pl.col("layer")
+            .map_elements(
                 layer_T.__getitem__,
-            ).cast(pl.UInt64),
+            )
+            .cast(pl.UInt64),
         )
         log(f" - data_raw: {df['data_raw'].head(3)}")
         assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
@@ -165,7 +199,7 @@ def process_fossils(nWav: int) -> None:
 
         len_before = len(df)
         df = df.filter(
-            pl.col("data_hex").str.head(8) ==  pl.col("data_hex").str.tail(8),
+            pl.col("data_hex").str.head(8) == pl.col("data_hex").str.tail(8),
         )
         log(
             " - bookend check removed "
@@ -174,9 +208,9 @@ def process_fossils(nWav: int) -> None:
         )
         log(f" - bookend check retained {len(df)} fossils")
 
-        log(f" - stripping bookends...")
+        log(" - stripping bookends...")
         df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
-        log(f" - ... done!")
+        log(" - ... done!")
 
         log(f" - data_hex: {df['data_hex'].head(3)}")
         log(" - validation check 0/3...")
@@ -186,6 +220,14 @@ def process_fossils(nWav: int) -> None:
         log(" - validation check 2/3...")
         assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
         log(" - validation check 3/3 complete!")
+
+        log("- adding metadata columns")
+        df = df.lazy().with_columns(
+            [
+                pl.lit(value, dtype=dtype).alias(key)
+                for key, (value, dtype) in metadata.items()
+            ],
+        )
 
         write_parquet_verbose(
             df,
@@ -279,21 +321,33 @@ except ImportError:
 
 log("- importing third-party dependencies")
 import numpy as np
+
 log("  - numpy")
 import polars as pl
+
 log("  - polars")
 from scipy import stats as sps
+
 log("  - scipy")
 from tqdm import tqdm
+
 log("  - tqdm")
 
 log("- defining helper functions")
+
+
 def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     log(f"saving df to {file_name=}")
-    log(f"- {df.shape=}")
+    if isinstance(df, pl.DataFrame):
+        log(f"- {df.shape=}")
+    else:
+        log(f" - {type(df)} {df.width=}")
 
     tmp_file = f"{os.getenv('ASYNC_GA_LOCAL_PATH', 'local')}/tmp.pqt"
-    df.write_parquet(tmp_file, compression="lz4")
+    if isinstance(df, pl.DataFrame):
+        df.write_parquet(tmp_file, compression="lz4")
+    else:
+        df.sink_parquet(tmp_file, compression="lz4")
     log("- write_parquet complete")
 
     file_size_mb = os.path.getsize(tmp_file) / (1024 * 1024)
@@ -306,7 +360,7 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     else:
         log("- LazyFrame describe skipped due to large file size")
 
-    original_row_count = df.shape[0]
+    original_row_count = df.lazy().select(pl.count()).collect().item()
     lazy_row_count = lazy_frame.select(pl.count()).collect().item()
     assert lazy_row_count == original_row_count, (
         f"Row count mismatch between original and lazy frames: "
@@ -719,7 +773,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 whoami_data = out_tensors.copy()
-log(whoami_data[:20,:20])
+log(whoami_data[:20, :20])
 
 log("whereami x =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -739,7 +793,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 whereami_x_data = out_tensors.copy()
-log(whereami_x_data[:20,:20])
+log(whereami_x_data[:20, :20])
 
 log("whereami y =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -759,7 +813,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 whereami_y_data = out_tensors.copy()
-log(whereami_y_data[:20,:20])
+log(whereami_y_data[:20, :20])
 
 log("trait data =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -928,7 +982,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 fitness_data = out_tensors.copy()
-log(fitness_data[:20,:20])
+log(fitness_data[:20, :20])
 
 log("genome values ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1026,7 +1080,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvN = out_tensors.copy()
-log(recvN[:20,:20])
+log(recvN[:20, :20])
 
 log("recv counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1046,7 +1100,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvS = out_tensors.copy()
-log(recvS[:20,:20])
+log(recvS[:20, :20])
 
 log("recv counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1066,7 +1120,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvE = out_tensors.copy()
-log(recvE[:20,:20])
+log(recvE[:20, :20])
 
 log("recv counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1086,10 +1140,12 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvW = out_tensors.copy()
-log(recvW[:20,:20])
+log(recvW[:20, :20])
 
 log("recv counter sum ===========================================")
-recvSum = [*map(sum, zip(recvN.ravel(), recvS.ravel(), recvE.ravel(), recvW.ravel()))]
+recvSum = [
+    *map(sum, zip(recvN.ravel(), recvS.ravel(), recvE.ravel(), recvW.ravel()))
+]
 log(recvSum[:100])
 log(f"{np.mean(recvSum)=} {np.std(recvSum)=} {sps.sem(recvSum)=}")
 log(f"{np.median(recvSum)=} {np.min(recvSum)=} {np.max(recvSum)=}")
@@ -1112,7 +1168,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendN = out_tensors.copy()
-log(sendN[:20,:20])
+log(sendN[:20, :20])
 
 log("send counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1132,7 +1188,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendS = out_tensors.copy()
-log(sendS[:20,:20])
+log(sendS[:20, :20])
 
 log("send counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1152,7 +1208,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendE = out_tensors.copy()
-log(sendE[:20,:20])
+log(sendE[:20, :20])
 
 log("send counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1172,10 +1228,12 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendW = out_tensors.copy()
-log(sendW[:20,:20])
+log(sendW[:20, :20])
 
 log("send counter sum ===========================================")
-sendSum = [*map(sum, zip(sendN.ravel(), sendS.ravel(), sendE.ravel(), sendW.ravel()))]
+sendSum = [
+    *map(sum, zip(sendN.ravel(), sendS.ravel(), sendE.ravel(), sendW.ravel()))
+]
 log(sendSum[:100])
 log(f"{np.mean(sendSum)=} {np.std(sendSum)=} {sps.sem(sendSum)=}")
 log(f"{np.median(sendSum)=} {np.min(sendSum)=} {np.max(sendSum)=}")
