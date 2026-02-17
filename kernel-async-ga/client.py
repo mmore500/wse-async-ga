@@ -87,13 +87,15 @@ def assemble_genome_bookend_data(
 ) -> "np.ndarray":
     return assemble_binary_data(data, nWav=nWav + 2, verbose=verbose)
 
+
 def process_fossils(nWav: int) -> None:
     log("reading fossils ----------------------------------------------------")
     file_size_gb = os.path.getsize("raw/fossils.npz") / (1024 * 1024 * 1024)
     log(f"- raw/fossils.npz file size: {file_size_gb:.2f} GB")
     fossils = np.load("raw/fossils.npz")
+    layer_T = sorted(map(int, fossils.files))
     log("- done!")
-    fossils = [fossils[f"arr_{i}"] for i, __ in tqdm(enumerate(fossils.files))]
+    fossils = [fossils[str(i)] for i in tqdm(layer_T, desc="loading fossils")]
 
     log("assembling fossils -------------------------------------------------")
     log(f" - {len(fossils)=}")
@@ -112,7 +114,7 @@ def process_fossils(nWav: int) -> None:
         log("- example assembly")
         assemble_genome_bookend_data(fossils[0], verbose=True)
 
-        log(f"- map assemble_genome_bookend_data over {len(fossils)} fossils...")
+        log(f"- map assemble_genome_bookend_data over {len(fossils)=}...")
         work = map(assemble_genome_bookend_data, fossils)
         fossils = [*tqdm(work, total=len(fossils), desc="assembling fossils")]
     else:
@@ -127,15 +129,22 @@ def process_fossils(nWav: int) -> None:
         log(" - creating indices")
         layers, positions = np.indices(fossils.shape)
         log(" - creating DataFrame")
-        df = pl.DataFrame({
-            "data_raw": pl.Series(fossils.ravel(), dtype=pl.Binary),
-            "is_extant": False,
-            "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
-            "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
-        }).with_columns([
-            pl.lit(value, dtype=dtype).alias(key)
-            for key, (value, dtype) in metadata.items()
-        ])
+        df = pl.DataFrame(
+            {
+                "data_raw": pl.Series(fossils.ravel(), dtype=pl.Binary),
+                "is_extant": False,
+                "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
+                "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
+            },
+        ).with_columns(
+            [
+                pl.lit(value, dtype=dtype).alias(key)
+                for key, (value, dtype) in metadata.items()
+            ],
+            layer_T=pl.col("layer").map_elements(
+                layer_T.__getitem__,
+            ).cast(pl.UInt64),
+        )
         log(f" - data_raw: {df['data_raw'].head(3)}")
         assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
 
@@ -202,8 +211,43 @@ os.makedirs(temp_dir, exist_ok=True)
 atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
 log(f"  - {temp_dir=}")
 
+log("- installing downstream")
+for attempt in range(4):
+    try:
+        subprocess.check_call(
+            [
+                "pip",
+                "install",
+                f"--target={temp_dir}",
+                "--no-cache-dir",
+                "--no-deps",  # prevent numpy from being reinstalled
+                "--ignore-requires-python",  # some components require py3.10+
+                "downstream==1.16.4",
+                "lazy_loader==0.4",
+            ],
+            env={
+                **os.environ,
+                "TMPDIR": temp_dir,
+            },
+        )
+        log("- pip install succeeded!")
+        break
+    except subprocess.CalledProcessError as e:
+        log(e)
+        log(f"retrying {attempt=}...")
+else:
+    raise e
+log(f"- extending sys path with temp dir {temp_dir=}")
+sys.path.append(temp_dir)
+
+import downstream  # type: ignore
+from downstream import dstream  # type: ignore
+
+log(f"- downstream version: {downstream.__version__}")
+
 try:
     import polars  # type: ignore
+
     log("- polars already installed, skipping installation")
     del polars
 except ImportError:
@@ -283,7 +327,8 @@ def add_bool_arg(parser, name, default=False):
     group.add_argument(
         "--no-" + name, dest=name.replace("-", "_"), action="store_false"
     )
-    parser.set_defaults(**{name: default})
+    parser.set_defaults(**{name.replace("-", "_"): default})
+
 
 log("- reading env variables")
 # number of rows, columns, and genome words
@@ -407,7 +452,17 @@ log("- setting up fossil storage")
 max_fossil_sets = int(os.getenv("ASYNC_GA_MAX_FOSSIL_SETS", 2**32 - 1))
 log(f" - {max_fossil_sets=}")
 
-fossils = []
+max_fossil_sets_dstream_algo = os.getenv(
+    "ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO", "dstream.sticky_algo"
+)
+log(f" - {max_fossil_sets_dstream_algo=}")
+
+max_fossil_sets_dstream_algo = eval(
+    max_fossil_sets_dstream_algo, {"dstream": dstream}
+)
+log(f" - {max_fossil_sets_dstream_algo=}")
+
+fossils = set()
 fossil_mmap = np.memmap(
     f"{temp_dir}/fossils.dat",
     dtype=np.uint32,
@@ -448,34 +503,42 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
         print(flush=True)
 
     print("1", end="", flush=True)
-    if len(fossils) < max_fossil_sets:
-        print(f"({len(fossils)})", end="", flush=True)
-        print("a", end="", flush=True)
-        memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-        out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
-        print("b", end="", flush=True)
 
-        runner.memcpy_d2h(
-            out_tensors.ravel(),
-            runner.get_id("genomeBookend"),
-            0,  # x0
-            0,  # y0
-            nCol,  # width
-            nRow,  # height
-            nWav + 2,  # num wavelets
-            streaming=False,
-            data_type=memcpy_dtype,
-            order=MemcpyOrder.ROW_MAJOR,
-            nonblock=False,
-        )
-        print("c", end="", flush=True)
+    print(f"({len(fossils)})", end="", flush=True)
+    print("a", end="", flush=True)
+    memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+    out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
+    print("b", end="", flush=True)
+    runner.memcpy_d2h(
+        out_tensors.ravel(),
+        runner.get_id("genomeBookend"),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        nWav + 2,  # num wavelets
+        streaming=False,
+        data_type=memcpy_dtype,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
+    print("c", end="", flush=True)
 
+    fossil_storage_site = max_fossil_sets_dstream_algo.assign_storage_site(
+        S=max_fossil_sets,
+        T=cycle,
+    )
+    print("d", end="", flush=True)
+
+    if fossil_storage_site is not None:
         genome_data = out_tensors.copy()
-        print("d", end="", flush=True)
-        fossil_mmap[len(fossils), :, :, :] = genome_data
         print("e", end="", flush=True)
-        fossils.append(fossil_mmap[len(fossils)])
+        fossil_mmap[fossil_storage_site, :, :, :] = genome_data
         print("f", end="", flush=True)
+        fossils.add(fossil_storage_site)
+        print("g", end="", flush=True)
+    else:
+        print("h", end="", flush=True)
 
     print("2", end="", flush=True)
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -503,7 +566,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
     if should_break:
         phase1_elapsed_ns = time.time_ns() - launch_ns
-        phase1_elapsed_cycles = cycle
+        phase1_elapsed_cycles = cycle + 1
         print("!", flush=True)
         break
     else:
@@ -545,7 +608,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
     if should_break:
         phase2_elapsed_ns = time.time_ns() - launch_ns
-        phase2_elapsed_cycles = cycle
+        phase2_elapsed_cycles = cycle + 1
         print("!", flush=True)
         break
     else:
@@ -569,6 +632,23 @@ if nonBlock:
     log(f"- {phase2_elapsed_cycles / total_elapsed_cycles=}")
     log(f"- {total_elapsed_cycles=}")
 
+    log("arranging fossils ==================================================")
+    log(f" - {len(fossils)=}")
+    assert len(fossils) <= max_fossil_sets
+
+    max_words = max(fossils, default=0) + 1
+    log(f" - {max_words=}")
+    fossil_layer_T = [
+        *it.islice(
+            max_fossil_sets_dstream_algo.lookup_ingest_times(
+                S=max_fossil_sets,
+                T=phase1_elapsed_cycles,
+            ),
+            max_words,
+        )
+    ]
+    fossils = sorted(fossils, key=fossil_layer_T.__getitem__)
+
 log("thinning fossils =======================================================")
 log(f" - {len(fossils)=}")
 assert len(fossils) <= max_fossil_sets
@@ -587,22 +667,27 @@ if m < len(fossils):
     ]
     log(f" - {len(fossils)=}")
 
-max_fossil_sets_sample = int(os.getenv(
-    "ASYNC_GA_MAX_FOSSIL_SETS_SAMPLE", 2**32 - 1
-))
+max_fossil_sets_sample = int(
+    os.getenv("ASYNC_GA_MAX_FOSSIL_SETS_SAMPLE", 2**32 - 1)
+)
 log(f" - {max_fossil_sets_sample=}")
 m = min(max_fossil_sets_sample, len(fossils))
 if m < len(fossils):
     log(f" - sampling {m} fossil sets...")
     fossils = [
-        fossils[i]
-        for i in sorted(random.sample(range(len(fossils)), k=m))
+        fossils[i] for i in sorted(random.sample(range(len(fossils)), k=m))
     ]
     log(f" - {len(fossils)=}")
 
 log("writing fossils ========================================================")
 os.makedirs("raw", exist_ok=True)
-np.savez("raw/fossils.npz", *fossils)
+np.savez(
+    "raw/fossils.npz",
+    **{
+        str(fossil_layer_T[fossil_index]): fossil_mmap[fossil_index, :, :, :]
+        for fossil_index in fossils
+    },
+)
 log("- done!")
 file_size_gb = os.path.getsize("raw/fossils.npz") / (1024 * 1024 * 1024)
 log(f"- saved file size: {file_size_gb:.2f} GB")
