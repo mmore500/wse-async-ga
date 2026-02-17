@@ -4,6 +4,7 @@ import argparse
 import atexit
 from collections import Counter
 import functools
+import gc
 import itertools as it
 import json
 import logging
@@ -39,6 +40,17 @@ def removeprefix(text: str, prefix: str) -> str:
     if text.startswith(prefix):
         return text[len(prefix):]
     return text
+
+
+# adapted from https://docs.python.org/3/library/itertools.html#itertools.batched
+def batched(iterable, n: int):
+    # batched('ABCDEFG', 3) → ABC DEF G
+    iterator = iter(iterable)
+    while True:
+        batch = tuple(tqdm(it.islice(iterator, n), desc="loading batch"))
+        if not batch:
+            break
+        yield batch
 
 
 def assemble_binary_data(
@@ -95,16 +107,14 @@ def process_fossils(nWav: int) -> None:
     fossils = np.load("raw/fossils.npz")
     layer_T = sorted(map(int, fossils.files))
     log("- done!")
-    fossils = [fossils[str(i)] for i in tqdm(layer_T, desc="loading fossils")]
 
-    log("assembling fossils -------------------------------------------------")
-    log(f" - {len(fossils)=}")
-    if fossils:
-        log(f"- {fossils[0].shape=}")
+    if layer_T:
+        log("example fossil -------------------------------------------------")
+        example_fossil = fossils[str(layer_T[0])]
 
         fossil_filename = "a=rawfossildat+i=0+ext=.npy"
         log(f"- saving {fossil_filename}...")
-        np.save(fossil_filename, fossils[0])
+        np.save(fossil_filename, example_fossil)
 
         log(f"- ... saved {fossil_filename}!")
 
@@ -112,13 +122,31 @@ def process_fossils(nWav: int) -> None:
         log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
 
         log("- example assembly")
-        assemble_genome_bookend_data(fossils[0], verbose=True)
+        assemble_genome_bookend_data(example_fossil, verbose=True)
 
-        log(f"- map assemble_genome_bookend_data over {len(fossils)=}...")
-        work = map(assemble_genome_bookend_data, fossils)
-        fossils = [*tqdm(work, total=len(fossils), desc="assembling fossils")]
-    else:
-        log("- no fossils to assemble!")
+        del example_fossil
+        gc.collect()
+
+    log("assembling fossils -------------------------------------------------")
+    assembled_fossils = []
+    for i, fossil_batch in tqdm(
+        enumerate(batched((fossils[str(i)] for i in layer_T), 100)),
+        desc="fossil batches",
+        total=(len(layer_T) + 99) // 100,
+    ):
+        log(f" - batch {i=} {len(fossil_batch)=}")
+
+        log(f"- map assemble_genome_bookend_data over {len(fossil_batch)=}...")
+        work = map(assemble_genome_bookend_data, fossil_batch)
+        assembled_fossils.extend(
+            tqdm(work, total=len(fossil_batch), desc="assembling fossils"),
+        )
+        del fossil_batch
+        gc.collect()
+
+    fossils = assembled_fossils
+    del assembled_fossils
+    gc.collect()
 
     log("dataframing fossils ------------------------------------------------")
     log(f" - {len(fossils)=}")
@@ -136,14 +164,16 @@ def process_fossils(nWav: int) -> None:
                 "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
                 "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
             },
-        ).with_columns(
-            [
-                pl.lit(value, dtype=dtype).alias(key)
-                for key, (value, dtype) in metadata.items()
-            ],
-            layer_T=pl.col("layer").map_elements(
+        )
+        del fossils, layers, positions
+        gc.collect()
+        log(" - filling DataFrame")
+        df = df.with_columns(
+            layer_T=pl.col("layer")
+            .map_elements(
                 layer_T.__getitem__,
-            ).cast(pl.UInt64),
+            )
+            .cast(pl.UInt64),
         )
         log(f" - data_raw: {df['data_raw'].head(3)}")
         assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
@@ -186,6 +216,14 @@ def process_fossils(nWav: int) -> None:
         log(" - validation check 2/3...")
         assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
         log(" - validation check 3/3 complete!")
+
+        log("- adding metadata columns")
+        df = df.lazy().with_columns(
+            [
+                pl.lit(value, dtype=dtype).alias(key)
+                for key, (value, dtype) in metadata.items()
+            ],
+        )
 
         write_parquet_verbose(
             df,
@@ -279,21 +317,33 @@ except ImportError:
 
 log("- importing third-party dependencies")
 import numpy as np
+
 log("  - numpy")
 import polars as pl
+
 log("  - polars")
 from scipy import stats as sps
+
 log("  - scipy")
 from tqdm import tqdm
+
 log("  - tqdm")
 
 log("- defining helper functions")
+
+
 def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     log(f"saving df to {file_name=}")
-    log(f"- {df.shape=}")
+    if isinstance(df, pl.DataFrame):
+        log(f"- {df.shape=}")
+    else:
+        log(f" - {type(df)} {df.width=}")
 
     tmp_file = f"{os.getenv('ASYNC_GA_LOCAL_PATH', 'local')}/tmp.pqt"
-    df.write_parquet(tmp_file, compression="lz4")
+    if isinstance(df, pl.DataFrame):
+        df.write_parquet(tmp_file, compression="lz4")
+    else:
+        df.sink_parquet(tmp_file, compression="lz4")
     log("- write_parquet complete")
 
     file_size_mb = os.path.getsize(tmp_file) / (1024 * 1024)
@@ -306,7 +356,7 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     else:
         log("- LazyFrame describe skipped due to large file size")
 
-    original_row_count = df.shape[0]
+    original_row_count = df.lazy().select(pl.count()).collect().item()
     lazy_row_count = lazy_frame.select(pl.count()).collect().item()
     assert lazy_row_count == original_row_count, (
         f"Row count mismatch between original and lazy frames: "
