@@ -40,6 +40,8 @@ FLOWNAME="$(basename "${FLOWDIR}")"
 STEPNAME="$(basename "$0" .sh)"
 WORKDIR="${FLOWDIR}/workdir"
 RESULTDIR="${FLOWDIR}/resultdir"
+SRCDIR="${WORKDIR}/src"
+
 
 ###############################################################################
 echo
@@ -62,6 +64,7 @@ echo "FLOWDIR ${FLOWDIR}"
 echo "FLOWNAME ${FLOWNAME}"
 echo "WORKDIR ${WORKDIR}"
 echo "RESULTDIR ${RESULTDIR}"
+echo "SRCDIR ${SRCDIR}"
 
 echo "LOG_ERR ${LOG_ERR}"
 echo "LOG_OUT ${LOG_OUT}"
@@ -118,9 +121,6 @@ echo
 echo "postprocess configs ----------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-SRCDIR="${WORKDIR}/src"
-echo "SRCDIR ${SRCDIR}"
-
 WORKDIR_RUN="${WORKDIR}/02-run"
 echo "WORKDIR_RUN ${WORKDIR_RUN}"
 
