@@ -20,6 +20,7 @@ dependencies = [
     "numpy",
     "pandas",
     "polars",
+    "pyarrow",
     "scipy",
     "tqdm",
     # dev dependencies
