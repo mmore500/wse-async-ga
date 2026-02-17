@@ -283,7 +283,8 @@ def add_bool_arg(parser, name, default=False):
     group.add_argument(
         "--no-" + name, dest=name.replace("-", "_"), action="store_false"
     )
-    parser.set_defaults(**{name: default})
+    parser.set_defaults(**{name.replace("-", "_"): default})
+
 
 log("- reading env variables")
 # number of rows, columns, and genome words
