@@ -153,26 +153,40 @@ def process_fossils(nWav: int) -> None:
     log("dataframing fossils ------------------------------------------------")
     log(f" - {len(fossils)=}")
     if fossils:
-        fossils = np.array(fossils)
+        log(" - concatenating fossils")
+        fossils = np.concatenate(fossils)
         gc.collect()
-        log(" - casting fossils to object")
-        fossils = fossils.astype(object)
+
+        byte_width = (nWav + 2) * 4
+        log(f" - creating contiguous fossil bytes {byte_width=}")
+        fossils = np.ascontiguousarray(
+            fossils.view(np.uint8).reshape(-1, byte_width),
+        )
         gc.collect()
-        log(" - creating indices")
-        layers, positions = np.indices(fossils.shape)
+
+        log(" - creating pyarrow view of fossils")
+        fossils = pa.FixedSizeBinaryArray.from_buffers(
+            pa.binary(byte_width),
+            len(fossils),
+            [None, pa.py_buffer(fossils)],
+        )
+        gc.collect()
+
         log(" - creating DataFrame")
         df = pl.DataFrame(
             {
-                "data_raw": pl.Series(fossils.ravel(), dtype=pl.Binary),
-                "is_extant": False,
-                "layer": pl.Series(layers.ravel(), dtype=pl.UInt32),
-                "position": pl.Series(positions.ravel(), dtype=pl.UInt32),
+                "data_raw": pl.Series(fossils, dtype=pl.Binary),
             },
         )
-        del fossils, layers, positions
+        del fossils
         gc.collect()
-        log(" - filling DataFrame")
+
+        nPos = nCol * nRow
+        log(f" - filling DataFrame {nPos=}")
         df = df.with_columns(
+            layer=(pl.int_range(pl.len()) // nPos).cast(pl.UInt32),
+            position=(pl.int_range(pl.len()) % nPos).cast(pl.UInt32),
+        ).with_columns(
             layer_T=pl.col("layer")
             .map_elements(
                 layer_T.__getitem__,
@@ -180,7 +194,7 @@ def process_fossils(nWav: int) -> None:
             .cast(pl.UInt64),
         )
         log(f" - data_raw: {df['data_raw'].head(3)}")
-        assert (df["data_raw"].bin.size(unit="b") == (nWav + 2) * 4).all()
+        assert (df["data_raw"].bin.size(unit="b") == byte_width).all()
 
         log(f" - encoding {len(df)} binary fossil rows to hex...")
         df = df.with_columns(
@@ -227,6 +241,7 @@ def process_fossils(nWav: int) -> None:
                 pl.lit(value, dtype=dtype).alias(key)
                 for key, (value, dtype) in metadata.items()
             ],
+            is_extant=False,
         )
 
         write_parquet_verbose(
@@ -319,19 +334,22 @@ except ImportError:
     log(f"- extending sys path with temp dir {temp_dir=}")
     sys.path.append(temp_dir)
 
+
 log("- importing third-party dependencies")
+log("  - numpy...")
 import numpy as np
 
-log("  - numpy")
+log("  - polars...")
 import polars as pl
 
-log("  - polars")
+log("  - pyarrow...")
+import pyarrow as pa
+
+log("  - scipy...")
 from scipy import stats as sps
 
-log("  - scipy")
+log("  - tqdm...")
 from tqdm import tqdm
-
-log("  - tqdm")
 
 log("- defining helper functions")
 
