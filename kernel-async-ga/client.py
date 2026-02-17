@@ -387,8 +387,8 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     else:
         log("- LazyFrame describe skipped due to large file size")
 
-    original_row_count = df.lazy().select(pl.count()).collect().item()
-    lazy_row_count = lazy_frame.select(pl.count()).collect().item()
+    original_row_count = df.lazy().select(pl.len()).collect().item()
+    lazy_row_count = lazy_frame.select(pl.len()).collect().item()
     assert lazy_row_count == original_row_count, (
         f"Row count mismatch between original and lazy frames: "
         f"{original_row_count=}, {lazy_row_count=}"
