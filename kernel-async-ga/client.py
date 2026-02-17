@@ -106,45 +106,46 @@ def process_fossils(nWav: int) -> None:
     log("reading fossils ----------------------------------------------------")
     file_size_gb = os.path.getsize("raw/fossils.npz") / (1024 * 1024 * 1024)
     log(f"- raw/fossils.npz file size: {file_size_gb:.2f} GB")
-    fossils = np.load("raw/fossils.npz")
-    layer_T = sorted(map(int, fossils.files))
-    log("- done!")
 
-    if layer_T:
-        log("example fossil -------------------------------------------------")
-        example_fossil = fossils[str(layer_T[0])]
+    with np.load("raw/fossils.npz") as fossils:
+        layer_T = sorted(map(int, fossils.files))
+        log("- done!")
 
-        fossil_filename = "a=rawfossildat+i=0+ext=.npy"
-        log(f"- saving {fossil_filename}...")
-        np.save(fossil_filename, example_fossil)
+        if layer_T:
+            log("example fossil -------------------------------------------------")
+            example_fossil = fossils[str(layer_T[0])]
 
-        log(f"- ... saved {fossil_filename}!")
+            fossil_filename = "a=rawfossildat+i=0+ext=.npy"
+            log(f"- saving {fossil_filename}...")
+            np.save(fossil_filename, example_fossil)
 
-        file_size_mb = os.path.getsize(fossil_filename) / (1024 * 1024)
-        log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
+            log(f"- ... saved {fossil_filename}!")
 
-        log("- example assembly")
-        assemble_genome_bookend_data(example_fossil, verbose=True)
+            file_size_mb = os.path.getsize(fossil_filename) / (1024 * 1024)
+            log(f"- {fossil_filename} file size: {file_size_mb:.2f} MB")
 
-        del example_fossil
-        gc.collect()
+            log("- example assembly")
+            assemble_genome_bookend_data(example_fossil, verbose=True)
 
-    log("assembling fossils -------------------------------------------------")
-    assembled_fossils = []
-    for i, fossil_batch in tqdm(
-        enumerate(batched((fossils[str(i)] for i in layer_T), 100)),
-        desc="fossil batches",
-        total=(len(layer_T) + 99) // 100,
-    ):
-        log(f" - batch {i=} {len(fossil_batch)=}")
+            del example_fossil
+            gc.collect()
 
-        log(f"- map assemble_genome_bookend_data over {len(fossil_batch)=}...")
-        work = map(assemble_genome_bookend_data, fossil_batch)
-        assembled_fossils.extend(
-            tqdm(work, total=len(fossil_batch), desc="assembling fossils"),
-        )
-        del fossil_batch
-        gc.collect()
+        log("assembling fossils -------------------------------------------------")
+        assembled_fossils = []
+        for i, fossil_batch in tqdm(
+            enumerate(batched((fossils[str(i)] for i in layer_T), 100)),
+            desc="fossil batches",
+            total=(len(layer_T) + 99) // 100,
+        ):
+            log(f" - batch {i=} {len(fossil_batch)=}")
+
+            log(f"- map assemble_genome_bookend_data over {len(fossil_batch)=}...")
+            work = map(assemble_genome_bookend_data, fossil_batch)
+            assembled_fossils.extend(
+                tqdm(work, total=len(fossil_batch), desc="assembling fossils"),
+            )
+            del fossil_batch
+            gc.collect()
 
     fossils = assembled_fossils
     del assembled_fossils
