@@ -262,7 +262,7 @@ def process_fossils(nWav: int) -> None:
         log(f" - {validation_result=}")
         if not validation_result:
             for i, expr in enumerate(validation_exprs):
-                nfail = df.filter(~expr).select(pl.count()).collect().item()
+                nfail = df.filter(~expr).select(pl.len()).collect().item()
                 log(f"  - validation  {i=} {str(expr)=} failed {nfail=} rows")
                 if nfail:
                     log(
