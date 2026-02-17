@@ -199,27 +199,33 @@ def process_fossils(nWav: int) -> None:
         gc.collect()
         log("... done!")
 
-        log(f"scanning {tmp_from_pqt}...")
-        df = pl.scan_parquet(tmp_from_pqt, cache=False)
-        gc.collect()
-
         log(" - calculating indices...")  # use numpy to save memory vs polars
         layer = np.arange(len_df, dtype=np.uint32) // nPos
         layer_T = np.array(layer_T, dtype=np.uint64)[layer]
         position = np.arange(len_df, dtype=np.uint32) % nPos
 
-        log(" - adding indices...")  # before lazy for sink compat
-        df = df.with_columns(layer=layer, layer_T=layer_T, position=position)
+        log(" - creating indices df...")  # use numpy to save memory vs polars
+        df_indices = pl.DataFrame(
+            {
+                "layer": pl.Series(layer, dtype=pl.UInt32),
+                "layer_T": pl.Series(layer_T, dtype=pl.UInt64),
+                "position": pl.Series(position, dtype=pl.UInt32),
+            },
+        ).lazy()
         del layer, layer_T, position
         gc.collect()
 
-        log(f"writing to {tmp_to_pqt}...")  # sink not yet compatible
-        df.collect().write_parquet(tmp_to_pqt, compression="lz4")
-        log("... done!")
-
-        log(f"moving {tmp_to_pqt} to {tmp_from_pqt}...")
-        shutil.move(tmp_to_pqt, tmp_from_pqt)
-        log("... done!")
+        log(" - saving indices...")  # separate for sink compat
+        fi_path = (
+            "a=fossil-indices"
+            f"+flavor={genomeFlavor}"
+            f"+seed={globalSeed}"
+            f"+ncycle={nCycleAtLeast}"
+            "+ext=.pqt"
+        )
+        write_parquet_verbose(df_indices, fi_path)
+        del df_indices
+        gc.collect()
 
         log(f"scanning {tmp_from_pqt}...")
         df = pl.scan_parquet(tmp_from_pqt, cache=False)
@@ -303,14 +309,14 @@ def process_fossils(nWav: int) -> None:
             is_extant=False,
         )
 
-        write_parquet_verbose(
-            df,
-            "a=fossils"
+        fg_path = (
+            "a=fossil-genomes"
             f"+flavor={genomeFlavor}"
             f"+seed={globalSeed}"
             f"+ncycle={nCycleAtLeast}"
-            "+ext=.pqt",
+            "+ext=.pqt"
         )
+        write_parquet_verbose(df, fg_path)
 
         log("- cleaning up...")
         del df
@@ -318,8 +324,40 @@ def process_fossils(nWav: int) -> None:
         pathlib.Path(tmp_from_pqt).unlink(missing_ok=True)
         pathlib.Path(tmp_to_pqt).unlink(missing_ok=True)
         log("... done!")
+
+        log("- concatenating fossil genomes and indices...")
+        df = pl.concat(
+            [
+                pl.scan_parquet(fg_path, cache=False),
+                pl.scan_parquet(fi_path, cache=False),
+            ],
+            how="horizontal",
+        )
+        log(f" - {df=}")
+        for how in pl.LazyFrame.lazy, pl.LazyFrame.collect:
+            log(f" - trying {how=}")
+            try:
+                write_parquet_verbose(
+                    how(df),
+                    "a=fossils"
+                    f"+flavor={genomeFlavor}"
+                    f"+seed={globalSeed}"
+                    f"+ncycle={nCycleAtLeast}"
+                    "+ext=.pqt",
+                )
+            except pl.exceptions.InvalidOperationError as e:
+                log(f" - {how=} {str(e)}")
+            else:
+                log(f" - {how=} success")
+                break
+        else:
+            assert False, "fossil write failed"
+
+        log("- ... done!")
+
     else:
         log("- no fossils to process!")
+
 
 log("- printenv")
 for k, v in sorted(os.environ.items()):

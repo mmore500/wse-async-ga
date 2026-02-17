@@ -98,11 +98,19 @@ echo
 echo "setup venv -------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-VENVDIR="${WORKDIR}/venv"
+VENVDIR="${WORKDIR}/venv3x"
 echo "VENVDIR ${VENVDIR}"
 
-echo "activating venv"
+echo "creating venv"
+rm -rf "${VENVDIR}"
+python3 -m venv "${VENVDIR}"
 source "${VENVDIR}/bin/activate"
+which python3
+
+echo "setting up venv"
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade uv
+python3 -m uv pip install -r "${SRCDIR}/requirements.txt"
 python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt"
 
 ###############################################################################

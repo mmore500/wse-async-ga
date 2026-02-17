@@ -177,6 +177,7 @@ pluggy==1.6.0
     # via pytest
 polars==1.38.1
     # via
+    #   -r requirements.in
     #   downstream
     #   hstrat
     #   joinem
@@ -192,6 +193,7 @@ py==1.11.0
     # via retry
 pyarrow==23.0.1
     # via
+    #   -r requirements.in
     #   hstrat
     #   polars
 pydantic==2.12.5
