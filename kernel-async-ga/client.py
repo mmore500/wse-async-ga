@@ -182,23 +182,48 @@ def process_fossils(nWav: int) -> None:
         del fossils
         gc.collect()
 
-        nPos = nCol * nRow
-        log(f" - filling DataFrame {nPos=}")
-
         log(f" - data_raw: {df['data_raw'].head(3)}")
         assert (df["data_raw"].bin.size(unit="b") == byte_width).all()
 
+        len_df = len(df)
+        nPos = nCol * nRow
+        log(f" -{nPos=} {len_df=}...")
+
+        tmp_from_pqt, tmp_to_pqt = "tmpfossils-from.pqt", "tmpfossils-to.pqt"
+        log(f"writing to {tmp_from_pqt}...")
+        df.write_parquet(tmp_from_pqt, compression="lz4")
+        log("... done!")
+
+        log("clearing memory...")
+        del df
+        gc.collect()
+        log("... done!")
+
+        log(f"scanning {tmp_from_pqt}...")
+        df = pl.scan_parquet(tmp_from_pqt, cache=False)
+        gc.collect()
+
         log(" - calculating indices...")  # use numpy to save memory vs polars
-        layer = np.arange(len(df), dtype=np.uint32) // nPos
+        layer = np.arange(len_df, dtype=np.uint32) // nPos
         layer_T = np.array(layer_T, dtype=np.uint64)[layer]
-        position = np.arange(len(df), dtype=np.uint32) % nPos
+        position = np.arange(len_df, dtype=np.uint32) % nPos
 
         log(" - adding indices...")  # before lazy for sink compat
         df = df.with_columns(layer=layer, layer_T=layer_T, position=position)
         del layer, layer_T, position
+        gc.collect()
 
-        log(" - lazifying...")
-        df = df.lazy()
+        log(f"writing to {tmp_to_pqt}...")  # sink not yet compatible
+        df.collect().write_parquet(tmp_to_pqt, compression="lz4")
+        log("... done!")
+
+        log(f"moving {tmp_to_pqt} to {tmp_from_pqt}...")
+        shutil.move(tmp_to_pqt, tmp_from_pqt)
+        log("... done!")
+
+        log(f"scanning {tmp_from_pqt}...")
+        df = pl.scan_parquet(tmp_from_pqt, cache=False)
+        gc.collect()
 
         log(f" - encoding binary fossil rows to hex...")
         df = df.with_columns(
@@ -210,6 +235,19 @@ def process_fossils(nWav: int) -> None:
                 df.select('data_hex').head(3).collect().to_series()
             }""",
         )
+
+        log(f"sinking to {tmp_to_pqt}...")
+        df.sink_parquet(tmp_to_pqt, compression="lz4")
+        log("... done!")
+
+        log(f"moving {tmp_to_pqt} to {tmp_from_pqt}...")
+        shutil.move(tmp_to_pqt, tmp_from_pqt)
+        log("... done!")
+
+        log(f"scanning {tmp_from_pqt}...")
+        df = pl.scan_parquet(tmp_from_pqt, cache=False)
+        gc.collect()
+
         log(" - validation check...")
         validation_exprs = [
             pl.col("data_hex").str.len_chars() == byte_width * 2,
@@ -244,6 +282,18 @@ def process_fossils(nWav: int) -> None:
             }""",
         )
 
+        log(f"sinking to {tmp_to_pqt}...")
+        df.sink_parquet(tmp_to_pqt, compression="lz4")
+        log("... done!")
+
+        log(f"moving {tmp_to_pqt} to {tmp_from_pqt}...")
+        shutil.move(tmp_to_pqt, tmp_from_pqt)
+        log("... done!")
+
+        log(f"scanning {tmp_from_pqt}...")
+        df = pl.scan_parquet(tmp_from_pqt, cache=False)
+        gc.collect()
+
         log("- adding metadata columns")
         df = df.with_columns(
             [
@@ -262,7 +312,12 @@ def process_fossils(nWav: int) -> None:
             "+ext=.pqt",
         )
 
+        log("- cleaning up...")
         del df
+        gc.collect()
+        pathlib.Path(tmp_from_pqt).unlink(missing_ok=True)
+        pathlib.Path(tmp_to_pqt).unlink(missing_ok=True)
+        log("... done!")
     else:
         log("- no fossils to process!")
 
