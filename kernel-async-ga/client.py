@@ -464,6 +464,7 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
         log(f" - {type(df)} {df.collect_schema().len()=}")
 
     tmp_file = f"{os.getenv('ASYNC_GA_LOCAL_PATH', 'local')}/tmp.pqt"
+    os.makedirs(os.path.dirname(os.path.abspath(tmp_file)), exist_ok=True)
     if isinstance(df, pl.DataFrame):
         df.write_parquet(tmp_file, compression="lz4")
     else:
@@ -487,10 +488,12 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
         f"{original_row_count=}, {lazy_row_count=}"
     )
 
-    shutil.copy(tmp_file, file_name)
-    log(f"- copy {tmp_file} to destination {file_name} complete")
+    os.makedirs(os.path.dirname(os.path.abspath(file_name)), exist_ok=True)
+    shutil.move(tmp_file, file_name)
+    log(f"- move {tmp_file} to destination {file_name} complete")
 
     log("- verbose save complete!")
+
 
 # adapted from https://stackoverflow.com/a/31347222/17332200
 def add_bool_arg(parser, name, default=False):
