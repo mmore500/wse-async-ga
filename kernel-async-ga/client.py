@@ -188,15 +188,14 @@ def process_fossils(nWav: int) -> None:
         log(f" - data_raw: {df['data_raw'].head(3)}")
         assert (df["data_raw"].bin.size(unit="b") == byte_width).all()
 
+        log(" - calculating indices...")  # use numpy to save memory vs polars
+        layer = np.arange(len(df), dtype=np.uint32) // nPos
+        layer_T = np.array(layer_T, dtype=np.uint64)[layer]
+        position = np.arange(len(df), dtype=np.uint32) % nPos
+
         log(" - adding indices...")  # before lazy for sink compat
-        df = df.with_columns(
-            layer=(pl.int_range(pl.len()) // nPos).cast(pl.UInt32),
-            position=(pl.int_range(pl.len()) % nPos).cast(pl.UInt32),
-        ).with_columns(
-            layer_T=pl.col("layer")
-            .map_elements(layer_T.__getitem__)
-            .cast(pl.UInt64),
-        )
+        df = df.with_columns(layer=layer, layer_T=layer_T, position=position)
+        del layer, layer_T, position
 
         log(" - lazifying...")
         df = df.lazy()
