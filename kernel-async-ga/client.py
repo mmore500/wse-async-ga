@@ -38,7 +38,7 @@ def log_once(msg: str, *args, **kwargs) -> bool:
 
 def removeprefix(text: str, prefix: str) -> str:
     if text.startswith(prefix):
-        return text[len(prefix):]
+        return text[len(prefix) :]
     return text
 
 
@@ -67,7 +67,9 @@ def assemble_binary_data(
 
         for word in range(nWav):
             log(f"---------------------------------------- binary word {word}")
-            values = (inner[word] for outer in raw_binary_data for inner in outer)
+            values = (
+                inner[word] for outer in raw_binary_data for inner in outer
+            )
             log(str([*it.islice(values, 10)]))
 
     binary_ints = np.ascontiguousarray(raw_binary_data.astype(">u4").ravel())
@@ -77,8 +79,8 @@ def assemble_binary_data(
         for binary_int in binary_ints[:10]:
             log(f"{len(binary_ints)=} {binary_int=}")
 
-    binary_strings = binary_ints.view(f'V{nWav * 4}')
-    assert binary_strings.shape == (nRow * nCol, )
+    binary_strings = binary_ints.view(f"V{nWav * 4}")
+    assert binary_strings.shape == (nRow * nCol,)
     if verbose:
         log("------------------------------------------------- binary strings")
         log(f"  - target dtype: V{nWav * 4}")
@@ -89,7 +91,7 @@ def assemble_binary_data(
 
 
 def assemble_genome_data(
-        data: "np.ndarray", verbose: bool = False
+    data: "np.ndarray", verbose: bool = False
 ) -> "np.ndarray":
     return assemble_binary_data(data, nWav=nWav, verbose=verbose)
 
@@ -195,7 +197,7 @@ def process_fossils(nWav: int) -> None:
 
         len_before = len(df)
         df = df.filter(
-            pl.col("data_hex").str.head(8) ==  pl.col("data_hex").str.tail(8),
+            pl.col("data_hex").str.head(8) == pl.col("data_hex").str.tail(8),
         )
         log(
             " - bookend check removed "
@@ -204,9 +206,9 @@ def process_fossils(nWav: int) -> None:
         )
         log(f" - bookend check retained {len(df)} fossils")
 
-        log(f" - stripping bookends...")
+        log(" - stripping bookends...")
         df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
-        log(f" - ... done!")
+        log(" - ... done!")
 
         log(f" - data_hex: {df['data_hex'].head(3)}")
         log(" - validation check 0/3...")
@@ -769,7 +771,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 whoami_data = out_tensors.copy()
-log(whoami_data[:20,:20])
+log(whoami_data[:20, :20])
 
 log("whereami x =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -789,7 +791,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 whereami_x_data = out_tensors.copy()
-log(whereami_x_data[:20,:20])
+log(whereami_x_data[:20, :20])
 
 log("whereami y =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -809,7 +811,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 whereami_y_data = out_tensors.copy()
-log(whereami_y_data[:20,:20])
+log(whereami_y_data[:20, :20])
 
 log("trait data =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -978,7 +980,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 fitness_data = out_tensors.copy()
-log(fitness_data[:20,:20])
+log(fitness_data[:20, :20])
 
 log("genome values ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1076,7 +1078,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvN = out_tensors.copy()
-log(recvN[:20,:20])
+log(recvN[:20, :20])
 
 log("recv counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1096,7 +1098,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvS = out_tensors.copy()
-log(recvS[:20,:20])
+log(recvS[:20, :20])
 
 log("recv counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1116,7 +1118,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvE = out_tensors.copy()
-log(recvE[:20,:20])
+log(recvE[:20, :20])
 
 log("recv counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1136,10 +1138,12 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 recvW = out_tensors.copy()
-log(recvW[:20,:20])
+log(recvW[:20, :20])
 
 log("recv counter sum ===========================================")
-recvSum = [*map(sum, zip(recvN.ravel(), recvS.ravel(), recvE.ravel(), recvW.ravel()))]
+recvSum = [
+    *map(sum, zip(recvN.ravel(), recvS.ravel(), recvE.ravel(), recvW.ravel()))
+]
 log(recvSum[:100])
 log(f"{np.mean(recvSum)=} {np.std(recvSum)=} {sps.sem(recvSum)=}")
 log(f"{np.median(recvSum)=} {np.min(recvSum)=} {np.max(recvSum)=}")
@@ -1162,7 +1166,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendN = out_tensors.copy()
-log(sendN[:20,:20])
+log(sendN[:20, :20])
 
 log("send counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1182,7 +1186,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendS = out_tensors.copy()
-log(sendS[:20,:20])
+log(sendS[:20, :20])
 
 log("send counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1202,7 +1206,7 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendE = out_tensors.copy()
-log(sendE[:20,:20])
+log(sendE[:20, :20])
 
 log("send counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1222,10 +1226,12 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 sendW = out_tensors.copy()
-log(sendW[:20,:20])
+log(sendW[:20, :20])
 
 log("send counter sum ===========================================")
-sendSum = [*map(sum, zip(sendN.ravel(), sendS.ravel(), sendE.ravel(), sendW.ravel()))]
+sendSum = [
+    *map(sum, zip(sendN.ravel(), sendS.ravel(), sendE.ravel(), sendW.ravel()))
+]
 log(sendSum[:100])
 log(f"{np.mean(sendSum)=} {np.std(sendSum)=} {sps.sem(sendSum)=}")
 log(f"{np.median(sendSum)=} {np.min(sendSum)=} {np.max(sendSum)=}")
