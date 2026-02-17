@@ -183,60 +183,72 @@ def process_fossils(nWav: int) -> None:
 
         nPos = nCol * nRow
         log(f" - filling DataFrame {nPos=}")
+
+        log(f" - data_raw: {df['data_raw'].head(3)}")
+        assert (df["data_raw"].bin.size(unit="b") == byte_width).all()
+
+        log(" - adding indices...")  # before lazy for sink compat
         df = df.with_columns(
             layer=(pl.int_range(pl.len()) // nPos).cast(pl.UInt32),
             position=(pl.int_range(pl.len()) % nPos).cast(pl.UInt32),
         ).with_columns(
             layer_T=pl.col("layer")
-            .map_elements(
-                layer_T.__getitem__,
-            )
+            .map_elements(layer_T.__getitem__)
             .cast(pl.UInt64),
         )
-        log(f" - data_raw: {df['data_raw'].head(3)}")
-        assert (df["data_raw"].bin.size(unit="b") == byte_width).all()
 
-        log(f" - encoding {len(df)} binary fossil rows to hex...")
+        log(" - lazifying...")
+        df = df.lazy()
+
+        log(f" - encoding binary fossil rows to hex...")
         df = df.with_columns(
             data_hex=pl.col("data_raw").bin.encode("hex"),
         ).drop("data_raw")
-        log(f" - ... done!")
 
-        log(f" - data_hex: {df['data_hex'].head(3)}")
-        log(" - validation check 0/3...")
-        assert (df["data_hex"].str.len_chars() == (nWav + 2) * 8).all()
-        log(" - validation check 1/3...")
-        assert (df["data_hex"].str.len_bytes() == (nWav + 2) * 8).all()
-        log(" - validation check 2/3...")
-        assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
-        log(" - validation check 3/3 complete!")
-
-        len_before = len(df)
-        df = df.filter(
-            pl.col("data_hex").str.head(8) == pl.col("data_hex").str.tail(8),
-        )
         log(
-            " - bookend check removed "
-            f"{len_before - len(df)} / {len_before} "
-            f"({100 * (len_before - len(df)) / len_before:.1f}%) fossils",
+            f""" - data_hex: {
+                df.select('data_hex').head(3).collect().to_series()
+            }""",
         )
-        log(f" - bookend check retained {len(df)} fossils")
+        log(" - validation check...")
+        validation_exprs = [
+            pl.col("data_hex").str.len_chars() == byte_width * 2,
+            pl.col("data_hex").str.len_bytes() == byte_width * 2,
+            pl.col("data_hex").str.contains("^[0-9a-fA-F]+$"),
+            pl.col("data_hex").str.head(8) == pl.col("data_hex").str.tail(8),
+        ]
+        validation_result = (
+            df.select(
+                pl.all_horizontal(validation_exprs).all(),
+            )
+            .collect()
+            .item()
+        )
+        log(f" - {validation_result=}")
+        if not validation_result:
+            for i, expr in enumerate(validation_exprs):
+                nfail = df.filter(~expr).select(pl.count()).collect().item()
+                log(f"  - validation  {i=} {str(expr)=} failed {nfail=} rows")
+                if nfail:
+                    log(
+                        f"""  - example failed data_hex: {
+                            df.filter(~expr).select('data_hex')
+                            .head(3).collect().to_series()
+                        }""",
+                    )
+        assert validation_result
 
         log(" - stripping bookends...")
         df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
-        log(" - ... done!")
 
-        log(f" - data_hex: {df['data_hex'].head(3)}")
-        log(" - validation check 0/3...")
-        assert (df["data_hex"].str.len_chars() == nWav * 8).all()
-        log(" - validation check 1/3...")
-        assert (df["data_hex"].str.len_bytes() == nWav * 8).all()
-        log(" - validation check 2/3...")
-        assert (df["data_hex"].str.contains("^[0-9a-fA-F]+$")).all()
-        log(" - validation check 3/3 complete!")
+        log(
+            f""" - data_hex: {
+                df.select('data_hex').head(3).collect().to_series()
+            }""",
+        )
 
         log("- adding metadata columns")
-        df = df.lazy().with_columns(
+        df = df.with_columns(
             [
                 pl.lit(value, dtype=dtype).alias(key)
                 for key, (value, dtype) in metadata.items()
@@ -317,7 +329,7 @@ except ImportError:
                     "install",
                     f"--target={temp_dir}",
                     "--no-cache-dir",
-                    "polars==1.6.0",
+                    "polars==1.8.2",
                 ],
                 env={
                     **os.environ,
@@ -359,7 +371,7 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     if isinstance(df, pl.DataFrame):
         log(f"- {df.shape=}")
     else:
-        log(f" - {type(df)} {df.width=}")
+        log(f" - {type(df)} {df.collect_schema().len()=}")
 
     tmp_file = f"{os.getenv('ASYNC_GA_LOCAL_PATH', 'local')}/tmp.pqt"
     if isinstance(df, pl.DataFrame):
