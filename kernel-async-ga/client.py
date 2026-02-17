@@ -192,10 +192,14 @@ def process_fossils(nWav: int) -> None:
             layer=(pl.int_range(pl.len()) // nPos).cast(pl.UInt32),
             position=(pl.int_range(pl.len()) % nPos).cast(pl.UInt32),
         ).with_columns(
-            layer_T=pl.col("layer")
-            .map_elements(layer_T.__getitem__)
-            .cast(pl.UInt64),
+            layer_T=pl.col("layer").replace_strict(
+                old=[*range(len(layer_T))],
+                new=layer_T,
+                return_dtype=pl.UInt64,
+            ),
         )
+        del layer_T
+        gc.collect()
 
         log(" - lazifying...")
         df = df.lazy()
