@@ -89,7 +89,9 @@ cd "${RESULTDIR}"
 pwd
 ls
 
-for f in 0*; do
+shopt -s nullglob
+
+for f in 0* 1* 2* 3* 4* 5* 6* 7* 8*; do
     echo "archiving ${f} ..."
     find "${f}" -type f -size -100M -print0 \
         | tar --null -czvf "${RESULTDIR_STEP}/${f}.tar.gz" -T - &
@@ -99,7 +101,7 @@ echo "waiting for background jobs ..."
 wait
 
 echo "archiving all steps together ..."
-find 0* -type f -size -100M -print0 \
+find 0* 1* 2* 3* 4* 5* 6* 7* 8* -type f -size -100M -print0 \
     | tar --null -czvf "${RESULTDIR_STEP}/${FLOWNAME}.tar.gz" -T -
 
 ###############################################################################
