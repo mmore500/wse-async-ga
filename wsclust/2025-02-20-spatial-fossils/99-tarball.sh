@@ -104,6 +104,7 @@ echo "archiving all steps together ..."
 find 0* 1* 2* 3* 4* 5* 6* 7* 8* -type f -size -100M -print0 \
     | tar --null -czvf "${RESULTDIR_STEP}/${FLOWNAME}.tar.gz" -T -
 
+
 ###############################################################################
 echo
 echo "closeout ---------------------------------------------------------------"
