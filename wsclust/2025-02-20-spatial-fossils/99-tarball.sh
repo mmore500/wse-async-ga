@@ -98,6 +98,10 @@ done
 echo "waiting for background jobs ..."
 wait
 
+echo "archiving all steps together ..."
+find 0* -type f -size -100M -print0 \
+    | tar --null -czvf "${RESULTDIR_STEP}/${FLOWNAME}.tar.gz" -T -
+
 ###############################################################################
 echo
 echo "closeout ---------------------------------------------------------------"
