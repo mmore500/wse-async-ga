@@ -735,12 +735,12 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     )
     print("3", end="", flush=True)
 
-    cycle_counts = out_tensors.ravel().copy()
-    num_complete = np.sum(cycle_counts >= nCycleAtLeast)
+    cycleCounts = out_tensors.ravel().copy()
+    num_complete = np.sum(cycleCounts >= nCycleAtLeast)
     print("4", end="", flush=True)
 
     should_break = num_complete > 0
-    print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
+    print(f"({num_complete/cycleCounts.size * 100}%)", end="", flush=True)
     if should_break:
         phase1_elapsed_ns = time.time_ns() - launch_ns
         phase1_elapsed_cycles = cycle + 1
@@ -778,7 +778,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     )
     print("2", end="", flush=True)
 
-    cycle_counts = out_tensors.ravel().copy()
+    cycleCounts = out_tensors.ravel().copy()
     num_complete = np.sum(cycle_counts >= nCycleAtLeast)
     print("3", end="", flush=True)
     should_break = num_complete == cycle_counts.size
@@ -994,17 +994,29 @@ traitValues_data = out_tensors.copy()
 log(f"traitValues_data {str(Counter(traitValues_data.ravel()))[:500]}")
 
 # save trait data values to a file
-df = pl.DataFrame({
-    "trait count": pl.Series(traitCounts_data.ravel(), dtype=pl.UInt16),
-    "trait cycle last seen": pl.Series(traitCycles_data.ravel(), dtype=pl.UInt32),
-    "trait value": pl.Series(traitValues_data.ravel(), dtype=pl.UInt8),
-    "tile": pl.Series(np.repeat(whoami_data.ravel(), nTrait), dtype=pl.UInt32),
-    "row": pl.Series(np.repeat(whereami_y_data.ravel(), nTrait), dtype=pl.UInt16),
-    "col": pl.Series(np.repeat(whereami_x_data.ravel(), nTrait), dtype=pl.UInt16),
-}).with_columns([
-    pl.lit(value, dtype=dtype).alias(key)
-    for key, (value, dtype) in metadata.items()
-])
+df = pl.DataFrame(
+    {
+        "trait count": pl.Series(traitCounts_data.ravel(), dtype=pl.UInt16),
+        "trait cycle last seen": pl.Series(
+            traitCycles_data.ravel(), dtype=pl.UInt32
+        ),
+        "trait value": pl.Series(traitValues_data.ravel(), dtype=pl.UInt8),
+        "tile": pl.Series(
+            np.repeat(whoami_data.ravel(), nTrait), dtype=pl.UInt32
+        ),
+        "row": pl.Series(
+            np.repeat(whereami_y_data.ravel(), nTrait), dtype=pl.UInt16
+        ),
+        "col": pl.Series(
+            np.repeat(whereami_x_data.ravel(), nTrait), dtype=pl.UInt16
+        ),
+    }
+).with_columns(
+    [
+        pl.lit(value, dtype=dtype).alias(key)
+        for key, (value, dtype) in metadata.items()
+    ]
+)
 
 
 for trait, group in df.group_by("trait value"):
@@ -1048,12 +1060,14 @@ record_raw = record_raw.astype(object)
 
 # save trait logger values to a file
 log(" - creating DataFrame")
-df = pl.DataFrame({
-    "data_raw": pl.Series(record_raw, dtype=pl.Binary),
-    "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
-    "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
-    "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
-}).with_columns(
+df = pl.DataFrame(
+    {
+        "data_raw": pl.Series(record_raw, dtype=pl.Binary),
+        "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
+        "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
+        "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
+    }
+).with_columns(
     pl.lit(value, dtype=dtype).alias(key)
     for key, (value, dtype) in metadata.items()
 )
@@ -1104,8 +1118,10 @@ runner.memcpy_d2h(
     order=MemcpyOrder.ROW_MAJOR,
     nonblock=False,
 )
-fitness_data = out_tensors.copy()
-log(fitness_data[:20, :20])
+fit_data = out_tensors.copy()
+log(fit_data[:20, :20])
+log(f"{np.mean(fit_data)=} {np.std(fit_data)=} {sps.sem(fit_data)=}")
+log(f"{np.median(fit_data)=} {np.min(fit_data)=} {np.max(fit_data)=}")
 
 log("genome values ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1131,14 +1147,16 @@ genome_raw = genome_raw.astype(object)
 
 # save genome values to a file
 log(" - creating DataFrame")
-df = pl.DataFrame({
-    "data_raw": pl.Series(genome_raw, dtype=pl.Binary),
-    "is_extant": True,
-    "fitness": pl.Series(fitness_data.ravel(), dtype=pl.Float32),
-    "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
-    "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
-    "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
-})
+df = pl.DataFrame(
+    {
+        "data_raw": pl.Series(genome_raw, dtype=pl.Binary),
+        "is_extant": True,
+        "fitness": pl.Series(fit_data.ravel(), dtype=pl.Float32),
+        "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
+        "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
+        "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
+    }
+)
 log(f" - data_raw: {df['data_raw'].head(3)}")
 assert (df["data_raw"].bin.size(unit="b") == nWav * 4).all()
 df = df.with_columns(
@@ -1162,7 +1180,7 @@ write_parquet_verbose(
     f"+ncycle={nCycleAtLeast}"
     "+ext=.pqt",
 )
-del df, fitness_data, genome_raw
+del df, fit_data, genome_raw
 
 log("cycle counter =============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1181,9 +1199,10 @@ runner.memcpy_d2h(
     order=MemcpyOrder.ROW_MAJOR,
     nonblock=False,
 )
-cycle_counts = out_tensors.ravel().copy()
-log(cycle_counts[:100])
-
+cycleCounts = out_tensors.ravel().copy()
+log(cycleCounts[:100])
+log(f"{np.mean(cycleCounts)=} {np.std(cycleCounts)=} {sps.sem(cycleCounts)=}")
+log(f"{np.median(cycleCounts)=} {np.min(cycleCounts)=} {np.max(cycleCounts)=}")
 
 log("recv counter N ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1204,6 +1223,8 @@ runner.memcpy_d2h(
 )
 recvN = out_tensors.copy()
 log(recvN[:20, :20])
+log(f"{np.mean(recvN)=} {np.std(recvN)=} {sps.sem(recvN)=}")
+log(f"{np.median(recvN)=} {np.min(recvN)=} {np.max(recvN)=}")
 
 log("recv counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1224,6 +1245,8 @@ runner.memcpy_d2h(
 )
 recvS = out_tensors.copy()
 log(recvS[:20, :20])
+log(f"{np.mean(recvS)=} {np.std(recvS)=} {sps.sem(recvS)=}")
+log(f"{np.median(recvS)=} {np.min(recvS)=} {np.max(recvS)=}")
 
 log("recv counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1244,6 +1267,8 @@ runner.memcpy_d2h(
 )
 recvE = out_tensors.copy()
 log(recvE[:20, :20])
+log(f"{np.mean(recvE)=} {np.std(recvE)=} {sps.sem(recvE)=}")
+log(f"{np.median(recvE)=} {np.min(recvE)=} {np.max(recvE)=}")
 
 log("recv counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1264,6 +1289,8 @@ runner.memcpy_d2h(
 )
 recvW = out_tensors.copy()
 log(recvW[:20, :20])
+log(f"{np.mean(recvW)=} {np.std(recvW)=} {sps.sem(recvW)=}")
+log(f"{np.median(recvW)=} {np.min(recvW)=} {np.max(recvW)=}")
 
 log("recv counter sum ===========================================")
 recvSum = [
@@ -1292,6 +1319,8 @@ runner.memcpy_d2h(
 )
 sendN = out_tensors.copy()
 log(sendN[:20, :20])
+log(f"{np.mean(sendN)=} {np.std(sendN)=} {sps.sem(sendN)=}")
+log(f"{np.median(sendN)=} {np.min(sendN)=} {np.max(sendN)=}")
 
 log("send counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1312,6 +1341,8 @@ runner.memcpy_d2h(
 )
 sendS = out_tensors.copy()
 log(sendS[:20, :20])
+log(f"{np.mean(sendS)=} {np.std(sendS)=} {sps.sem(sendS)=}")
+log(f"{np.median(sendS)=} {np.min(sendS)=} {np.max(sendS)=}")
 
 log("send counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1332,6 +1363,8 @@ runner.memcpy_d2h(
 )
 sendE = out_tensors.copy()
 log(sendE[:20, :20])
+log(f"{np.mean(sendE)=} {np.std(sendE)=} {sps.sem(sendE)=}")
+log(f"{np.median(sendE)=} {np.min(sendE)=} {np.max(sendE)=}")
 
 log("send counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1352,6 +1385,8 @@ runner.memcpy_d2h(
 )
 sendW = out_tensors.copy()
 log(sendW[:20, :20])
+log(f"{np.mean(sendW)=} {np.std(sendW)=} {sps.sem(sendW)=}")
+log(f"{np.median(sendW)=} {np.min(sendW)=} {np.max(sendW)=}")
 
 log("send counter sum ===========================================")
 sendSum = [
@@ -1380,7 +1415,8 @@ runner.memcpy_d2h(
 )
 immN = out_tensors.copy()
 log(immN[:20, :20])
-log(f"{np.median(immN)=} {np.mean(immN)=}")
+log(f"{np.mean(immN)=} {np.std(immN)=} {sps.sem(immN)=}")
+log(f"{np.median(immN)=} {np.min(immN)=} {np.max(immN)=}")
 
 log("imm counter S ===============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1401,7 +1437,8 @@ runner.memcpy_d2h(
 )
 immS = out_tensors.copy()
 log(immS[:20, :20])
-log(f"{np.median(immS)=} {np.mean(immS)=}")
+log(f"{np.mean(immS)=} {np.std(immS)=} {sps.sem(immS)=}")
+log(f"{np.median(immS)=} {np.min(immS)=} {np.max(immS)=}")
 
 log("imm counter E ===============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1422,7 +1459,8 @@ runner.memcpy_d2h(
 )
 immE = out_tensors.copy()
 log(immE[:20, :20])
-log(f"{np.median(immE)=} {np.mean(immE)=}")
+log(f"{np.mean(immE)=} {np.std(immE)=} {sps.sem(immE)=}")
+log(f"{np.median(immE)=} {np.min(immE)=} {np.max(immE)=}")
 
 log("imm counter W ===============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1443,7 +1481,8 @@ runner.memcpy_d2h(
 )
 immW = out_tensors.copy()
 log(immW[:20, :20])
-log(f"{np.median(immW)=} {np.mean(immW)=}")
+log(f"{np.mean(immW)=} {np.std(immW)=} {sps.sem(immW)=}")
+log(f"{np.median(immW)=} {np.min(immW)=} {np.max(immW)=}")
 
 log("imm counter sum =============================================")
 immSum = [
@@ -1543,7 +1582,7 @@ log(tsc_sec[:100])
 log(f"{np.mean(tsc_sec)=} {np.std(tsc_sec)=} {sps.sem(tsc_sec)=}")
 
 log("-------------------------------------------- seconds per cycle")
-tsc_cysec = [sec / ncy for (sec, ncy) in zip(tsc_sec, cycle_counts)]
+tsc_cysec = [sec / ncy for (sec, ncy) in zip(tsc_sec, cycleCounts)]
 log(tsc_cysec[:100])
 log(f"{np.mean(tsc_cysec)=} {np.std(tsc_cysec)=} {sps.sem(tsc_cysec)=}")
 
@@ -1559,37 +1598,41 @@ log(f"{np.mean(tsc_cyns)=} {np.std(tsc_cyns)=} {sps.sem(tsc_cyns)=}")
 
 log("perf ======================================================")
 # save performance metrics to a file
-df = pl.DataFrame({
-    "tsc ticks": pl.Series(tsc_ticks, dtype=pl.UInt64),
-    "tsc seconds": pl.Series(tsc_sec, dtype=pl.Float32),
-    "tsc seconds per cycle": pl.Series(tsc_cysec, dtype=pl.Float32),
-    "tsc cycle hertz": pl.Series(tsc_cyhz, dtype=pl.Float32),
-    "tsc ns per cycle": pl.Series(tsc_cyns, dtype=pl.Float32),
-    "recv sum": pl.Series(recvSum, dtype=pl.UInt32),
-    "send sum": pl.Series(sendSum, dtype=pl.UInt32),
-    "cycle count": pl.Series(cycle_counts, dtype=pl.UInt32),
-    "tsc start": pl.Series(tscStart_ints, dtype=pl.UInt64),
-    "tsc end": pl.Series(tscEnd_ints, dtype=pl.UInt64),
-    "send N": pl.Series(sendN.ravel(), dtype=pl.UInt32),
-    "send S": pl.Series(sendS.ravel(), dtype=pl.UInt32),
-    "send E": pl.Series(sendE.ravel(), dtype=pl.UInt32),
-    "send W": pl.Series(sendW.ravel(), dtype=pl.UInt32),
-    "recv N": pl.Series(recvN.ravel(), dtype=pl.UInt32),
-    "recv S": pl.Series(recvS.ravel(), dtype=pl.UInt32),
-    "recv E": pl.Series(recvE.ravel(), dtype=pl.UInt32),
-    "recv W": pl.Series(recvW.ravel(), dtype=pl.UInt32),
-    "imm N": pl.Series(immN.ravel(), dtype=pl.UInt32),
-    "imm S": pl.Series(immS.ravel(), dtype=pl.UInt32),
-    "imm E": pl.Series(immE.ravel(), dtype=pl.UInt32),
-    "imm W": pl.Series(immW.ravel(), dtype=pl.UInt32),
-    "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
-    "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
-    "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
-})
-df.with_columns([
-    pl.lit(value, dtype=dtype).alias(key)
-    for key, (value, dtype) in metadata.items()
-])
+df = pl.DataFrame(
+    {
+        "tsc ticks": pl.Series(tsc_ticks, dtype=pl.UInt64),
+        "tsc seconds": pl.Series(tsc_sec, dtype=pl.Float32),
+        "tsc seconds per cycle": pl.Series(tsc_cysec, dtype=pl.Float32),
+        "tsc cycle hertz": pl.Series(tsc_cyhz, dtype=pl.Float32),
+        "tsc ns per cycle": pl.Series(tsc_cyns, dtype=pl.Float32),
+        "recv sum": pl.Series(recvSum, dtype=pl.UInt32),
+        "send sum": pl.Series(sendSum, dtype=pl.UInt32),
+        "cycle count": pl.Series(cycleCounts, dtype=pl.UInt32),
+        "tsc start": pl.Series(tscStart_ints, dtype=pl.UInt64),
+        "tsc end": pl.Series(tscEnd_ints, dtype=pl.UInt64),
+        "send N": pl.Series(sendN.ravel(), dtype=pl.UInt32),
+        "send S": pl.Series(sendS.ravel(), dtype=pl.UInt32),
+        "send E": pl.Series(sendE.ravel(), dtype=pl.UInt32),
+        "send W": pl.Series(sendW.ravel(), dtype=pl.UInt32),
+        "recv N": pl.Series(recvN.ravel(), dtype=pl.UInt32),
+        "recv S": pl.Series(recvS.ravel(), dtype=pl.UInt32),
+        "recv E": pl.Series(recvE.ravel(), dtype=pl.UInt32),
+        "recv W": pl.Series(recvW.ravel(), dtype=pl.UInt32),
+        "imm N": pl.Series(immN.ravel(), dtype=pl.UInt32),
+        "imm S": pl.Series(immS.ravel(), dtype=pl.UInt32),
+        "imm E": pl.Series(immE.ravel(), dtype=pl.UInt32),
+        "imm W": pl.Series(immW.ravel(), dtype=pl.UInt32),
+        "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
+        "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
+        "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
+    }
+)
+df.with_columns(
+    [
+        pl.lit(value, dtype=dtype).alias(key)
+        for key, (value, dtype) in metadata.items()
+    ]
+)
 write_parquet_verbose(
     df,
     "a=perf"
