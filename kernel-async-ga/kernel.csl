@@ -99,6 +99,15 @@ var ptr_sendCounter_E : [*]u32 = &sendCounter_E;
 var sendCounter_W = @zeros([1]u32);
 var ptr_sendCounter_W : [*]u32 = &sendCounter_W;
 
+var immCount_N = @zeros([1]u32);  // number of immigrations actually processed
+var ptr_immCount_N : [*]u32 = &immCount_N;
+var immCount_S = @zeros([1]u32);
+var ptr_immCount_S : [*]u32 = &immCount_S;
+var immCount_E = @zeros([1]u32);
+var ptr_immCount_E : [*]u32 = &immCount_E;
+var immCount_W = @zeros([1]u32);
+var ptr_immCount_W : [*]u32 = &immCount_W;
+
 var traitCounts = @zeros([nTraitVals]u32);
 var ptr_traitCounts : [*]u32 = &traitCounts;
 var traitCycles = @zeros([nTraitVals]u32);
@@ -543,6 +552,19 @@ task closeoutTask() void {
 }
 ///////////////////////////////////////////////////////////////////////////////
 
+// immigration throttle ======================================================
+// return the minimum immigration count among directions with >8 immigrations;
+// directions with <=8 are presumed inactive (e.g., edge PEs) and ignored.
+// returns 0x7FFFFFFF (no throttle) when no direction qualifies.
+fn minActiveImmCount() u32 {
+  var res: u32 = 0x7FFFFFFF;
+  if (immCount_N[0] > 8 and immCount_N[0] < res) { res = immCount_N[0]; }
+  if (immCount_S[0] > 8 and immCount_S[0] < res) { res = immCount_S[0]; }
+  if (immCount_E[0] > 8 and immCount_E[0] < res) { res = immCount_E[0]; }
+  if (immCount_W[0] > 8 and immCount_W[0] < res) { res = immCount_W[0]; }
+  return res;
+}
+
 // halt condition ============================================================
 fn shouldHalt(cycle: u32) bool {
   const nCycleOk = cycle >= nCycleAtLeast;
@@ -565,25 +587,43 @@ task cycleTask() void {
   // handle recv flags, pull recv buffer into pop and start next async recv
   // note: never-filled recv requests on PE array edges ok
   // --------------------------------------------------------------------------
-  if (recvFlag_N == 1) {  // has open recv request been filled?
-    var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
-    population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
-    recvFlag_N = 0; dispatchRecv_N();
-  }
-  if (recvFlag_S == 1) {
-    var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
-    population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
-    recvFlag_S = 0; dispatchRecv_S();
-  }
-  if (recvFlag_E == 1) {
-    var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
-    population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
-    recvFlag_E = 0; dispatchRecv_E();
-  }
-  if (recvFlag_W == 1) {
-    var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
-    population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
-    recvFlag_W = 0; dispatchRecv_W();
+  // randomize recv processing order to prevent directional immigration bias
+  // (fixed N,S,E,W order causes later-processed directions to overwrite
+  // earlier ones, systematically favoring W->E and S->N gene flow)
+  // also throttle to the slowest active direction to equalize rates
+  const minImm = minActiveImmCount();
+  const recvShuf = @random16() & 3;
+  for (@range(u16, 4)) |i| {
+    const j = (i + recvShuf) & 3;
+    if (j == 0 and recvFlag_N == 1) {
+      if (immCount_N[0] <= minImm) {
+        var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
+        population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
+        immCount_N[0] += 1;
+      }
+      recvFlag_N = 0; dispatchRecv_N();
+    } else if (j == 1 and recvFlag_S == 1) {
+      if (immCount_S[0] <= minImm) {
+        var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
+        population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
+        immCount_S[0] += 1;
+      }
+      recvFlag_S = 0; dispatchRecv_S();
+    } else if (j == 2 and recvFlag_E == 1) {
+      if (immCount_E[0] <= minImm) {
+        var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
+        population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
+        immCount_E[0] += 1;
+      }
+      recvFlag_E = 0; dispatchRecv_E();
+    } else if (j == 3 and recvFlag_W == 1) {
+      if (immCount_W[0] <= minImm) {
+        var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
+        population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
+        immCount_W[0] += 1;
+      }
+      recvFlag_W = 0; dispatchRecv_W();
+    }
   }
 
   // apply replication/selection to population
@@ -790,6 +830,10 @@ comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_sendCounter_S, "sendCounter_S");
   @export_symbol(ptr_sendCounter_E, "sendCounter_E");
   @export_symbol(ptr_sendCounter_W, "sendCounter_W");
+  @export_symbol(ptr_immCount_N, "immCount_N");
+  @export_symbol(ptr_immCount_S, "immCount_S");
+  @export_symbol(ptr_immCount_E, "immCount_E");
+  @export_symbol(ptr_immCount_W, "immCount_W");
   @export_symbol(ptr_traitCounts, "traitCounts");
   @export_symbol(ptr_traitCycles, "traitCycles");
   @export_symbol(ptr_traitValues, "traitValues");

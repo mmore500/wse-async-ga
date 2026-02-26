@@ -1361,6 +1361,94 @@ log(sendSum[:100])
 log(f"{np.mean(sendSum)=} {np.std(sendSum)=} {sps.sem(sendSum)=}")
 log(f"{np.median(sendSum)=} {np.min(sendSum)=} {np.max(sendSum)=}")
 
+log("imm counter N ===============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCount_N"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immN = out_tensors.copy()
+log(immN[:20, :20])
+
+log("imm counter S ===============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCount_S"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immS = out_tensors.copy()
+log(immS[:20, :20])
+
+log("imm counter E ===============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCount_E"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immE = out_tensors.copy()
+log(immE[:20, :20])
+
+log("imm counter W ===============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCount_W"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immW = out_tensors.copy()
+log(immW[:20, :20])
+
+log("imm counter sum =============================================")
+immSum = [
+    *map(sum, zip(immN.ravel(), immS.ravel(), immE.ravel(), immW.ravel()))
+]
+log(immSum[:100])
+log(f"{np.mean(immSum)=} {np.std(immSum)=} {sps.sem(immSum)=}")
+log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
+
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
 out_tensors = np.zeros((nCol, nRow, tscSizeWords // 2), np.uint32)
