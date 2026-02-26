@@ -1380,6 +1380,7 @@ runner.memcpy_d2h(
 )
 immN = out_tensors.copy()
 log(immN[:20, :20])
+log(f"{np.median(immN)=} {np.mean(immN)=}")
 
 log("imm counter S ===============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1400,6 +1401,7 @@ runner.memcpy_d2h(
 )
 immS = out_tensors.copy()
 log(immS[:20, :20])
+log(f"{np.median(immS)=} {np.mean(immS)=}")
 
 log("imm counter E ===============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1420,6 +1422,7 @@ runner.memcpy_d2h(
 )
 immE = out_tensors.copy()
 log(immE[:20, :20])
+log(f"{np.median(immE)=} {np.mean(immE)=}")
 
 log("imm counter W ===============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1440,6 +1443,7 @@ runner.memcpy_d2h(
 )
 immW = out_tensors.copy()
 log(immW[:20, :20])
+log(f"{np.median(immW)=} {np.mean(immW)=}")
 
 log("imm counter sum =============================================")
 immSum = [
@@ -1574,6 +1578,10 @@ df = pl.DataFrame({
     "recv S": pl.Series(recvS.ravel(), dtype=pl.UInt32),
     "recv E": pl.Series(recvE.ravel(), dtype=pl.UInt32),
     "recv W": pl.Series(recvW.ravel(), dtype=pl.UInt32),
+    "imm N": pl.Series(immN.ravel(), dtype=pl.UInt32),
+    "imm S": pl.Series(immS.ravel(), dtype=pl.UInt32),
+    "imm E": pl.Series(immE.ravel(), dtype=pl.UInt32),
+    "imm W": pl.Series(immW.ravel(), dtype=pl.UInt32),
     "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
     "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
     "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
