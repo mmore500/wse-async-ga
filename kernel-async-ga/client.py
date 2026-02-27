@@ -1183,7 +1183,10 @@ runner.memcpy_d2h(
 )
 cycle_counts = out_tensors.ravel().copy()
 log(cycle_counts[:100])
-
+cc = cycle_counts
+log(f"{np.mean(cc)=} {np.std(cc)=} {sps.sem(cc)=}")
+log(f"{np.median(cc)=} {np.min(cc)=} {np.max(cc)=}")
+del cc
 
 log("recv counter N ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1204,6 +1207,8 @@ runner.memcpy_d2h(
 )
 recvN = out_tensors.copy()
 log(recvN[:20, :20])
+log(f"{np.mean(recvN)=} {np.std(recvN)=} {sps.sem(recvN)=}")
+log(f"{np.median(recvN)=} {np.min(recvN)=} {np.max(recvN)=}")
 
 log("recv counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1224,6 +1229,8 @@ runner.memcpy_d2h(
 )
 recvS = out_tensors.copy()
 log(recvS[:20, :20])
+log(f"{np.mean(recvS)=} {np.std(recvS)=} {sps.sem(recvS)=}")
+log(f"{np.median(recvS)=} {np.min(recvS)=} {np.max(recvS)=}")
 
 log("recv counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1244,6 +1251,8 @@ runner.memcpy_d2h(
 )
 recvE = out_tensors.copy()
 log(recvE[:20, :20])
+log(f"{np.mean(recvE)=} {np.std(recvE)=} {sps.sem(recvE)=}")
+log(f"{np.median(recvE)=} {np.min(recvE)=} {np.max(recvE)=}")
 
 log("recv counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1264,6 +1273,8 @@ runner.memcpy_d2h(
 )
 recvW = out_tensors.copy()
 log(recvW[:20, :20])
+log(f"{np.mean(recvW)=} {np.std(recvW)=} {sps.sem(recvW)=}")
+log(f"{np.median(recvW)=} {np.min(recvW)=} {np.max(recvW)=}")
 
 log("recv counter sum ===========================================")
 recvSum = [
@@ -1292,6 +1303,8 @@ runner.memcpy_d2h(
 )
 sendN = out_tensors.copy()
 log(sendN[:20, :20])
+log(f"{np.mean(sendN)=} {np.std(sendN)=} {sps.sem(sendN)=}")
+log(f"{np.median(sendN)=} {np.min(sendN)=} {np.max(sendN)=}")
 
 log("send counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1312,6 +1325,8 @@ runner.memcpy_d2h(
 )
 sendS = out_tensors.copy()
 log(sendS[:20, :20])
+log(f"{np.mean(sendS)=} {np.std(sendS)=} {sps.sem(sendS)=}")
+log(f"{np.median(sendS)=} {np.min(sendS)=} {np.max(sendS)=}")
 
 log("send counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1332,6 +1347,8 @@ runner.memcpy_d2h(
 )
 sendE = out_tensors.copy()
 log(sendE[:20, :20])
+log(f"{np.mean(sendE)=} {np.std(sendE)=} {sps.sem(sendE)=}")
+log(f"{np.median(sendE)=} {np.min(sendE)=} {np.max(sendE)=}")
 
 log("send counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1352,6 +1369,8 @@ runner.memcpy_d2h(
 )
 sendW = out_tensors.copy()
 log(sendW[:20, :20])
+log(f"{np.mean(sendW)=} {np.std(sendW)=} {sps.sem(sendW)=}")
+log(f"{np.median(sendW)=} {np.min(sendW)=} {np.max(sendW)=}")
 
 log("send counter sum ===========================================")
 sendSum = [
