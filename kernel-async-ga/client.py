@@ -277,7 +277,12 @@ def process_fossils(nWav: int) -> None:
                             .head(3).collect().to_series()
                         }""",
                     )
-        assert validation_result
+
+            log(" - filtering invalid rows...")
+            nrow_before = df.select(pl.len()).collect().item()
+            df = df.filter(pl.all_horizontal(validation_exprs))
+            nrow_after = df.select(pl.len()).collect().item()
+            log(f" - ... {nrow_before=}/{nrow_after=} remain after filtering")
 
         log(" - stripping bookends...")
         df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
