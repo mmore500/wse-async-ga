@@ -779,10 +779,10 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     print("2", end="", flush=True)
 
     cycleCounts = out_tensors.ravel().copy()
-    num_complete = np.sum(cycle_counts >= nCycleAtLeast)
+    num_complete = np.sum(cycleCounts >= nCycleAtLeast)
     print("3", end="", flush=True)
-    should_break = num_complete == cycle_counts.size
-    print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
+    should_break = num_complete == cycleCounts.size
+    print(f"({num_complete/cycleCounts.size * 100}%)", end="", flush=True)
     if should_break:
         phase2_elapsed_ns = time.time_ns() - launch_ns
         phase2_elapsed_cycles = cycle + 1
@@ -1627,7 +1627,7 @@ df = pl.DataFrame(
         "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
     }
 )
-df.with_columns(
+df = df.with_columns(
     [
         pl.lit(value, dtype=dtype).alias(key)
         for key, (value, dtype) in metadata.items()
