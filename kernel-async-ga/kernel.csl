@@ -569,11 +569,21 @@ task cycleTask() void {
   // --------------------------------------------------------------------------
 
   const shuf1 = @random16() & 3;
+  const throttleThresh = math.min(
+    math.min(
+      if (immCounter_N > 0) immCounter_N else 0xFFFFFFFF,
+      if (immCounter_S > 0) immCounter_S else 0xFFFFFFFF,
+    ),
+    math.min(
+      if (immCounter_E > 0) immCounter_E else 0xFFFFFFFF,
+      if (immCounter_W > 0) immCounter_W else 0xFFFFFFFF,
+    ),
+  );
   for (@range(u16, 4)) |i| {
     const j = (i + shuf1) & 3;  // round-robin order
     if (j == 0 and recvFlag_N == 1) {  // has open recv request been filled?
       var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
-      if (immCounter_N <= immCounter_S) {
+      if (immCounter_N <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
         immCounter_N += 1;
       }
@@ -581,7 +591,7 @@ task cycleTask() void {
     }
     else if (j == 1 and recvFlag_S == 1) {
       var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
-      if (immCounter_S <= immCounter_N) {
+      if (immCounter_S <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
         immCounter_S += 1;
       }
@@ -589,7 +599,7 @@ task cycleTask() void {
     }
     else if (j == 2 and recvFlag_E == 1) {
       var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
-      if (immCounter_E <= immCounter_W) {
+      if (immCounter_E <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
         immCounter_E += 1;
       }
@@ -597,7 +607,7 @@ task cycleTask() void {
     }
     else if (j == 3 and recvFlag_W == 1) {
       var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
-      if (immCounter_W <= immCounter_E) {
+      if (immCounter_W <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
         immCounter_W += 1;
       }
