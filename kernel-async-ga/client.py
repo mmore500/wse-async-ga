@@ -1490,7 +1490,7 @@ df = pl.DataFrame({
     "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
     "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
 })
-df.with_columns([
+df = df.with_columns([
     pl.lit(value, dtype=dtype).alias(key)
     for key, (value, dtype) in metadata.items()
 ])
