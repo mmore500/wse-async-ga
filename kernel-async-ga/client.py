@@ -33,7 +33,7 @@ def log(msg: str, *args, **kwargs) -> None:
 def log_once(msg: str, *args, **kwargs) -> bool:
     before = log_once.cache_info().hits
     log(msg, *args, **kwargs)
-    return log_once.cache_info().hits == before
+    return log_once.cache_info().hits != before
 
 
 def removeprefix(text: str, prefix: str) -> str:
