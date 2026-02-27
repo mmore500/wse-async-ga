@@ -55,10 +55,6 @@ layout {
   }
 
   @export_name("cycleCounter", [*]u32, true);
-  @export_name("immCount_N", [*]u32, true);
-  @export_name("immCount_S", [*]u32, true);
-  @export_name("immCount_E", [*]u32, true);
-  @export_name("immCount_W", [*]u32, true);
   @export_name("recvCounter_N", [*]u32, true);
   @export_name("recvCounter_S", [*]u32, true);
   @export_name("recvCounter_E", [*]u32, true);
