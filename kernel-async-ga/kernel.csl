@@ -78,6 +78,8 @@ const optime = @import_module("cerebraslib/optime.csl");
 // for end-state telemetry, ptrs are necessary for memcpy infrastructure
 ///////////////////////////////////////////////////////////////////////////////
 var x: i16 = 0; var y: i16 = 0;  // PE array coordinates
+var immCounter_N = 0; var immCounter_S = 0;
+var immCounter_E = 0; var immCounter_W = 0;
 var cycleCounter = @zeros([1]u32);  // how many self-activation cycles elapse?
 var ptr_cycleCounter : [*]u32 = &cycleCounter;
 
@@ -565,25 +567,42 @@ task cycleTask() void {
   // handle recv flags, pull recv buffer into pop and start next async recv
   // note: never-filled recv requests on PE array edges ok
   // --------------------------------------------------------------------------
-  if (recvFlag_N == 1) {  // has open recv request been filled?
-    var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
-    population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
-    recvFlag_N = 0; dispatchRecv_N();
-  }
-  if (recvFlag_S == 1) {
-    var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
-    population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
-    recvFlag_S = 0; dispatchRecv_S();
-  }
-  if (recvFlag_E == 1) {
-    var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
-    population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
-    recvFlag_E = 0; dispatchRecv_E();
-  }
-  if (recvFlag_W == 1) {
-    var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
-    population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
-    recvFlag_W = 0; dispatchRecv_W();
+
+  const shuf1 = @random16() & 3;
+  for (@range(u16, 4)) |i| {
+    const j = (i + shuf1) & 3;  // round-robin order
+    if (j == 0 and recvFlag_N == 1) {  // has open recv request been filled?
+      var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
+      if (immCounter_N <= immCounter_S) {
+        population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
+        immCounter_N += 1;
+      }
+      recvFlag_N = 0; dispatchRecv_N();
+    }
+    else if (j == 1 and recvFlag_S == 1) {
+      var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
+      if (immCounter_S <= immCounter_N) {
+        population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
+        immCounter_S += 1;
+      }
+      recvFlag_S = 0; dispatchRecv_S();
+    }
+    else if (j == 2 and recvFlag_E == 1) {
+      var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
+      if (immCounter_E <= immCounter_W) {
+        population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
+        immCounter_E += 1;
+      }
+      recvFlag_E = 0; dispatchRecv_E();
+    }
+    else if (j == 3 and recvFlag_W == 1) {
+      var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
+      if (immCounter_W <= immCounter_E) {
+        population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
+        immCounter_W += 1;
+      }
+      recvFlag_W = 0; dispatchRecv_W();
+    }
   }
 
   // apply replication/selection to population
@@ -592,13 +611,13 @@ task cycleTask() void {
 
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
-  const shuf = @random16() & 3;
+  const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
     const numBusy = (
       busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
     );
     if (numBusy == 4) break;
-    const j = (i + shuf) & 3;  // round-robin order
+    const j = (i + shuf2) & 3;  // round-robin order
     if (j == 0 and sendFlag_N == 1) {
       if (dispatchSend_N()) { sendFlag_N = 0; }
     } else if (j == 1 and sendFlag_S == 1) {
