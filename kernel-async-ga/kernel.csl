@@ -78,8 +78,14 @@ const optime = @import_module("cerebraslib/optime.csl");
 // for end-state telemetry, ptrs are necessary for memcpy infrastructure
 ///////////////////////////////////////////////////////////////////////////////
 var x: i16 = 0; var y: i16 = 0;  // PE array coordinates
-var immCounter_N: u32 = 0; var immCounter_S: u32 = 0;
-var immCounter_E: u32 = 0; var immCounter_W: u32 = 0;
+var immCounter_N = @zeros([1]u32);
+var ptr_immCounter_N : [*]u32 = &immCounter_N;
+var immCounter_S = @zeros([1]u32);
+var ptr_immCounter_S : [*]u32 = &immCounter_S;
+var immCounter_E = @zeros([1]u32);
+var ptr_immCounter_E : [*]u32 = &immCounter_E;
+var immCounter_W = @zeros([1]u32);
+var ptr_immCounter_W : [*]u32 = &immCounter_W;
 var cycleCounter = @zeros([1]u32);  // how many self-activation cycles elapse?
 var ptr_cycleCounter : [*]u32 = &cycleCounter;
 
@@ -571,45 +577,45 @@ task cycleTask() void {
   const shuf1 = @random16() & 3;
   const throttleThresh = math.min(
     math.min(
-      if (immCounter_N > 0) immCounter_N else 0xFFFFFFFF,
-      if (immCounter_S > 0) immCounter_S else 0xFFFFFFFF,
+      if (immCounter_N[0] > 0) immCounter_N[0] else 0xFFFFFFFF,
+      if (immCounter_S[0] > 0) immCounter_S[0] else 0xFFFFFFFF,
     ),
     math.min(
-      if (immCounter_E > 0) immCounter_E else 0xFFFFFFFF,
-      if (immCounter_W > 0) immCounter_W else 0xFFFFFFFF,
+      if (immCounter_E[0] > 0) immCounter_E[0] else 0xFFFFFFFF,
+      if (immCounter_W[0] > 0) immCounter_W[0] else 0xFFFFFFFF,
     ),
   );
   for (@range(u16, 4)) |i| {
     const j = (i + shuf1) & 3;  // round-robin order
     if (j == 0 and recvFlag_N == 1) {  // has open recv request been filled?
       var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
-      if (immCounter_N <= throttleThresh) {
+      if (immCounter_N[0] <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
-        immCounter_N += 1;
+        immCounter_N[0] += 1;
       }
       recvFlag_N = 0; dispatchRecv_N();
     }
     else if (j == 1 and recvFlag_S == 1) {
       var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
-      if (immCounter_S <= throttleThresh) {
+      if (immCounter_S[0] <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
-        immCounter_S += 1;
+        immCounter_S[0] += 1;
       }
       recvFlag_S = 0; dispatchRecv_S();
     }
     else if (j == 2 and recvFlag_E == 1) {
       var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
-      if (immCounter_E <= throttleThresh) {
+      if (immCounter_E[0] <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
-        immCounter_E += 1;
+        immCounter_E[0] += 1;
       }
       recvFlag_E = 0; dispatchRecv_E();
     }
     else if (j == 3 and recvFlag_W == 1) {
       var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
-      if (immCounter_W <= throttleThresh) {
+      if (immCounter_W[0] <= throttleThresh) {
         population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
-        immCounter_W += 1;
+        immCounter_W[0] += 1;
       }
       recvFlag_W = 0; dispatchRecv_W();
     }
@@ -811,6 +817,10 @@ comptime {
 ///////////////////////////////////////////////////////////////////////////////
 comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_cycleCounter, "cycleCounter");
+  @export_symbol(ptr_immCounter_N, "immCounter_N");
+  @export_symbol(ptr_immCounter_S, "immCounter_S");
+  @export_symbol(ptr_immCounter_E, "immCounter_E");
+  @export_symbol(ptr_immCounter_W, "immCounter_W");
   @export_symbol(ptr_recvCounter_N, "recvCounter_N");
   @export_symbol(ptr_recvCounter_S, "recvCounter_S");
   @export_symbol(ptr_recvCounter_E, "recvCounter_E");
