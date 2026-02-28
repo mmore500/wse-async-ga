@@ -1385,6 +1385,102 @@ log(sendSum[:100])
 log(f"{np.mean(sendSum)=} {np.std(sendSum)=} {sps.sem(sendSum)=}")
 log(f"{np.median(sendSum)=} {np.min(sendSum)=} {np.max(sendSum)=}")
 
+log("imm counter N ==============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCounter_N"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immN = out_tensors.copy()
+log(immN[:20, :20])
+log(f"{np.mean(immN)=} {np.std(immN)=} {sps.sem(immN)=}")
+log(f"{np.median(immN)=} {np.min(immN)=} {np.max(immN)=}")
+
+log("imm counter S ==============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCounter_S"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immS = out_tensors.copy()
+log(immS[:20, :20])
+log(f"{np.mean(immS)=} {np.std(immS)=} {sps.sem(immS)=}")
+log(f"{np.median(immS)=} {np.min(immS)=} {np.max(immS)=}")
+
+log("imm counter E ==============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCounter_E"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immE = out_tensors.copy()
+log(immE[:20, :20])
+log(f"{np.mean(immE)=} {np.std(immE)=} {sps.sem(immE)=}")
+log(f"{np.median(immE)=} {np.min(immE)=} {np.max(immE)=}")
+
+log("imm counter W ==============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("immCounter_W"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+immW = out_tensors.copy()
+log(immW[:20, :20])
+log(f"{np.mean(immW)=} {np.std(immW)=} {sps.sem(immW)=}")
+log(f"{np.median(immW)=} {np.min(immW)=} {np.max(immW)=}")
+
+log("imm counter sum ============================================")
+immSum = [
+    *map(sum, zip(immN.ravel(), immS.ravel(), immE.ravel(), immW.ravel()))
+]
+log(immSum[:100])
+log(f"{np.mean(immSum)=} {np.std(immSum)=} {sps.sem(immSum)=}")
+log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
+
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
 out_tensors = np.zeros((nCol, nRow, tscSizeWords // 2), np.uint32)
@@ -1499,6 +1595,7 @@ df = pl.DataFrame({
     "tsc ns per cycle": pl.Series(tsc_cyns, dtype=pl.Float32),
     "recv sum": pl.Series(recvSum, dtype=pl.UInt32),
     "send sum": pl.Series(sendSum, dtype=pl.UInt32),
+    "imm sum": pl.Series(immSum, dtype=pl.UInt32),
     "cycle count": pl.Series(cycle_counts, dtype=pl.UInt32),
     "tsc start": pl.Series(tscStart_ints, dtype=pl.UInt64),
     "tsc end": pl.Series(tscEnd_ints, dtype=pl.UInt64),
@@ -1510,6 +1607,10 @@ df = pl.DataFrame({
     "recv S": pl.Series(recvS.ravel(), dtype=pl.UInt32),
     "recv E": pl.Series(recvE.ravel(), dtype=pl.UInt32),
     "recv W": pl.Series(recvW.ravel(), dtype=pl.UInt32),
+    "imm N": pl.Series(immN.ravel(), dtype=pl.UInt32),
+    "imm S": pl.Series(immS.ravel(), dtype=pl.UInt32),
+    "imm E": pl.Series(immE.ravel(), dtype=pl.UInt32),
+    "imm W": pl.Series(immW.ravel(), dtype=pl.UInt32),
     "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
     "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
     "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
