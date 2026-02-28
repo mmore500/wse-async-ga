@@ -532,6 +532,146 @@ fn test_seed_sensitivity() void {
     @assert(a0 != b0 or a1 != b1);
 }
 
+// === Test next_bit with pointer-based API ====================================
+
+// Verify the first 8 bits extracted from a known seed.
+// With seed (0x12345678, 0x9ABCDEF0), next() = 0x0d2d0969.
+// Bit order: bit31 (overwritten), then bits 0,1,2,...,30 (shifted out).
+// 0x0d2d0969 = 0000_1101_0010_1101_0000_1001_0110_1001
+fn test_next_bit_first_bits_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    var cache: u32 = 0;
+
+    @assert(rng.next_bit_(sp, &cache) == false); // bit 31 = 0
+    @assert(rng.next_bit_(sp, &cache) == true);  // bit 0  = 1
+    @assert(rng.next_bit_(sp, &cache) == false); // bit 1  = 0
+    @assert(rng.next_bit_(sp, &cache) == false); // bit 2  = 0
+    @assert(rng.next_bit_(sp, &cache) == true);  // bit 3  = 1
+    @assert(rng.next_bit_(sp, &cache) == false); // bit 4  = 0
+    @assert(rng.next_bit_(sp, &cache) == true);  // bit 5  = 1
+    @assert(rng.next_bit_(sp, &cache) == true);  // bit 6  = 1
+}
+
+// Over 32 calls, the number of true results must equal popcount of generated
+// value.  next() = 0x0d2d0969 whose popcount is 13.
+fn test_next_bit_popcount_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    var cache: u32 = 0;
+
+    var count: u32 = 0;
+    for (@range(u32, 32)) |i| {
+        if (rng.next_bit_(sp, &cache)) {
+            count += 1;
+        }
+    }
+    @assert(count == 13); // popcount(0x0d2d0969) = 13
+}
+
+// After 32 calls the cache sentinel should be the only bit left (cache == 1).
+// The 33rd call must trigger a new generation.
+fn test_next_bit_cache_lifecycle_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    var cache: u32 = 0;
+
+    // exhaust first 32 bits (popcount verified by separate test)
+    var discard: u32 = 0;
+    for (@range(u32, 32)) |i| {
+        if (rng.next_bit_(sp, &cache)) {
+            discard += 1;
+        }
+    }
+    @assert(cache == 1); // only sentinel remains
+
+    // 33rd call regenerates; second next() = 0x0b50eb58, popcount = 14
+    var count: u32 = 0;
+    for (@range(u32, 32)) |i| {
+        if (rng.next_bit_(sp, &cache)) {
+            count += 1;
+        }
+    }
+    @assert(count == 14); // popcount(0x0b50eb58) = 14
+    @assert(cache == 1);  // sentinel again
+}
+
+// Verify with sparse seed (0x00000001, 0x00000002).
+// next() = 0xe2ac153f, popcount = 17.
+fn test_next_bit_sparse_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x00000001, 0x00000002);
+    var cache: u32 = 0;
+
+    // first bit is bit 31 of 0xe2ac153f = 1
+    @assert(rng.next_bit_(sp, &cache) == true);
+
+    // consume remaining 31 bits
+    var count: u32 = 1;
+    for (@range(u32, 31)) |i| {
+        if (rng.next_bit_(sp, &cache)) {
+            count += 1;
+        }
+    }
+    @assert(count == 17); // popcount(0xe2ac153f) = 17
+}
+
+// === Test next_bit with global-state API =====================================
+
+fn test_next_bit_global() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    rng._bit_cache = 0;
+
+    // should match pointer-based first 8 bits
+    @assert(rng.next_bit() == false); // bit 31
+    @assert(rng.next_bit() == true);  // bit 0
+    @assert(rng.next_bit() == false); // bit 1
+    @assert(rng.next_bit() == false); // bit 2
+    @assert(rng.next_bit() == true);  // bit 3
+    @assert(rng.next_bit() == false); // bit 4
+    @assert(rng.next_bit() == true);  // bit 5
+    @assert(rng.next_bit() == true);  // bit 6
+}
+
+// Global and local next_bit should be independent.
+fn test_next_bit_independence() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x00000001, 0x00000002);
+    var local_cache: u32 = 0;
+
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    rng._bit_cache = 0;
+
+    // advance global
+    const global_bit = rng.next_bit();
+    @assert(global_bit == false); // bit 31 of 0x0d2d0969
+
+    // local should still produce its own sequence
+    const local_bit = rng.next_bit_(sp, &local_cache);
+    @assert(local_bit == true);  // bit 31 of 0xe2ac153f
+}
+
+// Bit uniformity: over many calls, roughly half should be true.
+fn test_next_bit_uniformity() void {
+    rng.seed(0xABCD1234, 0x5678EF00);
+    rng._bit_cache = 0;
+
+    var count: u32 = 0;
+    for (@range(u16, 320)) |i| {  // 10 full rounds of 32 bits
+        if (rng.next_bit()) {
+            count += 1;
+        }
+    }
+    // expect ~160; loose bounds [110, 210]
+    @assert(count > 110);
+    @assert(count < 210);
+}
+
 // test runner ================================================================
 fn do_test() void {
     test_seed_and_next_();
@@ -577,4 +717,11 @@ fn do_test() void {
     test_half_balance();
     test_nonmonotonic();
     test_seed_sensitivity();
+    test_next_bit_first_bits_();
+    test_next_bit_popcount_();
+    test_next_bit_cache_lifecycle_();
+    test_next_bit_sparse_();
+    test_next_bit_global();
+    test_next_bit_independence();
+    test_next_bit_uniformity();
 }

@@ -4,6 +4,7 @@ const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
 
 // global state ===============================================================
 var _state = [2]u32{ 0x12345678, 0x9ABCDEF0 }; // default non-zero state
+var _bit_cache: u32 = 0;
 
 // internal helpers ===========================================================
 fn _rotl(x: u32, comptime k: u32) u32 {
@@ -54,6 +55,24 @@ fn next_(s: [*]u32) u32 {
     const s0 = s[0];
     advance_(s);
     return _rotl(s0 * 0x9E3779BB, 5) * 5;
+}
+
+/// Generate the next pseudo-random bit using a 32-bit cache.
+/// When the cache is exhausted (value <= 1), a fresh 32-bit value is
+/// generated: the top bit that will be overwritten by the sentinel is
+/// returned so that all 32 bits of the generated value are consumed.
+/// On subsequent calls the bottom bit is extracted and the cache is
+/// shifted right; the sentinel (top bit set to 1) marks the boundary.
+fn next_bit_(s: [*]u32, bit_cache: *u32) bool {
+    if (bit_cache.* <= 1) {
+        const val = next_(s);
+        const top_bit = (val >> 31) != 0;
+        bit_cache.* = val | 0x80000000;
+        return top_bit;
+    }
+    const bit = (bit_cache.* & 1) != 0;
+    bit_cache.* >>= 1;
+    return bit;
 }
 
 /// Jump the state forward by 2^32 steps (one jump epoch).
@@ -137,6 +156,11 @@ fn advance() void {
 /// Generate the next pseudo-random 32-bit value using global state.
 fn next() u32 {
     return next_(@ptrcast([*]u32, &_state));
+}
+
+/// Generate the next pseudo-random bit using global state and cache.
+fn next_bit() bool {
+    return next_bit_(@ptrcast([*]u32, &_state), &_bit_cache);
 }
 
 /// Jump the global state forward by 2^32 steps (one epoch).
