@@ -44,6 +44,8 @@
 //!     "nWav": (5, pl.UInt8),
 //! }
 
+param rng: imported_module;
+
 // module imports =============================================================
 const math = @import_module("<math>");
 const random = @import_module("<random>");
@@ -96,7 +98,7 @@ fn _apply_mutation(genome: genomePtr_t) void {
 
 fn _do_step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
-    if (opscalar.unifbool()) {
+    if (rng.next_bit()) {
         const T = @ptrcast([*]u32, genome)[1];
         const site = dstream_algo.assign_storage_site(S, T);
 
@@ -130,10 +132,10 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 }
 
 fn initialize_one(genome: genomePtr_t) void {
-    const gHalfWords: u16 = gSize * 2;
-    bitmanip.randomize(@ptrcast([*]u16, genome), gHalfWords);
     @ptrcast(*f32, genome).* = 0.0;
-    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation; // empty
+    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation;
+    @ptrcast([*]u32, genome)[2] = rng.next();
+    @ptrcast([*]u32, genome)[3] = rng.next();
     @ptrcast([*]u32, genome)[4] = 0; // empty
 }
 
