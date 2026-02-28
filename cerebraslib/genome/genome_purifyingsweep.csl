@@ -15,7 +15,7 @@
 // byte 13
 // byte 14
 // byte 15
-// byte 16 GENERATION COUNTER (u32, 4 bytes)
+// byte 16 EMPTY (u32, 4 bytes)
 // byte 17
 // byte 18
 // byte 19
@@ -34,6 +34,10 @@
 //!     "dstream_T_bitwidth": (32, pl.UInt8),
 //!     "dstream_S": (64, pl.UInt8),
 //!     "hstrat_T_dilation": (
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
+//!     "dstream_T_dilation": (
 //!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
 //!         pl.UInt32,
 //!     ),
@@ -99,7 +103,7 @@ fn _apply_mutation(genome: genomePtr_t) void {
 fn _do_step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     if (opscalar.unifbool()) {
-        const T = @ptrcast([*]u32, genome)[1];
+        const T = @ptrcast([*]u32, genome)[1] / hstrat_T_dilation;
         const site = dstream_algo.assign_storage_site(S, T);
 
         const offset_bits: u16 = (4 + 4) * 8;
@@ -108,16 +112,13 @@ fn _do_step_instrumentation(genome: genomePtr_t) void {
         const genome_bytes = @ptrcast([*]u8, genome);
         if (site != S) bitmanip.flip_nth_bit_with_swaps(genome_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true });
     }
-
-    // elapse generation in counter
-    @ptrcast([*]u32, genome)[1] += 1;
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
-    if (@ptrcast([*]u32, genome)[4] % hstrat_T_dilation == 0) {
+    if (@ptrcast([*]u32, genome)[1] % hstrat_T_dilation == 0) {
         _do_step_instrumentation(genome);
     }
-    @ptrcast([*]u32, genome)[4] += 1;
+    @ptrcast([*]u32, genome)[1] += 1;
 }
 
 // public API =================================================================
@@ -138,11 +139,8 @@ fn initialize_one(genome: genomePtr_t) void {
     const gHalfWords: u16 = gSize * 2;
     bitmanip.randomize(@ptrcast([*]u16, genome), gHalfWords);
     @ptrcast(*f32, genome).* = 0.0;
-    @ptrcast([*]u32, genome)[1] = 0;
-    @ptrcast([*]u32, genome)[4] = 0;
-    for (@range(u16, S)) |_| {
-        _do_step_instrumentation(genome);
-    }
+    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation;
+    @ptrcast([*]u32, genome)[4] = 0;  // empty
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void {}
