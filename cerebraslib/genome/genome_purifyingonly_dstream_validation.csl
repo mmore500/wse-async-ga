@@ -78,6 +78,10 @@ const validator = compconf.get_value_or(
     "CEREBRASLIB_DSTREAM_VALIDATOR",
     "checkerboard",
 );
+const hstrat_T_dilation = compconf.get_value_or(
+    "CEREBRASLIB_HSTRAT_T_DILATION",
+    @as(u32, 1),
+);
 
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
@@ -105,7 +109,7 @@ fn _apply_mutation(genome: genomePtr_t) void {
 fn _step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     const S = 64;
-    const T = @ptrcast([*]u32, genome)[1];
+    const T = @ptrcast([*]u32, genome)[1] / hstrat_T_dilation;
     const site = dstream_algo.assign_storage_site(S, T);
 
     const offset_bits: u16 = (4 + 4) * 8;
