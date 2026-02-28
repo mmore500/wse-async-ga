@@ -278,6 +278,75 @@ def process_fossils(nWav: int) -> None:
                         }""",
                     )
 
+            bookend_expr = validation_exprs[3]
+            corrupt_df = (
+                df.with_row_index("_row_idx").filter(~bookend_expr)
+            )
+            n_corrupt = corrupt_df.select(pl.len()).collect().item()
+            if n_corrupt:
+                log(f"  - bookend mismatch telemetry: {n_corrupt} corrupt rows")
+                indices_df = pl.scan_parquet(
+                    fi_path, cache=False,
+                ).with_row_index("_row_idx")
+                corrupt_with_meta = corrupt_df.join(
+                    indices_df, on="_row_idx", how="inner",
+                ).drop("_row_idx")
+                corrupt_collected = corrupt_with_meta.collect()
+
+                corrupt_pqt_path = (
+                    "a=corrupt-bookends"
+                    f"+flavor={genomeFlavor}"
+                    f"+seed={globalSeed}"
+                    f"+ncycle={nCycleAtLeast}"
+                    "+ext=.pqt"
+                )
+                if not pathlib.Path(corrupt_pqt_path).exists():
+                    log(
+                        "  - dumping corrupt bookend rows to"
+                        f" {corrupt_pqt_path}...",
+                    )
+                    corrupt_collected.write_parquet(
+                        corrupt_pqt_path, compression="lz4",
+                    )
+                    log("  - ... done!")
+                else:
+                    log(
+                        f"  - {corrupt_pqt_path} already exists, skipping"
+                        " dump",
+                    )
+
+                log(f"  - corrupt bookend rows describe:\n{corrupt_collected.describe()}")
+
+                log(
+                    "  - corrupt bookend layer value counts:\n"
+                    f"{corrupt_collected.get_column('layer').value_counts()}",
+                )
+                log(
+                    "  - corrupt bookend position value counts:\n"
+                    f"{corrupt_collected.get_column('position').value_counts()}",
+                )
+
+                bookend_pairs = corrupt_collected.select(
+                    left=pl.col("data_hex").str.head(8),
+                    right=pl.col("data_hex").str.tail(8),
+                )
+                hex_tuples = list(
+                    zip(
+                        bookend_pairs.get_column("left").to_list(),
+                        bookend_pairs.get_column("right").to_list(),
+                    ),
+                )
+                log(
+                    "  - mismatching bookend values (left, right):"
+                    f" {hex_tuples}",
+                )
+
+                del corrupt_collected, corrupt_with_meta
+                gc.collect()
+
+            del corrupt_df
+            gc.collect()
+
             log(" - filtering invalid rows...")
             nrow_before = df.select(pl.len()).collect().item()
             df = df.filter(pl.all_horizontal(validation_exprs))
