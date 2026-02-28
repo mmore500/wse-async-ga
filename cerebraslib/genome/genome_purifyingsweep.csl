@@ -102,7 +102,7 @@ fn _apply_mutation(genome: genomePtr_t) void {
 
 fn _do_step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
-    if (opscalar.unifbool()) {
+    if (rng.next_bit()) {
         const T = @ptrcast([*]u32, genome)[1] / hstrat_T_dilation;
         const site = dstream_algo.assign_storage_site(S, T);
 
