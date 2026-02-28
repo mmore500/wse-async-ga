@@ -295,25 +295,17 @@ def process_fossils(nWav: int) -> None:
 
                 corrupt_pqt_path = (
                     "a=corrupt-bookends"
-                    f"+flavor={genomeFlavor}"
-                    f"+seed={globalSeed}"
-                    f"+ncycle={nCycleAtLeast}"
+                    f"+uuid={uuid.uuid4()}"
                     "+ext=.pqt"
                 )
-                if not pathlib.Path(corrupt_pqt_path).exists():
-                    log(
-                        "  - dumping corrupt bookend rows to"
-                        f" {corrupt_pqt_path}...",
-                    )
-                    corrupt_collected.write_parquet(
-                        corrupt_pqt_path, compression="lz4",
-                    )
-                    log("  - ... done!")
-                else:
-                    log(
-                        f"  - {corrupt_pqt_path} already exists, skipping"
-                        " dump",
-                    )
+                log(
+                    "  - dumping corrupt bookend rows to"
+                    f" {corrupt_pqt_path}...",
+                )
+                corrupt_collected.write_parquet(
+                    corrupt_pqt_path, compression="lz4",
+                )
+                log("  - ... done!")
 
                 log(f"  - corrupt bookend rows describe:\n{corrupt_collected.describe()}")
 
