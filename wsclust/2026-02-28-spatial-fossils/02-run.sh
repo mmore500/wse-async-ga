@@ -164,7 +164,7 @@ for genome_flavor in genome_purifyingonly genome_purifyingsweep; do
     export ASYNC_GA_MAX_FOSSIL_SETS=1248
     echo "ASYNC_GA_MAX_FOSSIL_SETS=${ASYNC_GA_MAX_FOSSIL_SETS}"
 
-    export ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO="dstream.hybrid_algo(0, dstream.tilted_algo, 32, dstream.circular_algo, 39)"
+    export ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO="dstream.circular_algo"
     echo "ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO=${ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO}"
 
     mkdir -p "${CONFIG_WORKDIR}/out"
