@@ -99,12 +99,12 @@ fn unif16(upper: u16) u16 {
 fn hamming_syndrome32(n: u32) u32 {
     // Each syndrome bit is the parity of the input masked to the bit
     // positions whose 1-indexed position has that syndrome bit set.
-    return @as(u32, parity32(n & 0x55555555))       // bit 0: positions 1,3,5,...,31
-        | (@as(u32, parity32(n & 0x66666666)) << 1) // bit 1: positions 2,3,6,7,...,30,31
-        | (@as(u32, parity32(n & 0x78787878)) << 2) // bit 2: positions 4-7,12-15,...,28-31
-        | (@as(u32, parity32(n & 0x7F807F80)) << 3) // bit 3: positions 8-15,24-31
-        | (@as(u32, parity32(n & 0x7FFF8000)) << 4) // bit 4: positions 16-31
-        | (@as(u32, parity32(n & 0x80000000)) << 5); // bit 5: position 32
+    return @as(u32, parity32(n & 0x55555555)) // bit 0
+        | (@as(u32, parity32(n & 0x66666666)) << 1) // bit 1
+        | (@as(u32, parity32(n & 0x78787878)) << 2) // bit 2
+        | (@as(u32, parity32(n & 0x7F807F80)) << 3) // bit 3
+        | (@as(u32, parity32(n & 0x7FFF8000)) << 4) // bit 4
+        | (@as(u32, parity32(n & 0x80000000)) << 5); // bit 5
 }
 
 /// Draw a random boolean value (even coin flip)..
