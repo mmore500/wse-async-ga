@@ -235,6 +235,29 @@ fn test_hamming_syndrome32() void {
     @assert(opscalar.hamming_syndrome32(0x7) == 0);
     // pos 5 XOR 6 = 3
     @assert(opscalar.hamming_syndrome32(0x30) == 3);
+
+    // flipping any single bit must change the syndrome
+    const base: u32 = 0xA5A5A5A5;
+    const base_syn = opscalar.hamming_syndrome32(base);
+    for (@range(u32, 32)) |bit| {
+        const flipped = base ^ (@as(u32, 1) << @truncate(bit));
+        @assert(opscalar.hamming_syndrome32(flipped) != base_syn);
+    }
+
+    // flipping two distinct bits must change the syndrome
+    // (since flipping bits i,j changes syndrome by (i+1) XOR (j+1) != 0)
+    const base2: u32 = 0x12345678;
+    const base2_syn = opscalar.hamming_syndrome32(base2);
+    // bit pair (0, 1)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x3) != base2_syn);
+    // bit pair (4, 7)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x90) != base2_syn);
+    // bit pair (15, 16)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x18000) != base2_syn);
+    // bit pair (0, 31)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x80000001) != base2_syn);
+    // bit pair (10, 20)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x100400) != base2_syn);
 }
 
 fn test_unif16() void {
