@@ -80,6 +80,21 @@ fn unif16(upper: u16) u16 {
     );
 }
 
+/// Calculate the 6-bit Hamming syndrome of a 32-bit integer.
+///
+/// The syndrome is the XOR of all 1-indexed bit positions that are set.
+/// For a 32-bit integer, positions range from 1 to 32, so the syndrome
+/// fits in 6 bits.
+fn hamming_syndrome32(n: u32) u32 {
+    var syndrome: u32 = 0;
+    var val = n;
+    for (@range(u32, 32)) |i| {
+        syndrome ^= (val & 1) * (i + 1);
+        val >>= 1;
+    }
+    return syndrome;
+}
+
 /// Draw a random boolean value (even coin flip)..
 fn unifbool() bool { return p(0.5); }
 

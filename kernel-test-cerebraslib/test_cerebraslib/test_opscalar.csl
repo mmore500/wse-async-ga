@@ -159,6 +159,52 @@ fn test_popcnt32() void {
     @assert(opscalar.popcnt32(0) == 0);
 }
 
+fn test_hamming_syndrome32() void {
+    // zero: no bits set, syndrome is 0
+    @assert(opscalar.hamming_syndrome32(0) == 0);
+
+    // single bit set: syndrome equals the 1-indexed position
+    @assert(opscalar.hamming_syndrome32(1) == 1);          // bit 0 -> pos 1
+    @assert(opscalar.hamming_syndrome32(2) == 2);          // bit 1 -> pos 2
+    @assert(opscalar.hamming_syndrome32(4) == 3);          // bit 2 -> pos 3
+    @assert(opscalar.hamming_syndrome32(8) == 4);          // bit 3 -> pos 4
+    @assert(opscalar.hamming_syndrome32(0x10) == 5);       // bit 4 -> pos 5
+    @assert(opscalar.hamming_syndrome32(0x20) == 6);       // bit 5 -> pos 6
+    @assert(opscalar.hamming_syndrome32(0x40) == 7);       // bit 6 -> pos 7
+    @assert(opscalar.hamming_syndrome32(0x80) == 8);       // bit 7 -> pos 8
+    @assert(opscalar.hamming_syndrome32(0x8000) == 16);    // bit 15 -> pos 16
+    @assert(opscalar.hamming_syndrome32(0x10000) == 17);   // bit 16 -> pos 17
+    @assert(opscalar.hamming_syndrome32(0x80000000) == 32); // bit 31 -> pos 32
+
+    // two bits set: syndrome is XOR of their positions
+    @assert(opscalar.hamming_syndrome32(3) == 3);    // pos 1 XOR 2 = 3
+    @assert(opscalar.hamming_syndrome32(5) == 2);    // pos 1 XOR 3 = 2
+    @assert(opscalar.hamming_syndrome32(6) == 1);    // pos 2 XOR 3 = 1
+    @assert(opscalar.hamming_syndrome32(0xA) == 6);  // pos 2 XOR 4 = 6
+
+    // all bits set: XOR of 1..32 = 32 (since 32 % 4 == 0)
+    @assert(opscalar.hamming_syndrome32(0xFFFFFFFF) == 32);
+
+    // all low byte bits: XOR of 1..8 = 8 (since 8 % 4 == 0)
+    @assert(opscalar.hamming_syndrome32(0xFF) == 8);
+
+    // all low 16 bits: XOR of 1..16 = 16 (since 16 % 4 == 0)
+    @assert(opscalar.hamming_syndrome32(0xFFFF) == 16);
+
+    // powers of two (Hamming weight 1) -- syndrome = position
+    @assert(opscalar.hamming_syndrome32(0x100) == 9);
+    @assert(opscalar.hamming_syndrome32(0x200) == 10);
+    @assert(opscalar.hamming_syndrome32(0x40000000) == 31);
+
+    // specific multi-bit patterns
+    // pos 1 XOR 4 = 5
+    @assert(opscalar.hamming_syndrome32(0x9) == 5);
+    // pos 1 XOR 2 XOR 3 = 0
+    @assert(opscalar.hamming_syndrome32(0x7) == 0);
+    // pos 5 XOR 6 = 3
+    @assert(opscalar.hamming_syndrome32(0x30) == 3);
+}
+
 fn test_unif16() void {
     @assert(opscalar.unif16(0) == 0);
     @assert(opscalar.unif16(1) == 0);
@@ -485,6 +531,7 @@ fn do_test() void {
     test_incr16();
     test_incr32();
     test_incrmod32();
+    test_hamming_syndrome32();
     test_mul32();
     test_p();
     test_poisson32();
