@@ -258,6 +258,20 @@ fn test_hamming_syndrome32() void {
     @assert(opscalar.hamming_syndrome32(base2 ^ 0x80000001) != base2_syn);
     // bit pair (10, 20)
     @assert(opscalar.hamming_syndrome32(base2 ^ 0x100400) != base2_syn);
+    // bit pair (3, 29)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x20000008) != base2_syn);
+    // bit pair (6, 22)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x400040) != base2_syn);
+    // bit pair (9, 13)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x2200) != base2_syn);
+    // bit pair (2, 25)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x2000004) != base2_syn);
+    // bit pair (18, 27)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x8040000) != base2_syn);
+    // bit pair (11, 24)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x1000800) != base2_syn);
+    // bit pair (5, 19)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x80020) != base2_syn);
 }
 
 fn test_unif16() void {
