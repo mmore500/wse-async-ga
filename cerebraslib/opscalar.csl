@@ -63,6 +63,11 @@ fn poisson32(lambda: f32) u32 {
     return x;
 }
 
+/// Parity of a 32-bit integer, i.e., whether the number of set bits is odd.
+fn parity32(n: u32) bool {
+    return popcnt32(n) & 1 == 1;
+}
+
 /// Population count of an integer, i.e., number of set bits.
 fn popcnt32(n: u32) u32 {
     _as16[0] = @as(u16, n);

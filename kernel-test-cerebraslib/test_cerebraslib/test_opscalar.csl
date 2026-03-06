@@ -145,6 +145,38 @@ fn test_poisson32() void {
     }
 }
 
+fn test_parity32() void {
+    // zero has even parity
+    @assert(!opscalar.parity32(0));
+
+    // single bit set: odd parity
+    @assert(opscalar.parity32(1));
+    @assert(opscalar.parity32(2));
+    @assert(opscalar.parity32(0x80000000));
+
+    // two bits set: even parity
+    @assert(!opscalar.parity32(3));
+    @assert(!opscalar.parity32(5));
+    @assert(!opscalar.parity32(0x80000001));
+
+    // three bits set: odd parity
+    @assert(opscalar.parity32(7));
+    @assert(opscalar.parity32(0x80080010));
+
+    // all bits set (32 = even): even parity
+    @assert(!opscalar.parity32(0xFFFFFFFF));
+
+    // 0xFF = 8 bits set (even)
+    @assert(!opscalar.parity32(0xFF));
+
+    // 0xFE = 7 bits set (odd)
+    @assert(opscalar.parity32(0xFE));
+
+    // alternating bits: 16 set (even)
+    @assert(!opscalar.parity32(0x55555555));
+    @assert(!opscalar.parity32(0xAAAAAAAA));
+}
+
 fn test_popcnt32() void {
     @assert(opscalar.popcnt32(0xFFFFFFFF) == 32);
     @assert(opscalar.popcnt32(0xF0FFFFFF) == 28);
@@ -534,6 +566,7 @@ fn do_test() void {
     test_hamming_syndrome32();
     test_mul32();
     test_p();
+    test_parity32();
     test_poisson32();
     test_popcnt32();
     test_unif16();
