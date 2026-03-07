@@ -1563,10 +1563,11 @@ clobber_data = out_tensors.copy()
 log(clobber_data[:20, :20])
 log(f"{np.mean(clobber_data)=} {np.std(clobber_data)=} {sps.sem(clobber_data)=}")
 log(f"{np.median(clobber_data)=} {np.min(clobber_data)=} {np.max(clobber_data)=}")
-clobber_nonzero = clobber_data[clobber_data > 0]
 log(f"{np.count_nonzero(clobber_data)=}")
-if clobber_nonzero.size > 0:
-    log(f"{np.mean(clobber_nonzero)=} {np.median(clobber_nonzero)=}")
+with np.errstate(invalid="ignore"):
+    clobber_nz = clobber_data[clobber_data > 0]
+    log(f"{np.mean(clobber_nz)=} {np.std(clobber_nz)=} {sps.sem(clobber_nz)=}")
+    log(f"{np.median(clobber_nz)=} {np.min(clobber_nz, initial=np.nan)=} {np.max(clobber_nz, initial=np.nan)=}")
 
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
