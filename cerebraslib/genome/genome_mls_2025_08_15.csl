@@ -187,11 +187,13 @@ fn initialize_one(genome: genomePtr_t) void {
     bitmanip.randomize(@ptrcast([*]u16, &genome[3]), 8);
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void {
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
     const is_occupied = !_is_clear(resident);
     if (is_occupied or ( // nofmt
         (get_trait_value(immigrant) == 2) and opscalar.p(_p_clobber)))
     {
         _clear(immigrant);
+        return true;
     }
+    return false;
 }

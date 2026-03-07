@@ -75,4 +75,4 @@ fn initialize_one(genome: genomePtr_t) void {
     _ptr_mutator(genome).* = if (opscalar.unifbool()) 100 else 1;
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }

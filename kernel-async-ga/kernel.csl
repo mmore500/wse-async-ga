@@ -86,6 +86,8 @@ var immCounter_E = @zeros([1]u32);
 var ptr_immCounter_E : [*]u32 = &immCounter_E;
 var immCounter_W = @zeros([1]u32);
 var ptr_immCounter_W : [*]u32 = &immCounter_W;
+var clobberCounter = @zeros([1]u32);  // how many immigrant clobbers occur?
+var ptr_clobberCounter : [*]u32 = &clobberCounter;
 var cycleCounter = @zeros([1]u32);  // how many self-activation cycles elapse?
 var ptr_cycleCounter : [*]u32 = &cycleCounter;
 
@@ -590,7 +592,7 @@ task cycleTask() void {
     if (j == 0 and recvFlag_N == 1) {  // has open recv request been filled?
       var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
       if (immCounter_N[0] <= throttleThresh) {
-        population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
+        clobberCounter[0] += population.immigrate_genomes(recvBufPtr_N, recvNumGenomes);
         immCounter_N[0] += 1;
       }
       recvFlag_N = 0; dispatchRecv_N();
@@ -598,7 +600,7 @@ task cycleTask() void {
     else if (j == 1 and recvFlag_S == 1) {
       var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
       if (immCounter_S[0] <= throttleThresh) {
-        population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
+        clobberCounter[0] += population.immigrate_genomes(recvBufPtr_S, recvNumGenomes);
         immCounter_S[0] += 1;
       }
       recvFlag_S = 0; dispatchRecv_S();
@@ -606,7 +608,7 @@ task cycleTask() void {
     else if (j == 2 and recvFlag_E == 1) {
       var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
       if (immCounter_E[0] <= throttleThresh) {
-        population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
+        clobberCounter[0] += population.immigrate_genomes(recvBufPtr_E, recvNumGenomes);
         immCounter_E[0] += 1;
       }
       recvFlag_E = 0; dispatchRecv_E();
@@ -614,7 +616,7 @@ task cycleTask() void {
     else if (j == 3 and recvFlag_W == 1) {
       var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
       if (immCounter_W[0] <= throttleThresh) {
-        population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
+        clobberCounter[0] += population.immigrate_genomes(recvBufPtr_W, recvNumGenomes);
         immCounter_W[0] += 1;
       }
       recvFlag_W = 0; dispatchRecv_W();
@@ -816,6 +818,7 @@ comptime {
 // symbol exports =============================================================
 ///////////////////////////////////////////////////////////////////////////////
 comptime {  // symbols let memcpy gather end-state data from device to host
+  @export_symbol(ptr_clobberCounter, "clobberCounter");
   @export_symbol(ptr_cycleCounter, "cycleCounter");
   @export_symbol(ptr_immCounter_N, "immCounter_N");
   @export_symbol(ptr_immCounter_S, "immCounter_S");

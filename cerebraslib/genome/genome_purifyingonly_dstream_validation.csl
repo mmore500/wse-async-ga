@@ -155,7 +155,7 @@ fn initialize_one(genome: genomePtr_t) void {
     }
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
 
 // debugging ==================================================================
 // bitmanip.set_nth_bit_bigendian(genome_bytes, 64 + 1, true);

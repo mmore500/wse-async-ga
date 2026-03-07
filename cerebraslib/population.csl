@@ -181,15 +181,16 @@ fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
     @map(_get_population_word, swapDsd_, toDsd);
 }
 
-fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) void {
+fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
     _sample_n(nGenomes);
 
+    var nClobbers: u32 = 0;
     if (genome.hasImmClobber) {
         for (@range(u16, nGenomes)) |i| {
-            genome.clobber_immigrant(
+            nClobbers += @as(u32, genome.clobber_immigrant(
                 @ptrcast([*]u32, &buffer[swap[i * genome.gSize]]),
                 @ptrcast([*]u32, &fromBuf[i * genome.gSize]),
-            );
+            ));
         }
     }
 
@@ -200,6 +201,7 @@ fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) void {
     const nWords = nGenomes * genome.gSize;
     const swapDsd_ = @set_dsd_length(swapDsd, nWords);
     @map(_put_population_word, fromDsd, swapDsd_);
+    return nClobbers;
 }
 
 fn init_module() void { _initialize_all(); }

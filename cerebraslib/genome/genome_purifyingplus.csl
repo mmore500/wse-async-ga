@@ -141,4 +141,4 @@ fn initialize_one(genome: genomePtr_t) void {
     @ptrcast([*]u32, genome)[4] = 0; // empty
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void {}
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
