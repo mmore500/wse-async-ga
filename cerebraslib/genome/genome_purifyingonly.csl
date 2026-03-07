@@ -173,11 +173,11 @@ fn initialize_one(genome: genomePtr_t) void {
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
     if (!_check_parity(immigrant)) {
-        immigrant[0] = 0;
-        immigrant[1] = 0;
-        immigrant[2] = 0;
-        immigrant[3] = 0;
-        immigrant[4] = 0;
+        immigrant[0] = resident[0];
+        immigrant[1] = resident[1];
+        immigrant[2] = resident[2];
+        immigrant[3] = resident[3];
+        immigrant[4] = resident[4];
         return true;
     }
     return false;
