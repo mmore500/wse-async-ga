@@ -851,44 +851,35 @@ jobs:
               ./kernel-async-ga/execute.sh \
               # >/dev/null 2>&1
 
-      - name: Reconstruct from end-state genomes
+      - name: Build tree from end-state genomes
         run: |
           ls -1 ./kernel-async-ga/a=genomes* \
-            | python3 -m hstrat.dataframe.surface_unpack_reconstruct \
-            a=reconstruction+what=genomes+ext=.pqt
+            | python3 -m hstrat.dataframe.surface_build_tree \
+            --trie-postprocessor \
+              'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
+            a=phylogeny+what=genomes+ext=.pqt
 
-      - name: Upload output as artifact
+      - name: Upload genomes phylogeny artifact
         uses: actions/upload-artifact@v4
         with:
-          name: genomes-reconstruction-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
-          path: ./a=reconstruction+what=genomes+ext=.pqt
+          name: phylogeny-genomes-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          path: ./a=phylogeny+what=genomes+ext=.pqt
 
-      - name: Reconstruct from fossil genomes
+      - name: Build tree from fossil genomes
         run: |
           ls -1 ./kernel-async-ga/a=fossils* \
-            | python3 -m hstrat.dataframe.surface_unpack_reconstruct \
-            a=reconstruction+what=fossils+ext=.pqt
+            | python3 -m hstrat.dataframe.surface_build_tree \
+            --trie-postprocessor \
+              'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
+            a=phylogeny+what=fossils+ext=.pqt
 
-      - name: Upload output as artifact
+      - name: Upload fossils phylogeny artifact
         uses: actions/upload-artifact@v4
         with:
-          name: fossils-reconstruction-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
-          path: ./a=reconstruction+what=fossils+ext=.pqt
+          name: phylogeny-fossils-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          path: ./a=phylogeny+what=fossils+ext=.pqt
 
-      - name: Reconstruct from all genomes
-        run: |
-          ls -1 ./kernel-async-ga/a=fossils* ./kernel-async-ga/a=genomes* \
-            | python3 -m hstrat.dataframe.surface_unpack_reconstruct \
-            --how diagonal_relaxed \
-            a=reconstruction+what=fossils-and-genomes+ext=.pqt
-
-      - name: Upload output as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fossils-and-genomes-reconstruction-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
-          path: ./a=reconstruction+what=fossils-and-genomes+ext=.pqt
-
-      - name: Build tree from fossils and genomes
+      - name: Build tree from all genomes
         run: |
           ls -1 ./kernel-async-ga/a=fossils* ./kernel-async-ga/a=genomes* \
             | python3 -m hstrat.dataframe.surface_build_tree \
@@ -897,10 +888,10 @@ jobs:
               'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
             a=phylogeny+what=fossils-and-genomes+ext=.pqt
 
-      - name: Upload phylogeny artifact
+      - name: Upload combined phylogeny artifact
         uses: actions/upload-artifact@v4
         with:
-          name: phylogeny-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          name: phylogeny-fossils-and-genomes-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
           path: ./a=phylogeny+what=fossils-and-genomes+ext=.pqt
 
       - name: Convert phylogeny to newick
