@@ -1565,9 +1565,8 @@ log(clobber_data[:20, :20])
 log(f"{np.mean(clobber_data)=} {np.std(clobber_data)=} {sps.sem(clobber_data)=}")
 log(f"{np.median(clobber_data)=} {np.min(clobber_data)=} {np.max(clobber_data)=}")
 log(f"{np.count_nonzero(clobber_data)=}")
-clobber_mask = clobber_data != 0
-if np.any(clobber_mask):
-    clobber_nz = clobber_data[clobber_mask]
+if np.any(clobber_data != 0):
+    clobber_nz = clobber_data[clobber_data != 0]
     log(f"{np.mean(clobber_nz)=}")
     log(f"{np.median(clobber_nz)=}")
     log(f"{np.std(clobber_nz)=}")
