@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+import warnings
 
 logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -1564,10 +1565,15 @@ log(clobber_data[:20, :20])
 log(f"{np.mean(clobber_data)=} {np.std(clobber_data)=} {sps.sem(clobber_data)=}")
 log(f"{np.median(clobber_data)=} {np.min(clobber_data)=} {np.max(clobber_data)=}")
 log(f"{np.count_nonzero(clobber_data)=}")
-with np.errstate(invalid="ignore"):
-    log(f"{np.mean(clobber_data, where=clobber_data.nonzero())=} {np.median(clobber_data[clobber_data.nonzero()])=}")
-    log(f"{np.std(clobber_data, where=clobber_data.nonzero())=} {sps.sem(clobber_data[clobber_data.nonzero()])=}")
-    log(f"{np.min(clobber_data, where=clobber_data.nonzero(), initial=0)=} {np.max(clobber_data, where=clobber_data.nonzero(), initial=0)=}")
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="Mean of empty slice")
+    warnings.filterwarnings("ignore", message="invalid value encountered")
+    log(f"{np.mean(clobber_data, where=clobber_data.nonzero())=}")
+    log(f"{np.median(clobber_data[clobber_data.nonzero()])=}")
+    log(f"{np.std(clobber_data, where=clobber_data.nonzero())=}")
+    log(f"{sps.sem(clobber_data[clobber_data.nonzero()])=}")
+    log(f"{np.min(clobber_data, where=clobber_data.nonzero(), initial=0)=}")
+    log(f"{np.max(clobber_data, where=clobber_data.nonzero(), initial=0)=}")
 
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
