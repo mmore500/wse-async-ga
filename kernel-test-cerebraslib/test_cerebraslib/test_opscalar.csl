@@ -240,7 +240,7 @@ fn test_hamming_syndrome32() void {
     const base: u32 = 0xA5A5A5A5;
     const base_syn = opscalar.hamming_syndrome32(base);
     for (@range(u32, 32)) |bit| {
-        const flipped = base ^ (@as(u32, 1) << @truncate(bit));
+        const flipped = base ^ (@as(u32, 1) << bit);
         @assert(opscalar.hamming_syndrome32(flipped) != base_syn);
     }
 
