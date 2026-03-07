@@ -1565,11 +1565,13 @@ log(clobber_data[:20, :20])
 log(f"{np.mean(clobber_data)=} {np.std(clobber_data)=} {sps.sem(clobber_data)=}")
 log(f"{np.median(clobber_data)=} {np.min(clobber_data)=} {np.max(clobber_data)=}")
 log(f"{np.count_nonzero(clobber_data)=}")
-log(f"{np.mean(clobber_data[clobber_data != 0]) if np.any(clobber_data != 0) else 0=}")
-log(f"{np.median(clobber_data[clobber_data != 0]) if np.any(clobber_data != 0) else 0=}")
-log(f"{np.std(clobber_data[clobber_data != 0]) if np.any(clobber_data != 0) else 0=}")
-log(f"{np.min(clobber_data[clobber_data != 0]) if np.any(clobber_data != 0) else 0=}")
-log(f"{np.max(clobber_data[clobber_data != 0]) if np.any(clobber_data != 0) else 0=}")
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    log(f"{np.mean(clobber_data[clobber_data != 0])=}")
+    log(f"{np.median(clobber_data[clobber_data != 0])=}")
+    log(f"{np.std(clobber_data[clobber_data != 0])=}")
+    log(f"{min(clobber_data[clobber_data != 0], default=0)=}")
+    log(f"{max(clobber_data[clobber_data != 0], default=0)=}")
 
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
