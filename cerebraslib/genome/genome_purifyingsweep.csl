@@ -148,7 +148,7 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     if ((@ptrcast([*]u32, genome)[1] / _parity_T_dilation) % hstrat_T_dilation == 0) {
         _do_step_instrumentation(genome);
     }
-    @ptrcast([*]u32, genome)[1] = (@ptrcast([*]u32, genome)[1] & 0xFFFFFFF0) + _parity_T_dilation;
+    @ptrcast([*]u32, genome)[1] += _parity_T_dilation;
     _set_parity_bits(genome);
 }
 
