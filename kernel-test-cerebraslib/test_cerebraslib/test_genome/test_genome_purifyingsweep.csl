@@ -66,7 +66,8 @@ fn test_clobber_invalid_immigrant() void {
     var immigrant = @zeros(genome.genome_t);
     genome.initialize_one(&resident);
     genome.initialize_one(&immigrant);
-    @ptrcast([*]u32, &immigrant)[1] ^= 1;
+    var imm_ptr = @ptrcast([*]u32, &immigrant);
+    imm_ptr[1] = imm_ptr[1] ^ 1; // flip parity bit 0
     @assert(genome.clobber_immigrant(&resident, &immigrant));
 }
 
