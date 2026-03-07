@@ -63,6 +63,17 @@ fn poisson32(lambda: f32) u32 {
     return x;
 }
 
+/// Parity of a 32-bit integer, i.e., whether the number of set bits is odd.
+/// Computed by folding the value in half with XOR until a single bit remains.
+fn parity32(n: u32) bool {
+    var x = n ^ (n >> 16);
+    x ^= x >> 8;
+    x ^= x >> 4;
+    x ^= x >> 2;
+    x ^= x >> 1;
+    return x & 1 == 1;
+}
+
 /// Population count of an integer, i.e., number of set bits.
 fn popcnt32(n: u32) u32 {
     _as16[0] = @as(u16, n);
@@ -78,6 +89,22 @@ fn unif16(upper: u16) u16 {
         @as(u16, random.random_f32(0.0, @as(f32, upper))),
         upper - 1,
     );
+}
+
+/// Calculate the 6-bit Hamming syndrome of a 32-bit integer.
+///
+/// The syndrome is the XOR of all 1-indexed bit positions that are set.
+/// For a 32-bit integer, positions range from 1 to 32, so the syndrome
+/// fits in 6 bits.
+fn hamming_syndrome32(n: u32) u32 {
+    // Each syndrome bit is the parity of the input masked to the bit
+    // positions whose 1-indexed position has that syndrome bit set.
+    return @as(u32, parity32(n & 0x55555555)) // bit 0
+        | (@as(u32, parity32(n & 0x66666666)) << 1) // bit 1
+        | (@as(u32, parity32(n & 0x78787878)) << 2) // bit 2
+        | (@as(u32, parity32(n & 0x7F807F80)) << 3) // bit 3
+        | (@as(u32, parity32(n & 0x7FFF8000)) << 4) // bit 4
+        | (@as(u32, parity32(n & 0x80000000)) << 5); // bit 5
 }
 
 /// Draw a random boolean value (even coin flip)..

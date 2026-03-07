@@ -145,6 +145,38 @@ fn test_poisson32() void {
     }
 }
 
+fn test_parity32() void {
+    // zero has even parity
+    @assert(!opscalar.parity32(0));
+
+    // single bit set: odd parity
+    @assert(opscalar.parity32(1));
+    @assert(opscalar.parity32(2));
+    @assert(opscalar.parity32(0x80000000));
+
+    // two bits set: even parity
+    @assert(!opscalar.parity32(3));
+    @assert(!opscalar.parity32(5));
+    @assert(!opscalar.parity32(0x80000001));
+
+    // three bits set: odd parity
+    @assert(opscalar.parity32(7));
+    @assert(opscalar.parity32(0x80080010));
+
+    // all bits set (32 = even): even parity
+    @assert(!opscalar.parity32(0xFFFFFFFF));
+
+    // 0xFF = 8 bits set (even)
+    @assert(!opscalar.parity32(0xFF));
+
+    // 0xFE = 7 bits set (odd)
+    @assert(opscalar.parity32(0xFE));
+
+    // alternating bits: 16 set (even)
+    @assert(!opscalar.parity32(0x55555555));
+    @assert(!opscalar.parity32(0xAAAAAAAA));
+}
+
 fn test_popcnt32() void {
     @assert(opscalar.popcnt32(0xFFFFFFFF) == 32);
     @assert(opscalar.popcnt32(0xF0FFFFFF) == 28);
@@ -157,6 +189,89 @@ fn test_popcnt32() void {
     @assert(opscalar.popcnt32(2) == 1);
     @assert(opscalar.popcnt32(1) == 1);
     @assert(opscalar.popcnt32(0) == 0);
+}
+
+fn test_hamming_syndrome32() void {
+    // zero: no bits set, syndrome is 0
+    @assert(opscalar.hamming_syndrome32(0) == 0);
+
+    // single bit set: syndrome equals the 1-indexed position
+    @assert(opscalar.hamming_syndrome32(1) == 1); // bit 0 -> pos 1
+    @assert(opscalar.hamming_syndrome32(2) == 2); // bit 1 -> pos 2
+    @assert(opscalar.hamming_syndrome32(4) == 3); // bit 2 -> pos 3
+    @assert(opscalar.hamming_syndrome32(8) == 4); // bit 3 -> pos 4
+    @assert(opscalar.hamming_syndrome32(0x10) == 5); // bit 4 -> pos 5
+    @assert(opscalar.hamming_syndrome32(0x20) == 6); // bit 5 -> pos 6
+    @assert(opscalar.hamming_syndrome32(0x40) == 7); // bit 6 -> pos 7
+    @assert(opscalar.hamming_syndrome32(0x80) == 8); // bit 7 -> pos 8
+    @assert(opscalar.hamming_syndrome32(0x8000) == 16); // bit 15 -> pos 16
+    @assert(opscalar.hamming_syndrome32(0x10000) == 17); // bit 16 -> pos 17
+    @assert(opscalar.hamming_syndrome32(0x80000000) == 32); // bit 31 -> pos 32
+
+    // two bits set: syndrome is XOR of their positions
+    @assert(opscalar.hamming_syndrome32(3) == 3); // pos 1 XOR 2 = 3
+    @assert(opscalar.hamming_syndrome32(5) == 2); // pos 1 XOR 3 = 2
+    @assert(opscalar.hamming_syndrome32(6) == 1); // pos 2 XOR 3 = 1
+    @assert(opscalar.hamming_syndrome32(0xA) == 6); // pos 2 XOR 4 = 6
+
+    // all bits set: XOR of 1..32 = 32 (since 32 % 4 == 0)
+    @assert(opscalar.hamming_syndrome32(0xFFFFFFFF) == 32);
+
+    // all low byte bits: XOR of 1..8 = 8 (since 8 % 4 == 0)
+    @assert(opscalar.hamming_syndrome32(0xFF) == 8);
+
+    // all low 16 bits: XOR of 1..16 = 16 (since 16 % 4 == 0)
+    @assert(opscalar.hamming_syndrome32(0xFFFF) == 16);
+
+    // powers of two (Hamming weight 1) -- syndrome = position
+    @assert(opscalar.hamming_syndrome32(0x100) == 9);
+    @assert(opscalar.hamming_syndrome32(0x200) == 10);
+    @assert(opscalar.hamming_syndrome32(0x40000000) == 31);
+
+    // specific multi-bit patterns
+    // pos 1 XOR 4 = 5
+    @assert(opscalar.hamming_syndrome32(0x9) == 5);
+    // pos 1 XOR 2 XOR 3 = 0
+    @assert(opscalar.hamming_syndrome32(0x7) == 0);
+    // pos 5 XOR 6 = 3
+    @assert(opscalar.hamming_syndrome32(0x30) == 3);
+
+    // flipping any single bit must change the syndrome
+    const base: u32 = 0xA5A5A5A5;
+    const base_syn = opscalar.hamming_syndrome32(base);
+    for (@range(u32, 32)) |bit| {
+        const flipped = base ^ (@as(u32, 1) << bit);
+        @assert(opscalar.hamming_syndrome32(flipped) != base_syn);
+    }
+
+    // flipping two distinct bits must change the syndrome
+    // (since flipping bits i,j changes syndrome by (i+1) XOR (j+1) != 0)
+    const base2: u32 = 0x12345678;
+    const base2_syn = opscalar.hamming_syndrome32(base2);
+    // bit pair (0, 1)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x3) != base2_syn);
+    // bit pair (4, 7)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x90) != base2_syn);
+    // bit pair (15, 16)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x18000) != base2_syn);
+    // bit pair (0, 31)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x80000001) != base2_syn);
+    // bit pair (10, 20)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x100400) != base2_syn);
+    // bit pair (3, 29)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x20000008) != base2_syn);
+    // bit pair (6, 22)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x400040) != base2_syn);
+    // bit pair (9, 13)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x2200) != base2_syn);
+    // bit pair (2, 25)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x2000004) != base2_syn);
+    // bit pair (18, 27)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x8040000) != base2_syn);
+    // bit pair (11, 24)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x1000800) != base2_syn);
+    // bit pair (5, 19)
+    @assert(opscalar.hamming_syndrome32(base2 ^ 0x80020) != base2_syn);
 }
 
 fn test_unif16() void {
@@ -485,8 +600,10 @@ fn do_test() void {
     test_incr16();
     test_incr32();
     test_incrmod32();
+    test_hamming_syndrome32();
     test_mul32();
     test_p();
+    test_parity32();
     test_poisson32();
     test_popcnt32();
     test_unif16();
