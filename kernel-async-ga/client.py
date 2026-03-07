@@ -1566,12 +1566,10 @@ log(f"{np.mean(clobber_data)=} {np.std(clobber_data)=} {sps.sem(clobber_data)=}"
 log(f"{np.median(clobber_data)=} {np.min(clobber_data)=} {np.max(clobber_data)=}")
 log(f"{np.count_nonzero(clobber_data)=}")
 with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", message="Mean of empty slice")
-    warnings.filterwarnings("ignore", message="invalid value encountered")
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
     log(f"{np.mean(clobber_data, where=clobber_data.nonzero())=}")
     log(f"{np.median(clobber_data[clobber_data.nonzero()])=}")
     log(f"{np.std(clobber_data, where=clobber_data.nonzero())=}")
-    log(f"{sps.sem(clobber_data[clobber_data.nonzero()])=}")
     log(f"{np.min(clobber_data, where=clobber_data.nonzero(), initial=0)=}")
     log(f"{np.max(clobber_data, where=clobber_data.nonzero(), initial=0)=}")
 
