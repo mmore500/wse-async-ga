@@ -3,7 +3,7 @@
 // byte 1
 // byte 2
 // byte 3
-// byte 4 DSTREAM_T COUNTER (u32, 4 bytes)
+// byte 4 DSTREAM_T COUNTER (u32, 4 bytes) [bits 0-2: parity, bits 4-31: counter]
 // byte 5
 // byte 6
 // byte 7
@@ -38,8 +38,20 @@
 //!         pl.UInt32,
 //!     ),
 //!     "dstream_T_dilation": (
-//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         16 * compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
 //!         pl.UInt32,
+//!     ),
+//!     "downstream_data_parity0_rule": (
+//!         "\n".join([
+//!             " ".join("0" * 32 + "1" * 4 + "0" * 3 + "1" * 25 + "0" * 96),
+//!             " ".join("0" * 38 + "1" * 1 + "0" * 25 + "1" * 32 + "0" * 64),
+//!             " ".join("0" * 37 + "1" * 1 + "0" * 58 + "1" * 32 + "0" * 32),
+//!         ]),
+//!         pl.String,
+//!     ),
+//!     "downstream_filter_packed": (
+//!         "pl.col('downstream_data_parity0_result') == 0",
+//!         pl.String,
 //!     ),
 //!     "nWav": (5, pl.UInt8),
 //! }
@@ -80,9 +92,16 @@ const gSize: u16 = 5;
 const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
-const hasImmClobber: bool = false;
+const hasImmClobber: bool = true;
 
 // internal functions =========================================================
+fn _set_parity_bits(genome: genomePtr_t) void {
+    genome[1] = genome[1] & 0xFFFFFFF0; // clear parity bits
+    genome[1] |= @as(u32, opscalar.parity32(genome[1])); // bit 0: T parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[2])) << 1; // bit 1: storage[0] parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[3])) << 2; // bit 2: storage[1] parity
+}
+
 fn _calc_fitness_of(genome: genomePtr_t) f32 {
     return @ptrcast(*f32, genome).*;
 }
@@ -103,7 +122,7 @@ fn _apply_mutation(genome: genomePtr_t) void {
 fn _do_step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     if (rng.next_bit()) {
-        const T = @ptrcast([*]u32, genome)[1] / hstrat_T_dilation;
+        const T = @ptrcast([*]u32, genome)[1] / 16 / hstrat_T_dilation;
         const site = dstream_algo.assign_storage_site(S, T);
 
         const offset_bits: u16 = (4 + 4) * 8;
@@ -115,10 +134,11 @@ fn _do_step_instrumentation(genome: genomePtr_t) void {
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
-    if (@ptrcast([*]u32, genome)[1] % hstrat_T_dilation == 0) {
+    if ((@ptrcast([*]u32, genome)[1] / 16) % hstrat_T_dilation == 0) {
         _do_step_instrumentation(genome);
     }
-    @ptrcast([*]u32, genome)[1] += 1;
+    @ptrcast([*]u32, genome)[1] = (@ptrcast([*]u32, genome)[1] & 0xFFFFFFF0) + 16;
+    _set_parity_bits(genome);
 }
 
 // public API =================================================================
@@ -137,10 +157,25 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 
 fn initialize_one(genome: genomePtr_t) void {
     @ptrcast(*f32, genome).* = 0.0;
-    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation;
+    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation * 16;
     @ptrcast([*]u32, genome)[2] = rng.next();
     @ptrcast([*]u32, genome)[3] = rng.next();
     @ptrcast([*]u32, genome)[4] = 0;  // empty
+    _set_parity_bits(genome);
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+    const t_upper = immigrant[1] & 0xFFFFFFF0;
+    const t_parity_ok = opscalar.parity32(t_upper) == ((immigrant[1] & 1) == 1);
+    const s0_parity_ok = opscalar.parity32(immigrant[2]) == ((immigrant[1] & 2) == 2);
+    const s1_parity_ok = opscalar.parity32(immigrant[3]) == ((immigrant[1] & 4) == 4);
+    if (!t_parity_ok or !s0_parity_ok or !s1_parity_ok) {
+        immigrant[0] = 0;
+        immigrant[1] = 0;
+        immigrant[2] = 0;
+        immigrant[3] = 0;
+        immigrant[4] = 0;
+        return true;
+    }
+    return false;
+}

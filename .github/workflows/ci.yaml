@@ -348,6 +348,7 @@ jobs:
           - genome_purifyingonly_dstream_validation
           - genome_purifyingonly
           - genome_purifyingplus
+          - genome_purifyingsweep
         exclude:
           - arch: "wse2"
             dstream_validator: "checkerboard"
@@ -362,6 +363,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "checkerboard"
             dstream_expected_T: 64
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 64
             dstream_algo_name: "stretched_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -372,6 +378,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "checkerboard"
             dstream_expected_T: 64
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 64
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -379,6 +390,11 @@ jobs:
             dstream_expected_T: 64
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingplus"
+          - arch: "wse2"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 64
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
           - arch: "wse2"
             dstream_validator: "checkerboard"
             dstream_expected_T: 65
@@ -392,6 +408,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "checkerboard"
             dstream_expected_T: 65
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 65
             dstream_algo_name: "stretched_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -402,6 +423,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "checkerboard"
             dstream_expected_T: 65
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 65
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -409,6 +435,11 @@ jobs:
             dstream_expected_T: 65
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingplus"
+          - arch: "wse2"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 65
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
           - arch: "wse2"
             dstream_validator: "hopscotch"
             dstream_expected_T: 64
@@ -422,6 +453,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "hopscotch"
             dstream_expected_T: 64
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 64
             dstream_algo_name: "stretched_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -432,6 +468,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "hopscotch"
             dstream_expected_T: 64
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 64
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -441,6 +482,11 @@ jobs:
             genome: "genome_purifyingplus"
           - arch: "wse2"
             dstream_validator: "hopscotch"
+            dstream_expected_T: 64
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "hopscotch"
             dstream_expected_T: 65
             dstream_algo_name: "steady_algo"
             genome: "genome_purifyingonly"
@@ -452,6 +498,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "hopscotch"
             dstream_expected_T: 65
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 65
             dstream_algo_name: "stretched_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -462,6 +513,11 @@ jobs:
           - arch: "wse2"
             dstream_validator: "hopscotch"
             dstream_expected_T: 65
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse2"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 65
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse2"
@@ -469,6 +525,11 @@ jobs:
             dstream_expected_T: 65
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingplus"
+          - arch: "wse2"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 65
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
           - arch: "wse3"
             dstream_validator: "checkerboard"
             dstream_expected_T: 64
@@ -482,6 +543,11 @@ jobs:
           - arch: "wse3"
             dstream_validator: "checkerboard"
             dstream_expected_T: 64
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 64
             dstream_algo_name: "stretched_algo"
             genome: "genome_purifyingonly"
           - arch: "wse3"
@@ -492,6 +558,11 @@ jobs:
           - arch: "wse3"
             dstream_validator: "checkerboard"
             dstream_expected_T: 64
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 64
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse3"
@@ -499,6 +570,11 @@ jobs:
             dstream_expected_T: 64
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingplus"
+          - arch: "wse3"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 64
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
           - arch: "wse3"
             dstream_validator: "checkerboard"
             dstream_expected_T: 65
@@ -512,6 +588,11 @@ jobs:
           - arch: "wse3"
             dstream_validator: "checkerboard"
             dstream_expected_T: 65
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 65
             dstream_algo_name: "stretched_algo"
             genome: "genome_purifyingonly"
           - arch: "wse3"
@@ -522,6 +603,11 @@ jobs:
           - arch: "wse3"
             dstream_validator: "checkerboard"
             dstream_expected_T: 65
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 65
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse3"
@@ -530,6 +616,11 @@ jobs:
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingplus"
           - arch: "wse3"
+            dstream_validator: "checkerboard"
+            dstream_expected_T: 65
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
             dstream_validator: "hopscotch"
             dstream_expected_T: 64
             dstream_algo_name: "steady_algo"
@@ -539,6 +630,11 @@ jobs:
             dstream_expected_T: 64
             dstream_algo_name: "steady_algo"
             genome: "genome_purifyingplus"
+          - arch: "wse3"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 64
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
           - arch: "wse3"
             dstream_validator: "hopscotch"
             dstream_expected_T: 64
@@ -552,6 +648,11 @@ jobs:
           - arch: "wse3"
             dstream_validator: "hopscotch"
             dstream_expected_T: 64
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 64
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse3"
@@ -561,6 +662,11 @@ jobs:
             genome: "genome_purifyingplus"
           - arch: "wse3"
             dstream_validator: "hopscotch"
+            dstream_expected_T: 64
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
+            dstream_validator: "hopscotch"
             dstream_expected_T: 65
             dstream_algo_name: "steady_algo"
             genome: "genome_purifyingonly"
@@ -569,6 +675,11 @@ jobs:
             dstream_expected_T: 65
             dstream_algo_name: "steady_algo"
             genome: "genome_purifyingplus"
+          - arch: "wse3"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 65
+            dstream_algo_name: "steady_algo"
+            genome: "genome_purifyingsweep"
           - arch: "wse3"
             dstream_validator: "hopscotch"
             dstream_expected_T: 65
@@ -582,6 +693,11 @@ jobs:
           - arch: "wse3"
             dstream_validator: "hopscotch"
             dstream_expected_T: 65
+            dstream_algo_name: "stretched_algo"
+            genome: "genome_purifyingsweep"
+          - arch: "wse3"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 65
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingonly"
           - arch: "wse3"
@@ -589,6 +705,11 @@ jobs:
             dstream_expected_T: 65
             dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingplus"
+          - arch: "wse3"
+            dstream_validator: "hopscotch"
+            dstream_expected_T: 65
+            dstream_algo_name: "tilted_algo"
+            genome: "genome_purifyingsweep"
     env:
       ASYNC_GA_ARCH_FLAG: ${{ matrix.arch }}
       CSLC: cslc

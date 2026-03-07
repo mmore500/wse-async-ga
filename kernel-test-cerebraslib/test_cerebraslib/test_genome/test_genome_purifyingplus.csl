@@ -1,9 +1,18 @@
 const random = @import_module("<random>");
 
 const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
 const genome = @import_module(
     "cerebraslib/genome/genome_purifyingplus.csl", .{.rng = rng}
 );
+
+fn _check_parity(g: *genome.genome_t) void {
+    const gp = @ptrcast([*]u32, g);
+    const t_upper = gp[1] & 0xFFFFFFF0;
+    @assert(@as(u32, opscalar.parity32(t_upper)) == (gp[1] & 1));
+    @assert(@as(u32, opscalar.parity32(gp[2])) == ((gp[1] >> 1) & 1));
+    @assert(@as(u32, opscalar.parity32(gp[3])) == ((gp[1] >> 2) & 1));
+}
 
 fn test_elapse_inheritance_of() void {
     var g = @zeros(genome.genome_t);
@@ -26,9 +35,46 @@ fn test_initialize_one() void {
     genome.initialize_one(&g);
 }
 
+fn test_parity_after_init() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    _check_parity(&g);
+}
+
+fn test_parity_after_steps() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    _check_parity(&g);
+    for (@range(u16, 10)) |_| {
+        genome.elapse_inheritance_of(&g);
+        _check_parity(&g);
+    }
+}
+
+fn test_clobber_valid_immigrant() void {
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    genome.initialize_one(&resident);
+    genome.initialize_one(&immigrant);
+    @assert(!genome.clobber_immigrant(&resident, &immigrant));
+}
+
+fn test_clobber_invalid_immigrant() void {
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    genome.initialize_one(&resident);
+    genome.initialize_one(&immigrant);
+    @ptrcast([*]u32, &immigrant)[1] ^= 1;
+    @assert(genome.clobber_immigrant(&resident, &immigrant));
+}
+
 fn do_test() void {
     test_calc_fitness_of();
     test_elapse_inheritance_of();
     test_get_trait_value();
     test_initialize_one();
+    test_parity_after_init();
+    test_parity_after_steps();
+    test_clobber_valid_immigrant();
+    test_clobber_invalid_immigrant();
 }
