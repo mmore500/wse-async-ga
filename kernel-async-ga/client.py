@@ -1542,6 +1542,28 @@ log(immSum[:100])
 log(f"{np.mean(immSum)=} {np.std(immSum)=} {sps.sem(immSum)=}")
 log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
 
+log("clobber counter ============================================")
+memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+out_tensors = np.zeros((nCol, nRow), np.uint32)
+
+runner.memcpy_d2h(
+    out_tensors.ravel(),
+    runner.get_id("clobberCounter"),
+    0,  # x0
+    0,  # y0
+    nCol,  # width
+    nRow,  # height
+    1,  # num wavelets
+    streaming=False,
+    data_type=memcpy_dtype,
+    order=MemcpyOrder.ROW_MAJOR,
+    nonblock=False,
+)
+clobber_data = out_tensors.copy()
+log(clobber_data[:20, :20])
+log(f"{np.mean(clobber_data)=} {np.std(clobber_data)=} {sps.sem(clobber_data)=}")
+log(f"{np.median(clobber_data)=} {np.min(clobber_data)=} {np.max(clobber_data)=}")
+
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
 out_tensors = np.zeros((nCol, nRow, tscSizeWords // 2), np.uint32)
@@ -1657,6 +1679,7 @@ df = pl.DataFrame({
     "recv sum": pl.Series(recvSum, dtype=pl.UInt32),
     "send sum": pl.Series(sendSum, dtype=pl.UInt32),
     "imm sum": pl.Series(immSum, dtype=pl.UInt32),
+    "clobber count": pl.Series(clobber_data.ravel(), dtype=pl.UInt32),
     "cycle count": pl.Series(cycle_counts, dtype=pl.UInt32),
     "tsc start": pl.Series(tscStart_ints, dtype=pl.UInt64),
     "tsc end": pl.Series(tscEnd_ints, dtype=pl.UInt64),
@@ -1688,7 +1711,7 @@ write_parquet_verbose(
     f"+ncycle={nCycleAtLeast}"
     "+ext=.pqt",
 )
-del df, tsc_ticks, tsc_sec, tsc_cysec, tsc_cyhz, tsc_cyns, tscStart_ints, tscEnd_ints
+del df, tsc_ticks, tsc_sec, tsc_cysec, tsc_cyhz, tsc_cyns, tscStart_ints, tscEnd_ints, clobber_data
 
 # runner.dump("corefile.cs1")
 runner.stop()
