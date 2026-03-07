@@ -136,4 +136,4 @@ fn initialize_one(genome: genomePtr_t) void {
     _ptr_snap_counter(genome).* = 0xBEEF;
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }

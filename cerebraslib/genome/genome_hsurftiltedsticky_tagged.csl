@@ -70,4 +70,4 @@ fn initialize_one(genome: genomePtr_t) void {
     // tag bits left randomized
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }

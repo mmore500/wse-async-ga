@@ -187,16 +187,10 @@ fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u16 {
     var nClobbers: u16 = 0;
     if (genome.hasImmClobber) {
         for (@range(u16, nGenomes)) |i| {
-            const immPtr = @ptrcast([*]u32, &fromBuf[i * genome.gSize]);
-            // check if immigrant is non-empty before clobber
-            var pre_or: u32 = 0;
-            for (@range(u16, genome.gSize)) |w| { pre_or |= immPtr[w]; }
-            genome.clobber_immigrant(
+            nClobbers += @as(u16, genome.clobber_immigrant(
                 @ptrcast([*]u32, &buffer[swap[i * genome.gSize]]),
-                immPtr,
-            );
-            // check if immigrant was zeroed (clobbered)
-            if (pre_or != 0 and immPtr[0] == 0) { nClobbers += 1; }
+                @ptrcast([*]u32, &fromBuf[i * genome.gSize]),
+            ));
         }
     }
 
