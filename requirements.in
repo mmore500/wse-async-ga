@@ -1,7 +1,7 @@
 # pylib
 compconf==0.5.0
 dendropy
-downstream @ git+https://github.com/mmore500/downstream.git@claude/add-data-parity-rule-llLHn
+downstream==1.21.0
 hstrat==1.20.20
 opytional
 pandas
