@@ -1571,7 +1571,7 @@ with warnings.catch_warnings():
     log(f"{np.median(clobber_data[clobber_data != 0])=}")
     log(f"{np.std(clobber_data[clobber_data != 0])=}")
     log(f"{min(clobber_data[clobber_data != 0], default=0)=}")
-    log(f"{max(clobber_data[clobber_data != 0], default=0)=}")
+    log(f"{np.max(clobber_data[clobber_data != 0], initial=0)=}")
 
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
