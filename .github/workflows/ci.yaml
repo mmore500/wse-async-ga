@@ -888,6 +888,33 @@ jobs:
           name: fossils-and-genomes-reconstruction-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
           path: ./a=reconstruction+what=fossils-and-genomes+ext=.pqt
 
+      - name: Build tree from fossils and genomes
+        run: |
+          ls -1 ./kernel-async-ga/a=fossils* ./kernel-async-ga/a=genomes* \
+            | python3 -m hstrat.dataframe.surface_build_tree \
+            --how diagonal_relaxed \
+            --trie-postprocessor \
+              'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
+            a=phylogeny+what=fossils-and-genomes+ext=.pqt
+
+      - name: Upload phylogeny artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phylogeny-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          path: ./a=phylogeny+what=fossils-and-genomes+ext=.pqt
+
+      - name: Convert phylogeny to newick
+        run: |
+          python3 -m phyloframe.legacy._alifestd_as_newick_polars \
+            -i a=phylogeny+what=fossils-and-genomes+ext=.pqt \
+            -o a=phylogeny+what=fossils-and-genomes+ext=.nwk
+
+      - name: Upload newick artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newick-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          path: ./a=phylogeny+what=fossils-and-genomes+ext=.nwk
+
   test-cerebraslib:
     name: Test cerebraslib
     runs-on: ubuntu-latest

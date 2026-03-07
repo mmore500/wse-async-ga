@@ -11,6 +11,9 @@ pyarrow
 scipy
 tqdm
 
+# phylo postprocessing
+phyloframe==0.1.0
+
 # qa
 black==22.10.0
 pytest
