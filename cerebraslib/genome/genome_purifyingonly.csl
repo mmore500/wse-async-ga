@@ -7,7 +7,7 @@
 // byte 5
 // byte 6
 // byte 7
-// byte 8 BITFIELD (8 bytes)
+// byte 8 BITFIELD (12 bytes)
 // byte 9
 // byte 10
 // byte 11
@@ -15,7 +15,7 @@
 // byte 13
 // byte 14
 // byte 15
-// byte 16 EMPTY (4 bytes)
+// byte 16
 // byte 17
 // byte 18
 // byte 19
@@ -24,15 +24,15 @@
 //! {
 //!     "dstream_algo": (
 //!         "dstream." + compconf_data.get(
-//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "tilted_algo"
+//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "hybrid_0_steady_1_tilted_2_circular_3_algo"
 //!         ),
 //!         pl.Categorical,
 //!     ),
 //!     "dstream_storage_bitoffset": (64, pl.UInt8),
-//!     "dstream_storage_bitwidth": (64, pl.UInt8),
+//!     "dstream_storage_bitwidth": (96, pl.UInt8),
 //!     "dstream_T_bitoffset": (32, pl.UInt8),
 //!     "dstream_T_bitwidth": (32, pl.UInt8),
-//!     "dstream_S": (64, pl.UInt8),
+//!     "dstream_S": (96, pl.UInt8),
 //!     "hstrat_T_dilation": (
 //!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
 //!         pl.UInt32,
@@ -67,7 +67,7 @@ const compconf = @import_module("<compconf>");
 comptime { // access via get_value for logging...
     const _ = compconf.get_value_or(
         "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
-        "tilted_algo",
+        "hybrid_0_steady_1_tilted_2_circular_3_algo",
     );
 } // ... raw string works around sdk v1.0.0 limitation
 const compconf_raw = @import_module("<compconf_raw>");
@@ -75,7 +75,7 @@ const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
 const dstream_algo_name = (if (has_value)
     compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
 else
-    "tilted_algo");
+    "hybrid_0_steady_1_tilted_2_circular_3_algo");
 const dstream_algo = @import_module(
     @strcat("<downstream/dstream/", dstream_algo_name, ">"),
 );
@@ -96,22 +96,22 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = true;
 
 // internal functions =========================================================
-const S = 64;
+const S = 96;
 const _parity_T_dilation: u32 = 16;
 
 fn _check_parity(genome: genomePtr_t) bool {
     const t_ok = !opscalar.parity32(genome[1]); // even parity over whole T word
     const s0_ok = opscalar.parity32(genome[2]) == ((genome[1] & 2) == 2);
     const s1_ok = opscalar.parity32(genome[3]) == ((genome[1] & 4) == 4);
-    const e_ok = opscalar.parity32(genome[4]) == ((genome[1] & 8) == 8);
-    return t_ok and s0_ok and s1_ok and e_ok;
+    const s2_ok = opscalar.parity32(genome[4]) == ((genome[1] & 8) == 8);
+    return t_ok and s0_ok and s1_ok and s2_ok;
 }
 
 fn _set_parity_bits(genome: genomePtr_t) void {
     genome[1] = genome[1] & 0xFFFFFFF0; // clear parity bits
     genome[1] |= @as(u32, opscalar.parity32(genome[2])) << 1; // bit 1: storage[0] parity
     genome[1] |= @as(u32, opscalar.parity32(genome[3])) << 2; // bit 2: storage[1] parity
-    genome[1] |= @as(u32, opscalar.parity32(genome[4])) << 3; // bit 3: empty parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[4])) << 3; // bit 3: storage[2] parity
     genome[1] |= @as(u32, opscalar.parity32(genome[1])); // bit 0: T parity (must be last)
 }
 
@@ -167,7 +167,7 @@ fn initialize_one(genome: genomePtr_t) void {
     @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation * _parity_T_dilation;
     @ptrcast([*]u32, genome)[2] = rng.next();
     @ptrcast([*]u32, genome)[3] = rng.next();
-    @ptrcast([*]u32, genome)[4] = 0; // empty
+    @ptrcast([*]u32, genome)[4] = rng.next();
     _set_parity_bits(genome);
 }
 
