@@ -855,6 +855,8 @@ jobs:
         run: |
           ls -1 ./kernel-async-ga/a=genomes* \
             | python3 -m hstrat.dataframe.surface_build_tree \
+            --with-column "pl.col('downstream_filter_packed').alias('downstream_validate_packed')" \
+            --drop downstream_filter_packed \
             --trie-postprocessor \
               'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
             a=phylogeny+what=genomes+ext=.pqt
@@ -869,6 +871,8 @@ jobs:
         run: |
           ls -1 ./kernel-async-ga/a=fossils* \
             | python3 -m hstrat.dataframe.surface_build_tree \
+            --with-column "pl.col('downstream_filter_packed').alias('downstream_validate_packed')" \
+            --drop downstream_filter_packed \
             --trie-postprocessor \
               'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
             a=phylogeny+what=fossils+ext=.pqt
@@ -883,6 +887,8 @@ jobs:
         run: |
           ls -1 ./kernel-async-ga/a=fossils* ./kernel-async-ga/a=genomes* \
             | python3 -m hstrat.dataframe.surface_build_tree \
+            --with-column "pl.col('downstream_filter_packed').alias('downstream_validate_packed')" \
+            --drop downstream_filter_packed \
             --how diagonal_relaxed \
             --trie-postprocessor \
               'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
