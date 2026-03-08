@@ -655,6 +655,9 @@ task cycleTask() void {
 
   wildtypeLogger.update(population._get_ith_trait_value(0) == 0);
 
+  // reseed builtin PRNG from xoroshiro rng to mix entropy across generations
+  random.set_global_prng_seed(math.max(rng.next(), 1));
+
   // trigger next cycle
   // --------------------------------------------------------------------------
   if (!shouldHalt(cycleCounter[0])) { cycleCounter[0] += 1;  // for telemetry
