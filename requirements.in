@@ -1,8 +1,8 @@
 # pylib
 compconf==0.5.0
 dendropy
-downstream==1.18.0
-hstrat==1.20.20
+downstream==1.21.1
+hstrat @ https://github.com/mmore500/hstrat/archive/refs/tags/v1.23.4.tar.gz
 opytional
 pandas
 fastparquet==2023.10.1
@@ -10,6 +10,9 @@ polars==1.37.1
 pyarrow
 scipy
 tqdm
+
+# phylo postprocessing
+phyloframe==0.1.0
 
 # qa
 black==22.10.0
