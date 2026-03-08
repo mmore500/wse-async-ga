@@ -50,7 +50,7 @@
 //!         ]),
 //!         pl.String,
 //!     ),
-//!     "downstream_filter_packed": (
+//!     "downstream_validate_packed": (
 //!         "pl.col('downstream_data_parity0_result') == 0",
 //!         pl.String,
 //!     ),
