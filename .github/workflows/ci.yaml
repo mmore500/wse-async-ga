@@ -344,6 +344,7 @@ jobs:
           - "steady_algo"
           - "stretched_algo"
           - "tilted_algo"
+          - "hybrid_0_steady_1_tilted_2_circular_3_algo"
         genome:
           - genome_purifyingonly_dstream_validation
           - genome_purifyingonly
@@ -371,6 +372,10 @@ jobs:
             genome: "genome_purifyingplus"
           - dstream_algo_name: "tilted_algo"
             genome: "genome_purifyingsweep"
+          # Hybrid 0123 algo requires 96-bit storage; it is incompatible
+          # with the 64-bit validation genome.
+          - dstream_algo_name: "hybrid_0_steady_1_tilted_2_circular_3_algo"
+            genome: "genome_purifyingonly_dstream_validation"
     env:
       ASYNC_GA_ARCH_FLAG: ${{ matrix.arch }}
       CSLC: cslc
