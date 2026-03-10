@@ -340,42 +340,44 @@ jobs:
         dstream_expected_T:
           - 64
           - 65
+          - 96
+          - 97
         dstream_S:
           - 64
+          - 96
         dstream_algo_name:
           - "circular_algo"
           - "steady_algo"
           - "stretched_algo"
           - "tilted_algo"
-          # - "hybrid_0_steady_1_tilted_2_circular_3_algo"
+          - "hybrid_0_steady_1_tilted_2"
+          - "hybrid_0_steady_1_tilted_2_circular_3_algo"
         genome:
           - genome_purifyingonly_dstream_validation
-        # exclude:
-          # Plain algos (steady, stretched, tilted) are incompatible with
-          # 96-bit purifying genomes; they only work with the 64-bit
-          # validation genome (genome_purifyingonly_dstream_validation).
-          # - dstream_algo_name: "steady_algo"
-          #   genome: "genome_purifyingonly"
-          # - dstream_algo_name: "steady_algo"
-          #   genome: "genome_purifyingplus"
-          # - dstream_algo_name: "steady_algo"
-          #   genome: "genome_purifyingsweep"
-          # - dstream_algo_name: "stretched_algo"
-          #   genome: "genome_purifyingonly"
-          # - dstream_algo_name: "stretched_algo"
-          #   genome: "genome_purifyingplus"
-          # - dstream_algo_name: "stretched_algo"
-          #   genome: "genome_purifyingsweep"
-          # - dstream_algo_name: "tilted_algo"
-          #   genome: "genome_purifyingonly"
-          # - dstream_algo_name: "tilted_algo"
-          #   genome: "genome_purifyingplus"
-          # - dstream_algo_name: "tilted_algo"
-          #   genome: "genome_purifyingsweep"
-          # # Hybrid 0123 algo requires 96-bit storage; it is incompatible
-          # # with the 64-bit validation genome.
-          # - dstream_algo_name: "hybrid_0_steady_1_tilted_2_circular_3_algo"
-          #   genome: "genome_purifyingonly_dstream_validation"
+        exclude:
+          # Plain algos incompatible with 96-bit storage
+          - dstream_algo_name: "steady_algo"
+            dstream_S: 96
+          - dstream_algo_name: "stretched_algo"
+            dstream_S: 96
+          - dstream_algo_name: "tilted_algo"
+            dstream_S: 96
+          - dstream_algo_name: "hybrid_0_steady_1_tilted_2"
+            dstream_S: 96
+
+          # The 0123 hybrid algo is incompatible with 64-bit storage
+          - dstream_algo_name: "hybrid_0_steady_1_tilted_2_circular_3_algo"
+            dstream_S: 64
+
+          # Restrict T 64/65 to S 64, and T 96/97 to S 96
+          - dstream_expected_T: 64
+            dstream_S: 96
+          - dstream_expected_T: 65
+            dstream_S: 96
+          - dstream_expected_T: 96
+            dstream_S: 64
+          - dstream_expected_T: 97
+            dstream_S: 64
     env:
       ASYNC_GA_ARCH_FLAG: ${{ matrix.arch }}
       CSLC: cslc
