@@ -45,7 +45,10 @@
 //!        pl.Categorical,
 //!     ),
 //!     "dstream_storage_bitoffset": (64, pl.UInt8),
-//!     "dstream_storage_bitwidth": (64, pl.UInt8),
+//!     "dstream_storage_bitwidth": (
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_DSTREAM_S:u32", 64),
+//!         pl.UInt8,
+//!     ),
 //!     "dstream_S": (
 //!         compconf_data.get("CEREBRASLIB_HSTRAT_DSTREAM_S:u32", 64),
 //!         pl.UInt8,
