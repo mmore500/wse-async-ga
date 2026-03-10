@@ -52,7 +52,7 @@
 //!     ),
 //!     "downstream_filter_packed": (
 //!         "pl.col('downstream_data_parity0_result') == 0",
-//!         pl.String,
+//!         pl.Categorical,
 //!     ),
 //!     "nWav": (5, pl.UInt8),
 //! }
