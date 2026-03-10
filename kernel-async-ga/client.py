@@ -751,7 +751,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     print(f"({len(fossils)})", end="", flush=True)
     print("a", end="", flush=True)
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-    out_tensors = np.zeros((nCol, nRow, nWav + 2), np.uint32)
+    out_tensors = np.zeros((nRow, nCol, nWav + 2), np.uint32)
     print("b", end="", flush=True)
     runner.memcpy_d2h(
         out_tensors.ravel(),
@@ -786,7 +786,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
 
     print("2", end="", flush=True)
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-    out_tensors = np.zeros((nCol, nRow, 1), np.uint32)
+    out_tensors = np.zeros((nRow, nCol, 1), np.uint32)
     runner.memcpy_d2h(
         out_tensors.ravel(),
         runner.get_id("cycleCounter"),
@@ -829,7 +829,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
 
     print("1", end="", flush=True)
     memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-    out_tensors = np.zeros((nCol, nRow, 1), np.uint32)
+    out_tensors = np.zeros((nRow, nCol, 1), np.uint32)
     runner.memcpy_d2h(
         out_tensors.ravel(),
         runner.get_id("cycleCounter"),
@@ -947,7 +947,7 @@ else:
 
 log("whoami =====================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -967,7 +967,7 @@ log(whoami_data[:20, :20])
 
 log("whereami x =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -987,7 +987,7 @@ log(whereami_x_data[:20, :20])
 
 log("whereami y =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1007,7 +1007,7 @@ log(whereami_y_data[:20, :20])
 
 log("trait data =================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow, nTrait), np.uint32)
+out_tensors = np.zeros((nRow, nCol, nTrait), np.uint32)
 runner.memcpy_d2h(
     out_tensors.ravel(),
     runner.get_id("traitCounts"),
@@ -1025,7 +1025,7 @@ traitCounts_data = out_tensors.copy()
 log(f"traitCounts_data {Counter(traitCounts_data.ravel())}")
 
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow, nTrait), np.uint32)
+out_tensors = np.zeros((nRow, nCol, nTrait), np.uint32)
 runner.memcpy_d2h(
     out_tensors.ravel(),
     runner.get_id("traitCycles"),
@@ -1043,7 +1043,7 @@ traitCycles_data = out_tensors.copy()
 log(f"traitCycles_data {Counter(traitCycles_data.ravel())}")
 
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow, nTrait), np.uint32)
+out_tensors = np.zeros((nRow, nCol, nTrait), np.uint32)
 runner.memcpy_d2h(
     out_tensors.ravel(),
     runner.get_id("traitValues"),
@@ -1090,7 +1090,7 @@ del df, traitCounts_data, traitCycles_data, traitValues_data
 log("wildtype traitlogs ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
 traitLoggerNumWavs = traitLoggerNumBits // wavSize + 1  # +1 for dstream_T
-out_tensors = np.zeros((nCol, nRow, traitLoggerNumWavs), np.uint32)
+out_tensors = np.zeros((nRow, nCol, traitLoggerNumWavs), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1156,7 +1156,7 @@ del df, raw_binary_data, record_raw
 
 log("fitness ===================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.float32)
+out_tensors = np.zeros((nRow, nCol), np.float32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1176,7 +1176,7 @@ log(fitness_data[:20, :20])
 
 log("genome values ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow, nWav), np.uint32)
+out_tensors = np.zeros((nRow, nCol, nWav), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1233,7 +1233,7 @@ del df, fitness_data, genome_raw
 
 log("cycle counter =============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1257,7 +1257,7 @@ del cc
 
 log("recv counter N ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1279,7 +1279,7 @@ log(f"{np.median(recvN)=} {np.min(recvN)=} {np.max(recvN)=}")
 
 log("recv counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1301,7 +1301,7 @@ log(f"{np.median(recvS)=} {np.min(recvS)=} {np.max(recvS)=}")
 
 log("recv counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1323,7 +1323,7 @@ log(f"{np.median(recvE)=} {np.min(recvE)=} {np.max(recvE)=}")
 
 log("recv counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1353,7 +1353,7 @@ log(f"{np.median(recvSum)=} {np.min(recvSum)=} {np.max(recvSum)=}")
 
 log("send counter N ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1375,7 +1375,7 @@ log(f"{np.median(sendN)=} {np.min(sendN)=} {np.max(sendN)=}")
 
 log("send counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1397,7 +1397,7 @@ log(f"{np.median(sendS)=} {np.min(sendS)=} {np.max(sendS)=}")
 
 log("send counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1419,7 +1419,7 @@ log(f"{np.median(sendE)=} {np.min(sendE)=} {np.max(sendE)=}")
 
 log("send counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1449,7 +1449,7 @@ log(f"{np.median(sendSum)=} {np.min(sendSum)=} {np.max(sendSum)=}")
 
 log("imm counter N ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1471,7 +1471,7 @@ log(f"{np.median(immN)=} {np.min(immN)=} {np.max(immN)=}")
 
 log("imm counter S ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1493,7 +1493,7 @@ log(f"{np.median(immS)=} {np.min(immS)=} {np.max(immS)=}")
 
 log("imm counter E ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1515,7 +1515,7 @@ log(f"{np.median(immE)=} {np.min(immE)=} {np.max(immE)=}")
 
 log("imm counter W ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1545,7 +1545,7 @@ log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
 
 log("clobber counter ============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow), np.uint32)
+out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1575,7 +1575,7 @@ with warnings.catch_warnings():
 
 log("tscControl values ==========================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow, tscSizeWords // 2), np.uint32)
+out_tensors = np.zeros((nRow, nCol, tscSizeWords // 2), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1601,7 +1601,7 @@ log(tscControl_ints[:100])
 
 log("tscStart values ============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow, tscSizeWords // 2), np.uint32)
+out_tensors = np.zeros((nRow, nCol, tscSizeWords // 2), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
@@ -1627,7 +1627,7 @@ log(tscStart_ints[:100])
 
 log("tscEnd values ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-out_tensors = np.zeros((nCol, nRow, tscSizeWords // 2), np.uint32)
+out_tensors = np.zeros((nRow, nCol, tscSizeWords // 2), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
