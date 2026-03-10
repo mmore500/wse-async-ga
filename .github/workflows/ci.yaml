@@ -350,7 +350,7 @@ jobs:
           - "steady_algo"
           - "stretched_algo"
           - "tilted_algo"
-          - "hybrid_0_steady_1_tilted_2"
+          - "hybrid_0_steady_1_tilted_2_algo"
           - "hybrid_0_steady_1_tilted_2_circular_3_algo"
         genome:
           - genome_purifyingonly_dstream_validation
@@ -362,7 +362,7 @@ jobs:
             dstream_S: 96
           - dstream_algo_name: "tilted_algo"
             dstream_S: 96
-          - dstream_algo_name: "hybrid_0_steady_1_tilted_2"
+          - dstream_algo_name: "hybrid_0_steady_1_tilted_2_algo"
             dstream_S: 96
 
           # The 0123 hybrid algo is incompatible with 64-bit storage
