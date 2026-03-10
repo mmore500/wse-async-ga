@@ -24,17 +24,31 @@
 //! {
 //!     "dstream_algo": (
 //!         "dstream." + compconf_data.get(
-//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "tilted_algo"
+//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string",
+//!             "tilted_algo",
 //!         ),
 //!         pl.Categorical,
 //!     ),
 //!     "downstream_validate_exploded": (
 //!         {
-//!             "block": f"pl.col('dstream_value') == pl.col('dstream_Tbar') // ({compconf_data.get('CEREBRASLIB_HSTRAT_DSTREAM_S:u32', 64)} // 2 + 1)}",
-//!             "checkerboard": "pl.col('dstream_value') == pl.col('dstream_Tbar') % 2",
-//!             "hopscotch": "pl.col('dstream_value') == 1 - (pl.col('dstream_Tbar') % 3).sign()",
+//!             "block": (
+//!                 f"""pl.col('dstream_value') == pl.col('dstream_Tbar') // {
+//!                     compconf_data.get(
+//!                         'CEREBRASLIB_HSTRAT_DSTREAM_S:u32', 64
+//!                     )  // 2 + 1
+//!                 }""",
+//!            ),
+//!             "checkerboard": (
+//!                 "pl.col('dstream_value') == pl.col('dstream_Tbar') % 2",
+//!             "hopscotch": (
+//!                 "pl.col('dstream_value') == "
+//!                 "1 - (pl.col('dstream_Tbar') % 3).sign()"
+//!               ),
 //!         }[
-//!             compconf_data.get("CEREBRASLIB_DSTREAM_VALIDATOR:comptime_string", "checkerboard")
+//!             compconf_data.get(
+//!                 "CEREBRASLIB_DSTREAM_VALIDATOR:comptime_string",
+//!                 "checkerboard",
+//!             )
 //!         ],
 //!         pl.Categorical,
 //!     ),
