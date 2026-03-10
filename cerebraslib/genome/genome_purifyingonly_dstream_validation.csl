@@ -120,7 +120,7 @@ const hasImmClobber: bool = false;
 // internal functions =========================================================
 fn _apply_mutation(genome: genomePtr_t) void {
     var mutated = calc_fitness_of(genome);
-    const scale = (mutated + 1.0) / 1024.0;
+    const scale = math.max(mutated, 1.0) / 1024.0;
 
     if (opscalar.p(0.3)) {
         mutated -= math.abs(random.random_normal_f32()) * scale;
@@ -133,6 +133,7 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     const T = @ptrcast([*]u32, genome)[1];
     const site = dstream_algo.assign_storage_site(S, T);
+    @assert(site <= S);
 
     const offset_bits: u16 = (4 + 4) * 8;
     const target_bit = @as(u16, site) + offset_bits;
