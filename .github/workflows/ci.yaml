@@ -340,42 +340,44 @@ jobs:
         dstream_expected_T:
           - 64
           - 65
+          - 96
+          - 97
+        dstream_S:
+          - 64
+          - 96
         dstream_algo_name:
+          - "circular_algo"
           - "steady_algo"
           - "stretched_algo"
           - "tilted_algo"
+          - "hybrid_0_steady_1_tilted_2_algo"
           - "hybrid_0_steady_1_tilted_2_circular_3_algo"
         genome:
           - genome_purifyingonly_dstream_validation
-          - genome_purifyingonly
-          - genome_purifyingplus
-          - genome_purifyingsweep
         exclude:
-          # Plain algos (steady, stretched, tilted) are incompatible with
-          # 96-bit purifying genomes; they only work with the 64-bit
-          # validation genome (genome_purifyingonly_dstream_validation).
+          # Plain algos incompatible with 96-bit storage
           - dstream_algo_name: "steady_algo"
-            genome: "genome_purifyingonly"
-          - dstream_algo_name: "steady_algo"
-            genome: "genome_purifyingplus"
-          - dstream_algo_name: "steady_algo"
-            genome: "genome_purifyingsweep"
+            dstream_S: 96
           - dstream_algo_name: "stretched_algo"
-            genome: "genome_purifyingonly"
-          - dstream_algo_name: "stretched_algo"
-            genome: "genome_purifyingplus"
-          - dstream_algo_name: "stretched_algo"
-            genome: "genome_purifyingsweep"
+            dstream_S: 96
           - dstream_algo_name: "tilted_algo"
-            genome: "genome_purifyingonly"
-          - dstream_algo_name: "tilted_algo"
-            genome: "genome_purifyingplus"
-          - dstream_algo_name: "tilted_algo"
-            genome: "genome_purifyingsweep"
-          # Hybrid 0123 algo requires 96-bit storage; it is incompatible
-          # with the 64-bit validation genome.
+            dstream_S: 96
+          - dstream_algo_name: "hybrid_0_steady_1_tilted_2_algo"
+            dstream_S: 96
+
+          # The 0123 hybrid algo is incompatible with 64-bit storage
           - dstream_algo_name: "hybrid_0_steady_1_tilted_2_circular_3_algo"
-            genome: "genome_purifyingonly_dstream_validation"
+            dstream_S: 64
+
+          # Restrict T 64/65 to S 64, and T 96/97 to S 96
+          - dstream_expected_T: 64
+            dstream_S: 96
+          - dstream_expected_T: 65
+            dstream_S: 96
+          - dstream_expected_T: 96
+            dstream_S: 64
+          - dstream_expected_T: 97
+            dstream_S: 64
     env:
       ASYNC_GA_ARCH_FLAG: ${{ matrix.arch }}
       CSLC: cslc
@@ -477,6 +479,7 @@ jobs:
           export ASYNC_GA_NONBLOCK="1"
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           export COMPCONFENV_CEREBRASLIB_DSTREAM_VALIDATOR__comptime_string="${{ matrix.dstream_validator }}"
+          export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_S__u32="${{ matrix.dstream_S }}"
           export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
           export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
           sudo -E env PATH=$PATH \
@@ -495,6 +498,7 @@ jobs:
             export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
             export COMPCONFENV_CEREBRASLIB_DSTREAM_VALIDATOR__comptime_string="${{ matrix.dstream_validator }}"
             export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
+            export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_S__u32="${{ matrix.dstream_S }}"
             export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
             sudo -E env PATH=$PATH \
               ./kernel-async-ga/execute.sh \
@@ -512,6 +516,7 @@ jobs:
             export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
             export COMPCONFENV_CEREBRASLIB_DSTREAM_VALIDATOR__comptime_string="${{ matrix.dstream_validator }}"
             export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
+            export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_S__u32="${{ matrix.dstream_S }}"
             export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
             sudo -E env PATH=$PATH \
               ./kernel-async-ga/execute.sh \
@@ -530,7 +535,7 @@ jobs:
       - name: Upload genomes phylogeny artifact
         uses: actions/upload-artifact@v4
         with:
-          name: phylogeny-genomes-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          name: phylogeny-genomes-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}-${{ matrix.dstream_S }}
           path: ./a=phylogeny+what=genomes+ext=.pqt
 
       - name: Build tree from fossil genomes
@@ -546,7 +551,7 @@ jobs:
       - name: Upload fossils phylogeny artifact
         uses: actions/upload-artifact@v4
         with:
-          name: phylogeny-fossils-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          name: phylogeny-fossils-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}-${{ matrix.dstream_S }}
           path: ./a=phylogeny+what=fossils+ext=.pqt
 
       - name: Build tree from all genomes
@@ -563,7 +568,7 @@ jobs:
       - name: Upload combined phylogeny artifact
         uses: actions/upload-artifact@v4
         with:
-          name: phylogeny-fossils-and-genomes-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          name: phylogeny-fossils-and-genomes-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}-${{ matrix.dstream_S }}
           path: ./a=phylogeny+what=fossils-and-genomes+ext=.pqt
 
       - name: Convert phylogeny to newick
@@ -575,7 +580,7 @@ jobs:
       - name: Upload newick artifact
         uses: actions/upload-artifact@v4
         with:
-          name: newick-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}
+          name: newick-${{ matrix.arch }}-${{ matrix.dstream_algo_name }}-${{ matrix.genome }}-${{ matrix.dstream_validator }}-${{ matrix.dstream_expected_T }}-${{ matrix.dstream_S }}
           path: ./a=phylogeny+what=fossils-and-genomes+ext=.nwk
 
   test-cerebraslib:
