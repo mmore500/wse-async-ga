@@ -135,6 +135,7 @@ fn _do_step_instrumentation(genome: genomePtr_t) void {
     if (rng.next_bit()) {
         const T = @ptrcast([*]u32, genome)[1] / (_parity_T_dilation * hstrat_T_dilation);
         const site = dstream_algo.assign_storage_site(S, T);
+        @assert(site <= S);
 
         const offset_bits: u16 = (4 + 4) * 8;
         const target_bit = @as(u16, site) + offset_bits;
