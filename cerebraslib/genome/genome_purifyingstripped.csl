@@ -25,9 +25,9 @@ const hasImmClobber: bool = false;
 // internal functions =========================================================
 fn _apply_mutation(genome: genomePtr_t) void {
     var mutated = calc_fitness_of(genome);
-    const scale = (mutated + 1.0) / 1024.0;
+    const scale = math.max(mutated, 1.0) / 1024.0;
 
-    if (opscalar.p(0.3)) {
+    if (opscalar.p(0.01)) {
         mutated -= math.abs(random.random_normal_f32()) * scale;
     }
     // mutate fitness value
