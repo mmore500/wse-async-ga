@@ -346,6 +346,13 @@ def process_fossils(nWav: int) -> None:
             nrow_after = df.select(pl.len()).collect().item()
             log(f" - ... {nrow_before=}/{nrow_after=} remain after filtering")
 
+        log(" - recording bookends...")
+        df = df.with_columns(
+            bookend_value=pl.col("data_hex")
+            .str.head(8)
+            .str.to_integer(base=16),
+        )
+
         log(" - stripping bookends...")
         df = df.with_columns(pl.col("data_hex").str.head(-8).str.tail(-8))
 
