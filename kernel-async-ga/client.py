@@ -1068,17 +1068,29 @@ traitValues_data = out_tensors.copy()
 log(f"traitValues_data {str(Counter(traitValues_data.ravel()))[:500]}")
 
 # save trait data values to a file
-df = pl.DataFrame({
-    "trait count": pl.Series(traitCounts_data.ravel(), dtype=pl.UInt16),
-    "trait cycle last seen": pl.Series(traitCycles_data.ravel(), dtype=pl.UInt32),
-    "trait value": pl.Series(traitValues_data.ravel(), dtype=pl.UInt8),
-    "tile": pl.Series(np.repeat(whoami_data.ravel(), nTrait), dtype=pl.UInt32),
-    "row": pl.Series(np.repeat(whereami_y_data.ravel(), nTrait), dtype=pl.UInt16),
-    "col": pl.Series(np.repeat(whereami_x_data.ravel(), nTrait), dtype=pl.UInt16),
-}).with_columns([
-    pl.lit(value, dtype=dtype).alias(key)
-    for key, (value, dtype) in metadata.items()
-])
+df = pl.DataFrame(
+    {
+        "trait count": pl.Series(traitCounts_data.ravel(), dtype=pl.UInt16),
+        "trait cycle last seen": pl.Series(
+            traitCycles_data.ravel(), dtype=pl.UInt32
+        ),
+        "trait value": pl.Series(traitValues_data.ravel(), dtype=pl.UInt16),
+        "tile": pl.Series(
+            np.repeat(whoami_data.ravel(), nTrait), dtype=pl.UInt32
+        ),
+        "row": pl.Series(
+            np.repeat(whereami_y_data.ravel(), nTrait), dtype=pl.UInt16
+        ),
+        "col": pl.Series(
+            np.repeat(whereami_x_data.ravel(), nTrait), dtype=pl.UInt16
+        ),
+    },
+).with_columns(
+    [
+        pl.lit(value, dtype=dtype).alias(key)
+        for key, (value, dtype) in metadata.items()
+    ],
+)
 
 
 for trait, group in df.group_by("trait value"):
