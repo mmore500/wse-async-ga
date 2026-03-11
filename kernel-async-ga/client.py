@@ -718,7 +718,7 @@ fossil_mmap = np.memmap(
     f"{temp_dir}/fossils.dat",
     dtype=np.uint32,
     mode="w+",
-    shape=(max_fossil_sets, nCol, nRow, nWav + 2),
+    shape=(max_fossil_sets, nRow, nCol, nWav + 2),
 )
 
 log("- importing cerebras depencencies")
