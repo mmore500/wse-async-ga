@@ -695,14 +695,14 @@ fn desync() void { for (@range(u16, @random16() % 256)) |i| { @random16(); } }
 fn genomerefresh() void {
   const genome_ptr = population._get_ith_genome(0);
   genomeBookend[genome_.gSize + 1] += 1;
-  genomeBookend[genome_.gSize + 1] &= 0xFF;  // clear upper bits
-  genomeBookend[genome_.gSize + 1] |= whoami[0] << 8;  // set whoami
+  genomeBookend[genome_.gSize + 1] &= 0x3FF;  // clear upper bits
+  genomeBookend[genome_.gSize + 1] |= whoami[0] << 10;  // set whoami
   for(@range(u16, genome_.gSize)) |i| {
     genomeBookend[i + 1] = genome_ptr[i];
   }
   genomeBookend[0] += 1;
-  genomeBookend[0] &= 0xFF;  // clear upper bits
-  genomeBookend[0] |= whoami[0] << 8;  // set whoami
+  genomeBookend[0] &= 0x3FF;  // clear upper bits
+  genomeBookend[0] |= whoami[0] << 10;  // set whoami
 }
 
 fn dorefresh() void {  // launched by RPC (remote procedure call)
