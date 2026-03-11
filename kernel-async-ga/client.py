@@ -201,9 +201,15 @@ def process_fossils(nWav: int) -> None:
         log("... done!")
 
         log(" - calculating indices...")  # use numpy to save memory vs polars
-        layer = np.arange(len_df, dtype=np.uint32) // nPos
+        arange = np.arange(len_df, dtype=np.uint64)
+        layer = (arange // nPos).astype(np.uint32)
+        gc.collect()
+        position = (arange % nPos).astype(np.uint32)
+        del arange
+        gc.collect()
+
         layer_T = np.array(layer_T, dtype=np.uint64)[layer]
-        position = np.arange(len_df, dtype=np.uint32) % nPos
+        gc.collect()
 
         log(" - creating indices df...")  # use numpy to save memory vs polars
         df_indices = pl.DataFrame(
