@@ -672,6 +672,113 @@ fn test_next_bit_uniformity() void {
     @assert(count < 210);
 }
 
+// === Test p with pointer-based API ===========================================
+
+// p_(0) should always return false.
+fn test_p_zero_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+
+    for (@range(u16, 100)) |i| {
+        @assert(rng.p_(sp, 0.0) == false);
+    }
+}
+
+// p_(1) should always return true.
+fn test_p_one_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+
+    for (@range(u16, 100)) |i| {
+        @assert(rng.p_(sp, 1.0) == true);
+    }
+}
+
+// p_(0.5) should return true roughly half the time.
+fn test_p_half_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0xABCD1234, 0x5678EF00);
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (rng.p_(sp, 0.5)) {
+            count += 1;
+        }
+    }
+    // expect ~100; loose bounds [60, 140]
+    @assert(count > 60);
+    @assert(count < 140);
+}
+
+// p_(0.25) should return true roughly a quarter of the time.
+fn test_p_quarter_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0xDEADBEEF, 0xCAFEBABE);
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (rng.p_(sp, 0.25)) {
+            count += 1;
+        }
+    }
+    // expect ~50; loose bounds [20, 80]
+    @assert(count > 20);
+    @assert(count < 80);
+}
+
+// === Test p with global-state API ============================================
+
+fn test_p_global_zero() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    for (@range(u16, 100)) |i| {
+        @assert(rng.p(0.0) == false);
+    }
+}
+
+fn test_p_global_one() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    for (@range(u16, 100)) |i| {
+        @assert(rng.p(1.0) == true);
+    }
+}
+
+fn test_p_global_half() void {
+    rng.seed(0xABCD1234, 0x5678EF00);
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (rng.p(0.5)) {
+            count += 1;
+        }
+    }
+    @assert(count > 60);
+    @assert(count < 140);
+}
+
+// Global and local p should be independent.
+fn test_p_independence() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x00000001, 0x00000002);
+
+    rng.seed(0x12345678, 0x9ABCDEF0);
+
+    // advance global
+    const global_flip = rng.p(0.5);
+
+    // local should produce its own result based on its own state
+    const local_flip = rng.p_(sp, 0.5);
+
+    // states should have advanced independently (verify by checking next values)
+    const global_next = rng.next();
+    const local_next = rng.next_(sp);
+    @assert(global_next != local_next);
+}
+
 // test runner ================================================================
 fn do_test() void {
     test_seed_and_next_();
@@ -724,4 +831,12 @@ fn do_test() void {
     test_next_bit_global();
     test_next_bit_independence();
     test_next_bit_uniformity();
+    test_p_zero_();
+    test_p_one_();
+    test_p_half_();
+    test_p_quarter_();
+    test_p_global_zero();
+    test_p_global_one();
+    test_p_global_half();
+    test_p_independence();
 }
