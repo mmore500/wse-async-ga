@@ -703,7 +703,6 @@ fn genomerefresh() void {
   genomeBookend[0] += 1;
   genomeBookend[0] &= 0xFF;  // clear upper bits
   genomeBookend[0] |= whoami[0] << 8;  // set whoami
-
 }
 
 fn dorefresh() void {  // launched by RPC (remote procedure call)
