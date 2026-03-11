@@ -672,39 +672,39 @@ fn test_next_bit_uniformity() void {
     @assert(count < 210);
 }
 
-// === Test coin_flip with pointer-based API ===================================
+// === Test p with pointer-based API ===========================================
 
-// coin_flip with p=0 should always return false.
-fn test_coin_flip_zero_() void {
+// p_(0) should always return false.
+fn test_p_zero_() void {
     var s = [2]u32{ 0, 0 };
     const sp = @ptrcast([*]u32, &s);
     rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
 
     for (@range(u16, 100)) |i| {
-        @assert(rng.coin_flip_(sp, 0.0) == false);
+        @assert(rng.p_(sp, 0.0) == false);
     }
 }
 
-// coin_flip with p=1 should always return true.
-fn test_coin_flip_one_() void {
+// p_(1) should always return true.
+fn test_p_one_() void {
     var s = [2]u32{ 0, 0 };
     const sp = @ptrcast([*]u32, &s);
     rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
 
     for (@range(u16, 100)) |i| {
-        @assert(rng.coin_flip_(sp, 1.0) == true);
+        @assert(rng.p_(sp, 1.0) == true);
     }
 }
 
-// coin_flip with p=0.5 should return true roughly half the time.
-fn test_coin_flip_half_() void {
+// p_(0.5) should return true roughly half the time.
+fn test_p_half_() void {
     var s = [2]u32{ 0, 0 };
     const sp = @ptrcast([*]u32, &s);
     rng.seed_(sp, 0xABCD1234, 0x5678EF00);
 
     var count: u32 = 0;
     for (@range(u16, 200)) |i| {
-        if (rng.coin_flip_(sp, 0.5)) {
+        if (rng.p_(sp, 0.5)) {
             count += 1;
         }
     }
@@ -713,15 +713,15 @@ fn test_coin_flip_half_() void {
     @assert(count < 140);
 }
 
-// coin_flip with p=0.25 should return true roughly a quarter of the time.
-fn test_coin_flip_quarter_() void {
+// p_(0.25) should return true roughly a quarter of the time.
+fn test_p_quarter_() void {
     var s = [2]u32{ 0, 0 };
     const sp = @ptrcast([*]u32, &s);
     rng.seed_(sp, 0xDEADBEEF, 0xCAFEBABE);
 
     var count: u32 = 0;
     for (@range(u16, 200)) |i| {
-        if (rng.coin_flip_(sp, 0.25)) {
+        if (rng.p_(sp, 0.25)) {
             count += 1;
         }
     }
@@ -730,28 +730,28 @@ fn test_coin_flip_quarter_() void {
     @assert(count < 80);
 }
 
-// === Test coin_flip with global-state API ====================================
+// === Test p with global-state API ============================================
 
-fn test_coin_flip_global_zero() void {
+fn test_p_global_zero() void {
     rng.seed(0x12345678, 0x9ABCDEF0);
     for (@range(u16, 100)) |i| {
-        @assert(rng.coin_flip(0.0) == false);
+        @assert(rng.p(0.0) == false);
     }
 }
 
-fn test_coin_flip_global_one() void {
+fn test_p_global_one() void {
     rng.seed(0x12345678, 0x9ABCDEF0);
     for (@range(u16, 100)) |i| {
-        @assert(rng.coin_flip(1.0) == true);
+        @assert(rng.p(1.0) == true);
     }
 }
 
-fn test_coin_flip_global_half() void {
+fn test_p_global_half() void {
     rng.seed(0xABCD1234, 0x5678EF00);
 
     var count: u32 = 0;
     for (@range(u16, 200)) |i| {
-        if (rng.coin_flip(0.5)) {
+        if (rng.p(0.5)) {
             count += 1;
         }
     }
@@ -759,8 +759,8 @@ fn test_coin_flip_global_half() void {
     @assert(count < 140);
 }
 
-// Global and local coin_flip should be independent.
-fn test_coin_flip_independence() void {
+// Global and local p should be independent.
+fn test_p_independence() void {
     var s = [2]u32{ 0, 0 };
     const sp = @ptrcast([*]u32, &s);
     rng.seed_(sp, 0x00000001, 0x00000002);
@@ -768,11 +768,10 @@ fn test_coin_flip_independence() void {
     rng.seed(0x12345678, 0x9ABCDEF0);
 
     // advance global
-    const global_flip = rng.coin_flip(0.5);
+    const global_flip = rng.p(0.5);
 
     // local should produce its own result based on its own state
-    // just verify it doesn't crash and advances state
-    const local_flip = rng.coin_flip_(sp, 0.5);
+    const local_flip = rng.p_(sp, 0.5);
 
     // states should have advanced independently (verify by checking next values)
     const global_next = rng.next();
@@ -832,12 +831,12 @@ fn do_test() void {
     test_next_bit_global();
     test_next_bit_independence();
     test_next_bit_uniformity();
-    test_coin_flip_zero_();
-    test_coin_flip_one_();
-    test_coin_flip_half_();
-    test_coin_flip_quarter_();
-    test_coin_flip_global_zero();
-    test_coin_flip_global_one();
-    test_coin_flip_global_half();
-    test_coin_flip_independence();
+    test_p_zero_();
+    test_p_one_();
+    test_p_half_();
+    test_p_quarter_();
+    test_p_global_zero();
+    test_p_global_one();
+    test_p_global_half();
+    test_p_independence();
 }

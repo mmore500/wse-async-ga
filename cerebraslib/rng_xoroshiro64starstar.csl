@@ -75,12 +75,11 @@ fn next_bit_(s: [*]u32, bit_cache: *u32) bool {
     return bit;
 }
 
-/// Return true with probability p (f32 in [0, 1]).
-/// Generates one u32, scales the top 24 bits into [0, 1), and compares < p.
-fn coin_flip_(s: [*]u32, p: f32) bool {
+// Sample a coin flip with probability p.
+fn p_(s: [*]u32, probability: f32) bool {
     const val = next_(s);
     const f = @as(f32, val >> 8) * (1.0 / 16777216.0);
-    return f < p;
+    return f < probability;
 }
 
 /// Jump the state forward by 2^32 steps (one jump epoch).
@@ -171,9 +170,9 @@ fn next_bit() bool {
     return next_bit_(@ptrcast([*]u32, &_state), &_bit_cache);
 }
 
-/// Return true with probability p using global state.
-fn coin_flip(p: f32) bool {
-    return coin_flip_(@ptrcast([*]u32, &_state), p);
+// Sample a coin flip with probability p.
+fn p(probability: f32) bool {
+    return p_(@ptrcast([*]u32, &_state), probability);
 }
 
 /// Jump the global state forward by 2^32 steps (one epoch).
