@@ -223,6 +223,9 @@ def process_fossils(nWav: int) -> None:
         gc.collect()
 
         log(" - saving indices...")  # separate for sink compat
+        fi_len = df_indices.select(pl.len()).collect().item()
+        log(f" - {fi_len=}")
+
         fi_path = (
             "a=fossil-indices"
             f"+flavor={genomeFlavor}"
@@ -284,11 +287,13 @@ def process_fossils(nWav: int) -> None:
                             .head(3).collect().to_series()
                         }""",
                     )
+                    if i != 3:
+                        raise AssertionError(
+                            f"validation {i} failed with {nfail=} rows",
+                        )
 
             bookend_expr = validation_exprs[3]
-            corrupt_df = (
-                df.with_row_index("_row_idx").filter(~bookend_expr)
-            )
+            corrupt_df = df.with_row_index("_row_idx").filter(~bookend_expr)
             n_corrupt = corrupt_df.select(pl.len()).collect().item()
             if n_corrupt:
                 log(f"  - bookend mismatch telemetry: {n_corrupt} corrupt rows")
@@ -346,17 +351,18 @@ def process_fossils(nWav: int) -> None:
             del corrupt_df
             gc.collect()
 
-            log(" - filtering invalid rows...")
-            nrow_before = df.select(pl.len()).collect().item()
-            df = df.filter(pl.all_horizontal(validation_exprs))
-            nrow_after = df.select(pl.len()).collect().item()
-            log(f" - ... {nrow_before=}/{nrow_after=} remain after filtering")
-
         log(" - recording bookends...")
         df = df.with_columns(
-            bookend_value=pl.col("data_hex")
-            .str.head(8)
-            .str.to_integer(base=16),
+            bookend_left=pl.col("data_hex").str.head(8).str.to_integer(base=16),
+            bookend_right=(
+                pl.col("data_hex").str.tail(8).str.to_integer(base=16)
+            ),
+        ).with_columns(
+            bookend_value=pl.when(
+                pl.col("bookend_left") == pl.col("bookend_right"),
+            )
+            .then(pl.col("bookend_left"))
+            .otherwise(None),
         )
 
         log(" - stripping bookends...")
@@ -389,6 +395,10 @@ def process_fossils(nWav: int) -> None:
             is_extant=False,
         )
 
+        log(" - saving genomes...")
+        fg_len = df.select(pl.len()).collect().item()
+        log(f" - {fg_len=}")
+
         fg_path = (
             "a=fossil-genomes"
             f"+flavor={genomeFlavor}"
@@ -412,7 +422,10 @@ def process_fossils(nWav: int) -> None:
                 pl.scan_parquet(fi_path, cache=False),
             ],
             how="horizontal",
+            # strict=True,  # not supported by polars 1.8
         )
+        assert fg_len == fi_len  # strict workaround
+
         log(f" - {df=}")
         for how in pl.LazyFrame.lazy, pl.LazyFrame.collect:
             log(f" - trying {how=}")
