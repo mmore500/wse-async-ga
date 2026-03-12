@@ -287,9 +287,7 @@ def process_fossils(nWav: int) -> None:
                         )
 
             bookend_expr = validation_exprs[3]
-            corrupt_df = (
-                df.with_row_index("_row_idx").filter(~bookend_expr)
-            )
+            corrupt_df = df.with_row_index("_row_idx").filter(~bookend_expr)
             n_corrupt = corrupt_df.select(pl.len()).collect().item()
             if n_corrupt:
                 log(f"  - bookend mismatch telemetry: {n_corrupt} corrupt rows")
