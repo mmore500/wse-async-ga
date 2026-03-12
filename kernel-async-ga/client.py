@@ -217,6 +217,9 @@ def process_fossils(nWav: int) -> None:
         gc.collect()
 
         log(" - saving indices...")  # separate for sink compat
+        fi_len = df_indices.select(pl.len()).collect().item()
+        log(f" - {fi_len=}")
+
         fi_path = (
             "a=fossil-indices"
             f"+flavor={genomeFlavor}"
@@ -383,6 +386,10 @@ def process_fossils(nWav: int) -> None:
             is_extant=False,
         )
 
+        log(" - saving genomes...")
+        fg_len = df.select(pl.len()).collect().item()
+        log(f" - {fg_len=}")
+
         fg_path = (
             "a=fossil-genomes"
             f"+flavor={genomeFlavor}"
@@ -406,7 +413,10 @@ def process_fossils(nWav: int) -> None:
                 pl.scan_parquet(fi_path, cache=False),
             ],
             how="horizontal",
+            # strict=True,  # not supported by polars 1.8
         )
+        assert fg_len == fi_len  # strict workaround
+
         log(f" - {df=}")
         for how in pl.LazyFrame.lazy, pl.LazyFrame.collect:
             log(f" - trying {how=}")
