@@ -281,6 +281,10 @@ def process_fossils(nWav: int) -> None:
                             .head(3).collect().to_series()
                         }""",
                     )
+                    if i != 3:
+                        raise AssertionError(
+                            f"validation {i} failed with {nfail=} rows",
+                        )
 
             bookend_expr = validation_exprs[3]
             corrupt_df = (
@@ -343,17 +347,18 @@ def process_fossils(nWav: int) -> None:
             del corrupt_df
             gc.collect()
 
-            log(" - filtering invalid rows...")
-            nrow_before = df.select(pl.len()).collect().item()
-            df = df.filter(pl.all_horizontal(validation_exprs))
-            nrow_after = df.select(pl.len()).collect().item()
-            log(f" - ... {nrow_before=}/{nrow_after=} remain after filtering")
-
         log(" - recording bookends...")
         df = df.with_columns(
-            bookend_value=pl.col("data_hex")
-            .str.head(8)
-            .str.to_integer(base=16),
+            bookend_left=pl.col("data_hex").str.head(8).str.to_integer(base=16),
+            bookend_right=(
+                pl.col("data_hex").str.tail(8).str.to_integer(base=16)
+            ),
+        ).with_columns(
+            bookend_value=pl.when(
+                pl.col("bookend_left") == pl.col("bookend_right"),
+            )
+            .then(pl.col("bookend_left"))
+            .otherwise(None),
         )
 
         log(" - stripping bookends...")
