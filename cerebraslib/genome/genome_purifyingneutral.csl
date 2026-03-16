@@ -86,8 +86,7 @@ const hstrat_T_dilation = compconf.get_value_or(
 
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
-
-const S = 96;
+const tilted = @import_module("cerebraslib/tilted_sticky.csl");
 
 // module config specs ========================================================
 const gSize: u16 = 5;
@@ -97,6 +96,7 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = true;
 
 // internal functions =========================================================
+const S = 96;
 const _parity_T_dilation: u32 = 16;
 
 fn _check_parity(genome: genomePtr_t) bool {
@@ -116,19 +116,7 @@ fn _set_parity_bits(genome: genomePtr_t) void {
 }
 
 fn _apply_mutation(genome: genomePtr_t) void {
-    var mutated = calc_fitness_of(genome);
-
-    if (rng.p(0.000001)) {
-        mutated += math.min(
-            math.abs(random.random_normal_f32()),
-            3.0
-        );
-    }
-    if (rng.p(0.001)) {
-        mutated -= math.abs(random.random_normal_f32());
-    }
-    // mutate fitness value
-    @ptrcast(*f32, genome).* = mutated;
+    // no-op
 }
 
 fn _do_step_instrumentation(genome: genomePtr_t) void {

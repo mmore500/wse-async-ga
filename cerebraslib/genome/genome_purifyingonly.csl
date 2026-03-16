@@ -117,10 +117,9 @@ fn _set_parity_bits(genome: genomePtr_t) void {
 
 fn _apply_mutation(genome: genomePtr_t) void {
     var mutated = calc_fitness_of(genome);
-    const scale = math.max(mutated, 1.0) / 1024.0;
 
-    if (opscalar.p(0.01)) {
-        mutated -= math.abs(random.random_normal_f32()) * scale;
+    if (rng.p(0.001)) {
+        mutated -= math.abs(random.random_normal_f32());
     }
     // mutate fitness value
     @ptrcast(*f32, genome).* = mutated;
