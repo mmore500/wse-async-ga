@@ -123,7 +123,7 @@ fn _apply_mutation(genome: genomePtr_t) void {
     if (rng.next() == 1) {
         mutated += 1.0 + @as(f32, rng.next() & 0xFF);
     }
-    else if (opscalar.p(0.01)) {
+    else if (rng.p(0.001)) {
         mutated -= 1.0;
     }
     // mutate fitness value
