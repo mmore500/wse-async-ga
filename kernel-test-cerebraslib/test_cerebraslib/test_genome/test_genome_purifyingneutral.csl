@@ -1,0 +1,103 @@
+const random = @import_module("<random>");
+
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+const genome = @import_module(
+    "cerebraslib/genome/genome_purifyingneutral.csl", .{.rng = rng}
+);
+
+fn _check_parity(g: *genome.genome_t) void {
+    const gp = @ptrcast([*]u32, g);
+    @assert(!opscalar.parity32(gp[1])); // even parity over whole T word
+    @assert(@as(u32, opscalar.parity32(gp[2])) == ((gp[1] >> 1) & 1));
+    @assert(@as(u32, opscalar.parity32(gp[3])) == ((gp[1] >> 2) & 1));
+    @assert(@as(u32, opscalar.parity32(gp[4])) == ((gp[1] >> 3) & 1));
+}
+
+fn test_elapse_inheritance_of() void {
+    var g = @zeros(genome.genome_t);
+    genome.elapse_inheritance_of(&g);
+}
+
+fn test_calc_fitness_of() void {
+    var g = @zeros(genome.genome_t);
+    @assert(genome.calc_fitness_of(&g) == 0.0);
+}
+
+fn test_get_trait_value() void {
+    var g = @zeros(genome.genome_t);
+    @assert(genome.get_trait_value(&g) == 0);
+    @assert(genome.get_trait_value(&g) < @as(u32, genome.nTraitVals));
+}
+
+fn test_initialize_one() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+}
+
+fn test_parity_after_init() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    _check_parity(&g);
+}
+
+fn test_parity_after_steps() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    _check_parity(&g);
+    for (@range(u16, 10)) |_| {
+        genome.elapse_inheritance_of(&g);
+        _check_parity(&g);
+    }
+}
+
+fn test_clobber_valid_immigrant() void {
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    genome.initialize_one(&resident);
+    genome.initialize_one(&immigrant);
+    // valid parity should not be clobbered
+    @assert(!genome.clobber_immigrant(&resident, &immigrant));
+}
+
+fn test_clobber_invalid_immigrant() void {
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    genome.initialize_one(&resident);
+    genome.initialize_one(&immigrant);
+    // corrupt a parity bit
+    var imm_ptr = @ptrcast([*]u32, &immigrant);
+    imm_ptr[1] = imm_ptr[1] ^ 1; // flip parity bit 0
+    @assert(genome.clobber_immigrant(&resident, &immigrant));
+    // immigrant should now be a copy of resident
+    var res_ptr = @ptrcast([*]u32, &resident);
+    imm_ptr = @ptrcast([*]u32, &immigrant);
+    @assert(imm_ptr[0] == res_ptr[0]);
+    @assert(imm_ptr[1] == res_ptr[1]);
+    @assert(imm_ptr[2] == res_ptr[2]);
+    @assert(imm_ptr[3] == res_ptr[3]);
+    @assert(imm_ptr[4] == res_ptr[4]);
+}
+
+fn test_fitness_unchanged_after_elapse() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    const fitness_before = genome.calc_fitness_of(&g);
+    for (@range(u16, 10)) |_| {
+        genome.elapse_inheritance_of(&g);
+    }
+    // neutral mutation is a no-op, so fitness should remain unchanged
+    @assert(genome.calc_fitness_of(&g) == fitness_before);
+}
+
+fn do_test() void {
+    test_calc_fitness_of();
+    test_elapse_inheritance_of();
+    test_get_trait_value();
+    test_initialize_one();
+    test_parity_after_init();
+    test_parity_after_steps();
+    test_clobber_valid_immigrant();
+    test_clobber_invalid_immigrant();
+    test_fitness_unchanged_after_elapse();
+}

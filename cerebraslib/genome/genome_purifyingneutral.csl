@@ -1,0 +1,178 @@
+// memory layout ===============================================================
+// byte 0 FITNESS (f32, 4 bytes)
+// byte 1
+// byte 2
+// byte 3
+// byte 4 DSTREAM_T COUNTER (u32, 4 bytes) [bits 0-3: parity, bits 4-31: counter]
+// byte 5
+// byte 6
+// byte 7
+// byte 8 BITFIELD (12 bytes)
+// byte 9
+// byte 10
+// byte 11
+// byte 12
+// byte 13
+// byte 14
+// byte 15
+// byte 16
+// byte 17
+// byte 18
+// byte 19
+// TOTAL: 5 words -> 20 bytes
+
+//! {
+//!     "dstream_algo": (
+//!         "dstream." + compconf_data.get(
+//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "hybrid_0_steady_1_tilted_2_circular_3_algo"
+//!         ),
+//!         pl.Categorical,
+//!     ),
+//!     "dstream_storage_bitoffset": (64, pl.UInt8),
+//!     "dstream_storage_bitwidth": (96, pl.UInt8),
+//!     "dstream_T_bitoffset": (32, pl.UInt8),
+//!     "dstream_T_bitwidth": (32, pl.UInt8),
+//!     "dstream_S": (96, pl.UInt8),
+//!     "hstrat_T_dilation": (
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
+//!     "dstream_T_dilation": (
+//!         16 * compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
+//!     "downstream_data_parity0_rule": (
+//!         "\n".join([
+//!             " ".join("0" * 32 + "1" * 32 + "0" * 96),
+//!             " ".join("0" * 62 + "1" * 1 + "0" * 1 + "1" * 32 + "0" * 64),
+//!             " ".join("0" * 61 + "1" * 1 + "0" * 34 + "1" * 32 + "0" * 32),
+//!             " ".join("0" * 60 + "1" * 1 + "0" * 67 + "1" * 32),
+//!         ]),
+//!         pl.String,
+//!     ),
+//!     "downstream_filter_packed": (
+//!         "pl.col('downstream_data_parity0_result') == 0",
+//!         pl.Categorical,
+//!     ),
+//!     "nWav": (5, pl.UInt8),
+//! }
+
+param rng: imported_module;
+
+// module imports =============================================================
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const compconf = @import_module("<compconf>");
+comptime { // access via get_value for logging...
+    const _ = compconf.get_value_or(
+        "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+        "hybrid_0_steady_1_tilted_2_circular_3_algo",
+    );
+} // ... raw string works around sdk v1.0.0 limitation
+const compconf_raw = @import_module("<compconf_raw>");
+const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const dstream_algo_name = (if (has_value)
+    compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
+else
+    "hybrid_0_steady_1_tilted_2_circular_3_algo");
+const dstream_algo = @import_module(
+    @strcat("<downstream/dstream/", dstream_algo_name, ">"),
+);
+const hstrat_T_dilation = compconf.get_value_or(
+    "CEREBRASLIB_HSTRAT_T_DILATION",
+    @as(u32, 1),
+);
+
+const bitmanip = @import_module("cerebraslib/bitmanip.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+const tilted = @import_module("cerebraslib/tilted_sticky.csl");
+
+// module config specs ========================================================
+const gSize: u16 = 5;
+const genome_t = [gSize]u32;
+const genomePtr_t = [*]u32;
+const nTraitVals: u16 = 1;
+const hasImmClobber: bool = true;
+
+// internal functions =========================================================
+const S = 96;
+const _parity_T_dilation: u32 = 16;
+
+fn _check_parity(genome: genomePtr_t) bool {
+    const t_ok = !opscalar.parity32(genome[1]); // even parity over whole T word
+    const s0_ok = opscalar.parity32(genome[2]) == ((genome[1] & 2) == 2);
+    const s1_ok = opscalar.parity32(genome[3]) == ((genome[1] & 4) == 4);
+    const s2_ok = opscalar.parity32(genome[4]) == ((genome[1] & 8) == 8);
+    return t_ok and s0_ok and s1_ok and s2_ok;
+}
+
+fn _set_parity_bits(genome: genomePtr_t) void {
+    genome[1] = genome[1] & 0xFFFFFFF0; // clear parity bits
+    genome[1] |= @as(u32, opscalar.parity32(genome[2])) << 1; // bit 1: storage[0] parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[3])) << 2; // bit 2: storage[1] parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[4])) << 3; // bit 3: storage[2] parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[1])); // bit 0: T parity (must be last)
+}
+
+fn _apply_mutation(genome: genomePtr_t) void {
+    // no-op
+}
+
+fn _do_step_instrumentation(genome: genomePtr_t) void {
+    // elapse generation in bitfield
+    if (rng.next_bit()) {
+        const T = @ptrcast([*]u32, genome)[1] / (_parity_T_dilation * hstrat_T_dilation);
+        const site = dstream_algo.assign_storage_site(S, T);
+        @assert(site <= S);
+
+        const offset_bits: u16 = (4 + 4) * 8;
+        const target_bit = @as(u16, site) + offset_bits;
+
+        const genome_bytes = @ptrcast([*]u8, genome);
+        if (site != S) bitmanip.flip_nth_bit_with_swaps(genome_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true });
+    }
+}
+
+fn _step_instrumentation(genome: genomePtr_t) void {
+    if ((@ptrcast([*]u32, genome)[1] / _parity_T_dilation) % hstrat_T_dilation == 0) {
+        _do_step_instrumentation(genome);
+    }
+    @ptrcast([*]u32, genome)[1] += _parity_T_dilation;
+    _set_parity_bits(genome);
+}
+
+// public API =================================================================
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    _apply_mutation(genome);
+    _step_instrumentation(genome);
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    return @ptrcast(*f32, genome).*;
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    return 0;
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    @ptrcast(*f32, genome).* = 0.0;
+    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation * _parity_T_dilation;
+    @ptrcast([*]u32, genome)[2] = rng.next();
+    @ptrcast([*]u32, genome)[3] = rng.next();
+    @ptrcast([*]u32, genome)[4] = rng.next();
+    _set_parity_bits(genome);
+}
+
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+    if (!_check_parity(immigrant)) {
+        immigrant[0] = resident[0];
+        immigrant[1] = resident[1];
+        immigrant[2] = resident[2];
+        immigrant[3] = resident[3];
+        immigrant[4] = resident[4];
+        return true;
+    }
+    return false;
+}
