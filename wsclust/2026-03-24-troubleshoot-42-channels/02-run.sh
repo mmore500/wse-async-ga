@@ -289,6 +289,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     response = launcher.run(
         "env || :",
         "mount || :",
+        'find / -maxdepth 1 -name "cra*" || :',
         "pwd || :",
         "ls || :",
         r'find . | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :',
