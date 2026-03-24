@@ -287,10 +287,11 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
 
     logging.info("querying context info...")
     response = launcher.run(
-        "env",
-        "pwd",
-        "ls",
-        r'find . | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"',
+        "env || :",
+        "mount || :",
+        "pwd || :",
+        "ls || :",
+        r'find . | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :',
     )
     logging.info("... done!")
     logging.info(response + "\n")
