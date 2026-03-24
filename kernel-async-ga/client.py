@@ -608,6 +608,9 @@ nWav = int(os.getenv("ASYNC_GA_NWAV", -1))
 nTrait = int(os.getenv("ASYNC_GA_NTRAIT", 1))
 log(f"{nCol=}, {nRow=}, {nWav=}, {nTrait=}")
 
+memcpyMajor = os.getenv("ASYNC_GA_MEMCPY_MAJOR", "ROW_MAJOR")
+log(f"{memcpyMajor=}")
+
 log("- setting global variables")
 wavSize = 32  # number of bits in a wavelet
 tscSizeWords = 3  # number of 16-bit values in 48-bit timestamp values
@@ -677,6 +680,7 @@ nWav = genomeData["nWav"][0]
 metadata = {
     "genomeFlavor": (genomeFlavor, pl.Categorical),
     "globalSeed": (globalSeed, pl.UInt32),
+    "memcpyMajor": (memcpyMajor, pl.Categorical),
     "nCol": (nCol, pl.UInt16),
     "nRow": (nRow, pl.UInt16),
     "nWav": (nWav, pl.UInt8),
@@ -747,6 +751,9 @@ from cerebras.sdk.runtime.sdkruntimepybind import (
     SdkRuntime,
 )  # pylint: disable=no-name-in-module
 
+log(f"{memcpyMajor=}")
+memcpyMajor = getattr(MemcpyOrder, memcpyMajor)
+
 log("do run =====================================================")
 # Path to ELF and simulation output files
 runner = SdkRuntime(
@@ -789,7 +796,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
         nWav + 2,  # num wavelets
         streaming=False,
         data_type=memcpy_dtype,
-        order=MemcpyOrder.ROW_MAJOR,
+        order=memcpyMajor,
         nonblock=False,
     )
     print("c", end="", flush=True)
@@ -823,7 +830,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
         1,  # num wavelets
         streaming=False,
         data_type=memcpy_dtype,
-        order=MemcpyOrder.ROW_MAJOR,
+        order=memcpyMajor,
         nonblock=False,
     )
     print("3", end="", flush=True)
@@ -866,7 +873,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
         1,  # num wavelets
         streaming=False,
         data_type=memcpy_dtype,
-        order=MemcpyOrder.ROW_MAJOR,
+        order=memcpyMajor,
         nonblock=False,
     )
     print("2", end="", flush=True)
@@ -985,7 +992,7 @@ runner.memcpy_d2h(
     1,  # num wavelets
     streaming=False,
     data_type=memcpy_dtype,
-    order=MemcpyOrder.ROW_MAJOR,
+    order=memcpyMajor,
     nonblock=False,
 )
 whoami_data = out_tensors.copy()
@@ -1005,7 +1012,7 @@ runner.memcpy_d2h(
     1,  # num wavelets
     streaming=False,
     data_type=memcpy_dtype,
-    order=MemcpyOrder.ROW_MAJOR,
+    order=memcpyMajor,
     nonblock=False,
 )
 whereami_x_data = out_tensors.copy()
@@ -1025,7 +1032,7 @@ runner.memcpy_d2h(
     1,  # num wavelets
     streaming=False,
     data_type=memcpy_dtype,
-    order=MemcpyOrder.ROW_MAJOR,
+    order=memcpyMajor,
     nonblock=False,
 )
 whereami_y_data = out_tensors.copy()
@@ -1044,7 +1051,7 @@ runner.memcpy_d2h(
     nTrait,  # num possible trait values
     streaming=False,
     data_type=memcpy_dtype,
-    order=MemcpyOrder.ROW_MAJOR,
+    order=memcpyMajor,
     nonblock=False,
 )
 traitCounts_data = out_tensors.copy()
@@ -1062,7 +1069,7 @@ runner.memcpy_d2h(
     nTrait,  # num possible trait values
     streaming=False,
     data_type=memcpy_dtype,
-    order=MemcpyOrder.ROW_MAJOR,
+    order=memcpyMajor,
     nonblock=False,
 )
 traitCycles_data = out_tensors.copy()
@@ -1080,7 +1087,7 @@ runner.memcpy_d2h(
     nTrait,  # num possible trait values
     streaming=False,
     data_type=memcpy_dtype,
-    order=MemcpyOrder.ROW_MAJOR,
+    order=memcpyMajor,
     nonblock=False,
 )
 traitValues_data = out_tensors.copy()
@@ -1140,7 +1147,7 @@ runner.memcpy_d2h(
     traitLoggerNumWavs,  # num elements
     streaming=False,
     data_type=memcpy_dtype,
-    order=MemcpyOrder.ROW_MAJOR,
+    order=memcpyMajor,
     nonblock=False,
 )
 raw_binary_data = out_tensors.copy()

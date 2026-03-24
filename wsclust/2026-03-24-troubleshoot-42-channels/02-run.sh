@@ -142,7 +142,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # lex12 configuration: two genome flavors with seeds 1 and 2
 seed=0
-for genome_flavor in genome_purifyingneutral genome_purifyingsweep; do
+for genome_flavor in genome_purifyingneutral; do
     seed=$((seed + 1))
     CONFIG_NAME="flavor=${genome_flavor}+seed=${seed}"
     echo

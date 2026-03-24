@@ -142,7 +142,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # lex12 configuration: two genome flavors with seeds 1 and 2
 seed=0
-for genome_flavor in genome_purifyingneutral genome_purifyingsweep; do
+for genome_flavor in genome_purifyingneutral; do
     seed=$((seed + 1))
     CONFIG_NAME="flavor=${genome_flavor}+seed=${seed}"
     echo
@@ -166,6 +166,9 @@ for genome_flavor in genome_purifyingneutral genome_purifyingsweep; do
 
     export ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO="dstream.compressing_algo"
     echo "ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO=${ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO}"
+
+    export ASYNC_GA_MEMCPY_MAJOR="COL_MAJOR"
+    echo "ASYNC_GA_MEMCPY_MAJOR=${ASYNC_GA_MEMCPY_MAJOR}"
 
     mkdir -p "${CONFIG_WORKDIR}/out"
     mkdir -p "${CONFIG_WORKDIR}/run"
