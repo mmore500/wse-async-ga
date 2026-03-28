@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/mmore500/wse-async-ga/actions/workflows/ci.yaml/badge.svg)](https://github.com/mmore500/wse-async-ga/actions/workflows/ci.yaml)
 [![GitHub stars](https://img.shields.io/github/stars/mmore500/wse-async-ga.svg?style=flat-square&logo=github&label=Stars&logoColor=white)](https://github.com/mmore500/wse-async-ga)
+[![DOI](https://zenodo.org/badge/905991021.svg)](https://doi.org/10.5281/zenodo.16898903)
 
 Development work for agent-based evolution/epidemiological modeling on the Cerebras Wafer-scale Engine (WSE) hardware.
 Incoprorates [hereditary stratigraphy](https://github.com/mmore500/hstrat) methodology for distributed tracking of agent phylogenies.
@@ -25,7 +26,7 @@ See our [Continuous Integration config](https://github.com/mmore500/wse-async-ga
 
 If wse-async-ga contributes to a scientific publication, please cite it as
 
-> Matthew Andres Moreno and Connor Yang. (2024). mmore500/wse-async-ga
+> Matthew Andres Moreno and Connor Yang. (2024). mmore500/wse-async-ga. Zenodo. https://doi.org/10.5281/zenodo.16898903
 
 ```bibtex
 @software{moreno2024wse,
@@ -33,11 +34,14 @@ If wse-async-ga contributes to a scientific publication, please cite it as
   title = {mmore500/wse-async-ga},
   month = dec,
   year = 2024,
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.16898903},
+  url = {https://doi.org/10.5281/zenodo.16898903}
 }
 ```
 
-Consider also citing [hsurf](https://github.com/mmore500/hstrat-surface-concept/blob/master/README.md#citing), [hstrat](https://hstrat.readthedocs.io/en/stable/citing.html), and downstream.
-And don't forget to leave a [star on GitHub](https://github.com/mmore500/pecking/stargazers)!
+Consider also citing [hstrat](https://hstrat.readthedocs.io/en/stable/citing.html), [compconf](https://github.com/mmore500/compconf/blob/main/README.md#citing), and [downstream](https://github.com/mmore500/downstream/blob/master/README.md#citing).
+And don't forget to leave a [star on GitHub](https://github.com/mmore500/wse-async-ga/stargazers)!
 
 ## Contact
 
