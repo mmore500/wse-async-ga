@@ -9,7 +9,7 @@ const population = @import_module("cerebraslib/population_tournamentgenerational
 const genomeFrozen = @import_module(
     "cerebraslib/genome/genome_frozenliteral3.csl",
 );
-const populationExtinction = @import_module("cerebraslib/population.csl", .{
+const populationExtinction = @import_module("cerebraslib/population_tournamentgenerational.csl", .{
     .genome = genomeFrozen,
     .popSize = 2,
     .tournamentSize = 3.0,
@@ -19,7 +19,7 @@ const populationExtinction = @import_module("cerebraslib/population.csl", .{
 const genomeClobber = @import_module(
     "cerebraslib/genome/genome_bitdrift_clobber.csl",
 );
-const populationClobber = @import_module("cerebraslib/population.csl", .{
+const populationClobber = @import_module("cerebraslib/population_tournamentgenerational.csl", .{
     .genome = genomeClobber,
     .popSize = 2,
     .tournamentSize = 3.0,
