@@ -63,7 +63,7 @@ const pExtinction = compconf.get_value_or(
     @as(f32, 0.0),
 );
 
-const population = @import_module("cerebraslib/population.csl", .{
+const population = @import_module("cerebraslib/population_tournamentgenerational.csl", .{
   .genome = genome_, .popSize = popSize,
   .pExtinction = pExtinction, .tournamentSize = tournSize,
 });
