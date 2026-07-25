@@ -47,6 +47,9 @@ const compconf = @import_module("<compconf>");
 comptime {  // access via get_value for logging...
   const _ = compconf.get_value("ASYNC_GA_GENOME_FLAVOR", comptime_string);
 }  // ... raw string works around sdk v1.0.0 limitation
+comptime {  // access via get_value for logging...
+  const _ = compconf.get_value_or("ASYNC_GA_POPULATION_FLAVOR", "population_tournamentgenerational");
+}
 const compconf_raw = @import_module("<compconf_raw>");
 const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
 const genome_ = @import_module(
@@ -63,8 +66,15 @@ const pExtinction = compconf.get_value_or(
     @as(f32, 0.0),
 );
 
-const population = @import_module("cerebraslib/population_tournamentgenerational.csl", .{
-  .genome = genome_, .popSize = popSize,
+
+const has_value = compconf.has_value("ASYNC_GA_POPULATION_FLAVOR");
+const population_flavor_name = (if (has_value)
+    compconf_raw.ASYNC_GA_POPULATION_FLAVOR
+else
+    "population_tournamentgenerational");
+const population = @import_module(
+  @strcat("cerebraslib/", population_flavor_name, ".csl"),
+  .{ .genome = genome_, .popSize = popSize,
   .pExtinction = pExtinction, .tournamentSize = tournSize,
 });
 const wildtypeLogger = @import_module(
