@@ -674,12 +674,16 @@ genomeDataRaw = "".join(
 genomeData = eval(genomeDataRaw, {"compconf_data": compconf_data, "pl": pl})
 log(f" - {genomeData=}")
 
+populationflavor = compconf_data["ASYNC_GA_POPULATION_FLAVOR:comptime_string"]
+log(f" - {populationflavor=}")
+
 assert nWav in (genomeData["nWav"][0], -1)
 nWav = genomeData["nWav"][0]
 
 metadata = {
     "genomeFlavor": (genomeFlavor, pl.Categorical),
     "globalSeed": (globalSeed, pl.UInt32),
+    "populationflavor": (populationflavor, pl.Categorical),
     "memcpyMajor": (memcpyMajor, pl.Categorical),
     "nCol": (nCol, pl.UInt16),
     "nRow": (nRow, pl.UInt16),
