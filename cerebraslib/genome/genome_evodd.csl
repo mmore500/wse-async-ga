@@ -1,0 +1,375 @@
+// memory layout ===============================================================
+// byte 0 FITNESS (f32, 4 bytes)
+// byte 1
+// byte 2
+// byte 3
+// byte 4 DSTREAM_T COUNTER (u32, 4 bytes) [bits 0-3: parity, bits 4-31: counter]
+// byte 5
+// byte 6
+// byte 7
+// byte 8 BITFIELD (12 bytes)
+// byte 9
+// byte 10
+// byte 11
+// byte 12
+// byte 13
+// byte 14
+// byte 15
+// byte 16
+// byte 17
+// byte 18
+// byte 19
+// byte 20 EMBRYO (16 x f16, 32 bytes)
+// ...
+// byte 51
+// byte 52 DEV_MATRIX (256 x f16, 512 bytes, row-major 16x16)
+// ...
+// byte 563
+// TOTAL: 141 words -> 564 bytes
+//
+// EMBRYO is the evolved genotype vector fed into development; DEV_MATRIX is
+// the evolved gene interaction matrix used to iteratively develop EMBRYO
+// into a phenotype (see `_develop`, below). Both are tracked by ordinary
+// (unprotected) mutation/inheritance -- only the hstrat bookkeeping fields
+// (DSTREAM_T COUNTER, BITFIELD) get parity-checked immigrant validation, in
+// keeping with genome_purifyingsweep.csl.
+//
+// Ported (roughly) from the Kouvaris et al. 2017 gene regulatory network
+// (GRN) model as prototyped in
+// https://github.com/mmore500/evodd/blob/main/bindle/2026-07-23-exploratory.py
+
+//! {
+//!     "dstream_algo": (
+//!         "dstream." + compconf_data.get(
+//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "hybrid_0_steady_1_tilted_2_circular_3_algo"
+//!         ),
+//!         pl.Categorical,
+//!     ),
+//!     "dstream_storage_bitoffset": (64, pl.UInt8),
+//!     "dstream_storage_bitwidth": (96, pl.UInt8),
+//!     "dstream_T_bitoffset": (32, pl.UInt8),
+//!     "dstream_T_bitwidth": (32, pl.UInt8),
+//!     "dstream_S": (96, pl.UInt8),
+//!     "hstrat_T_dilation": (
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
+//!     "dstream_T_dilation": (
+//!         16 * compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
+//!     "downstream_data_parity0_rule": (
+//!         "\n".join([
+//!             " ".join("0" * 32 + "1" * 32 + "0" * 96 + "0" * 4352),
+//!             " ".join("0" * 62 + "1" * 1 + "0" * 1 + "1" * 32 + "0" * 64 + "0" * 4352),
+//!             " ".join("0" * 61 + "1" * 1 + "0" * 34 + "1" * 32 + "0" * 32 + "0" * 4352),
+//!             " ".join("0" * 60 + "1" * 1 + "0" * 67 + "1" * 32 + "0" * 4352),
+//!         ]),
+//!         pl.String,
+//!     ),
+//!     "downstream_filter_packed": (
+//!         "pl.col('downstream_data_parity0_result') == 0",
+//!         pl.Categorical,
+//!     ),
+//!     "embryo_bitoffset": (160, pl.UInt16),
+//!     "embryo_bitwidth": (256, pl.UInt16),
+//!     "dev_matrix_bitoffset": (416, pl.UInt16),
+//!     "dev_matrix_bitwidth": (4096, pl.UInt16),
+//!     "nWav": (141, pl.UInt16),
+//! }
+
+param rng: imported_module;
+
+// module imports =============================================================
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const compconf = @import_module("<compconf>");
+comptime { // access via get_value for logging...
+    const _ = compconf.get_value_or(
+        "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+        "hybrid_0_steady_1_tilted_2_circular_3_algo",
+    );
+} // ... raw string works around sdk v1.0.0 limitation
+const compconf_raw = @import_module("<compconf_raw>");
+const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const dstream_algo_name = (if (has_value)
+    compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
+else
+    "hybrid_0_steady_1_tilted_2_circular_3_algo");
+const dstream_algo = @import_module(
+    @strcat("<downstream/dstream/", dstream_algo_name, ">"),
+);
+const hstrat_T_dilation = compconf.get_value_or(
+    "CEREBRASLIB_HSTRAT_T_DILATION",
+    @as(u32, 1),
+);
+
+const bitmanip = @import_module("cerebraslib/bitmanip.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+const S = 96;
+const _parity_T_dilation: u32 = 16;
+
+// GRN development model constants (Kouvaris et al. 2017) =====================
+const N: u16 = 16; // embryo/phenotype width
+const S_MATRIX: u16 = 256; // N * N, development matrix element count
+const T_DEVELOP: u16 = 10; // development iteration count
+const ALPHA: f16 = 0.5;
+const TAU1: f16 = 1.0;
+const TAU2: f16 = 0.2;
+
+// elastic-net-style regularization weights, configurable to match the
+// reference notebook's `--l1-scale`/`--l2-scale`/model constants
+const _l1_scale: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_L1_SCALE", @as(f32, 0.995),
+);
+const _l2_scale: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_L2_SCALE", @as(f32, 0.005),
+);
+const _lam1: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_LAM1", @as(f32, 0.22),
+);
+const _lam2: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_LAM2", @as(f32, 38.0),
+);
+
+// matrix mutation rate/magnitude, mirroring reference notebook's `mutate()`
+const _matrix_mutation_p: f32 = 1.0 / 15.0;
+const _matrix_mutation_bound: f16 = 1.0 / 38400.0; // 1 / (150 * N * N), N = 16
+const _embryo_mutation_lo: f16 = -0.1;
+const _embryo_mutation_hi: f16 = 0.1;
+
+// training-set target phenotypes, transcribed from TRAINING_SET in the
+// reference notebook (S1 = pattern(AAAA), S2 = pattern(ABBA), S3 = pattern(BBAA))
+var _S1 = [N]f16{
+    -1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0,
+    -1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+};
+var _S2 = [N]f16{
+    -1.0, 1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0,
+    1.0, -1.0, -1.0, 1.0, -1.0, -1.0, -1.0, -1.0,
+};
+var _S3 = [N]f16{
+    1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0,
+    -1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+};
+
+// development scratch space (module-scope, per DSD requirements -- see
+// cerebraslib/opscalar.csl's `_as16` for the same pattern)
+var _devP = @zeros([N]f16);
+var _devInter = @zeros([N]f16);
+const _devInterDsd = @get_dsd(mem1d_dsd, .{
+    .tensor_access = |i|{N} -> _devInter[i],
+});
+
+// module config specs ========================================================
+const gSize: u16 = 141; // 5 (hstrat) + 8 (embryo) + 128 (dev matrix)
+const genome_t = [gSize]u32;
+const genomePtr_t = [*]u32;
+const nTraitVals: u16 = 1;
+const hasImmClobber: bool = true;
+
+// internal functions =========================================================
+fn _ptr_embryo(genome: genomePtr_t) [*]f16 {
+    return @ptrcast([*]f16, &genome[5]);
+}
+
+fn _ptr_matrix(genome: genomePtr_t) [*]f16 {
+    return @ptrcast([*]f16, &genome[13]);
+}
+
+fn _check_parity(genome: genomePtr_t) bool {
+    const t_ok = !opscalar.parity32(genome[1]); // even parity over whole T word
+    const s0_ok = opscalar.parity32(genome[2]) == ((genome[1] & 2) == 2);
+    const s1_ok = opscalar.parity32(genome[3]) == ((genome[1] & 4) == 4);
+    const s2_ok = opscalar.parity32(genome[4]) == ((genome[1] & 8) == 8);
+    return t_ok and s0_ok and s1_ok and s2_ok;
+}
+
+fn _set_parity_bits(genome: genomePtr_t) void {
+    genome[1] = genome[1] & 0xFFFFFFF0; // clear parity bits
+    genome[1] |= @as(u32, opscalar.parity32(genome[2])) << 1; // bit 1: storage[0] parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[3])) << 2; // bit 2: storage[1] parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[4])) << 3; // bit 3: storage[2] parity
+    genome[1] |= @as(u32, opscalar.parity32(genome[1])); // bit 0: T parity (must be last)
+}
+
+// Development: iteratively map EMBRYO -> phenotype through DEV_MATRIX,
+// following `develop()` in the reference notebook:
+//   p = G; repeat T_DEVELOP times:
+//     inter = DEV_MATRIX @ p
+//     p = p + TAU1 * tanh(ALPHA * inter) - TAU2 * p
+// The matrix-vector product uses CSL's native fused-multiply-add DSD
+// builtin (`@fmach`), accumulating one column of DEV_MATRIX (row-major,
+// so a stride-N access pattern picks out a column) at a time, mirroring
+// the GEMV pattern from the CSL SDK tutorials
+// (https://sdk.cerebras.ai/csl/tutorials/gemv-02-memory-dsds).
+fn _develop(embryo_ptr: [*]f16, matrix_ptr: [*]f16, out_ptr: [*]f16) void {
+    for (@range(u16, N)) |i| { out_ptr[i] = embryo_ptr[i]; }
+
+    for (@range(u16, T_DEVELOP)) |_| {
+        @fmovh(_devInterDsd, @as(f16, 0.0));
+
+        var col_dsd = @get_dsd(mem1d_dsd, .{
+            .base_address = matrix_ptr,
+            .extent = @as(u16, N),
+            .stride = @as(i8, N),
+        });
+        for (@range(u16, N)) |j| {
+            @fmach(_devInterDsd, _devInterDsd, col_dsd, out_ptr[j]);
+            col_dsd = @increment_dsd_offset(col_dsd, 1, f16);
+        }
+
+        for (@range(u16, N)) |i| {
+            const activated = math.tanh_f16(ALPHA * _devInter[i]);
+            out_ptr[i] = out_ptr[i] + TAU1 * activated - TAU2 * out_ptr[i];
+        }
+    }
+}
+
+// Benefit is the correlation (folded into [0, 1]) between the developed
+// phenotype and a target pattern, following `benefit()` in the reference
+// notebook. Accumulated in f32 for numerical stability.
+fn _benefit_of(p_ptr: [*]f16, target_ptr: [*]f16) f32 {
+    var dot: f32 = 0.0;
+    for (@range(u16, N)) |i| {
+        const p_norm = @as(f32, p_ptr[i]) * (@as(f32, TAU2) / @as(f32, TAU1));
+        dot += p_norm * @as(f32, target_ptr[i]);
+    }
+    return 0.5 * (1.0 + dot / @as(f32, N));
+}
+
+fn _l1_cost(matrix_ptr: [*]f16) f32 {
+    var total: f32 = 0.0;
+    for (@range(u16, S_MATRIX)) |k| {
+        total += math.abs(@as(f32, matrix_ptr[k]));
+    }
+    return total / @as(f32, S_MATRIX);
+}
+
+fn _l2_cost(matrix_ptr: [*]f16) f32 {
+    var total: f32 = 0.0;
+    for (@range(u16, S_MATRIX)) |k| {
+        const v = @as(f32, matrix_ptr[k]);
+        total += v * v;
+    }
+    return total / @as(f32, S_MATRIX);
+}
+
+// Selects the target training pattern from the *generation counter already
+// tracked in the genome* (the dstream T field), round-robining through the
+// 3-pattern training set -- a simplified stand-in for the reference
+// notebook's weighted-interleave block schedule.
+fn _target_ptr_for_generation(generation: u32) [*]f16 {
+    const t_idx = generation % 3;
+    const target_ptr = if (t_idx == 0)
+        @ptrcast([*]f16, &_S1)
+    else if (t_idx == 1)
+        @ptrcast([*]f16, &_S2)
+    else
+        @ptrcast([*]f16, &_S3);
+    return target_ptr;
+}
+
+fn _compute_fitness(genome: genomePtr_t) f32 {
+    const embryo_ptr = _ptr_embryo(genome);
+    const matrix_ptr = _ptr_matrix(genome);
+    _develop(embryo_ptr, matrix_ptr, @ptrcast([*]f16, &_devP));
+
+    const generation = genome[1] / _parity_T_dilation;
+    const target_ptr = _target_ptr_for_generation(generation);
+
+    const benefit = _benefit_of(@ptrcast([*]f16, &_devP), target_ptr);
+    const regularization = _l1_scale * _lam1 * _l1_cost(matrix_ptr)
+        + _l2_scale * _lam2 * _l2_cost(matrix_ptr);
+    return benefit - regularization;
+}
+
+fn _apply_mutation(genome: genomePtr_t) void {
+    const embryo_ptr = _ptr_embryo(genome);
+    const matrix_ptr = _ptr_matrix(genome);
+
+    // mutate a single embryo gene, clipped to [-1, 1]
+    const i = opscalar.unif16(N);
+    var gi = embryo_ptr[i] + random.random_f16(_embryo_mutation_lo, _embryo_mutation_hi);
+    gi = math.max_f16(math.min_f16(gi, @as(f16, 1.0)), @as(f16, -1.0));
+    embryo_ptr[i] = gi;
+
+    // occasionally perturb the whole development matrix by a small amount
+    if (opscalar.p(_matrix_mutation_p)) {
+        for (@range(u16, S_MATRIX)) |k| {
+            matrix_ptr[k] += random.random_f16(
+                -_matrix_mutation_bound, _matrix_mutation_bound,
+            );
+        }
+    }
+
+    @ptrcast(*f32, genome).* = _compute_fitness(genome);
+}
+
+fn _do_step_instrumentation(genome: genomePtr_t) void {
+    // elapse generation in bitfield
+    if (rng.next_bit()) {
+        const T = @ptrcast([*]u32, genome)[1] / (_parity_T_dilation * hstrat_T_dilation);
+        const site = dstream_algo.assign_storage_site(S, T);
+        @assert(site <= S);
+
+        const offset_bits: u16 = (4 + 4) * 8;
+        const target_bit = @as(u16, site) + offset_bits;
+
+        const genome_bytes = @ptrcast([*]u8, genome);
+        if (site != S) bitmanip.flip_nth_bit_with_swaps(genome_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true });
+    }
+}
+
+fn _step_instrumentation(genome: genomePtr_t) void {
+    if ((@ptrcast([*]u32, genome)[1] / _parity_T_dilation) % hstrat_T_dilation == 0) {
+        _do_step_instrumentation(genome);
+    }
+    @ptrcast([*]u32, genome)[1] += _parity_T_dilation;
+    _set_parity_bits(genome);
+}
+
+// public API =================================================================
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    _apply_mutation(genome);
+    _step_instrumentation(genome);
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    return @ptrcast(*f32, genome).*;
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    return 0;
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    @ptrcast(*f32, genome).* = 0.0;
+    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation * _parity_T_dilation;
+    @ptrcast([*]u32, genome)[2] = rng.next();
+    @ptrcast([*]u32, genome)[3] = rng.next();
+    @ptrcast([*]u32, genome)[4] = rng.next();
+    _set_parity_bits(genome);
+
+    const embryo_ptr = _ptr_embryo(genome);
+    for (@range(u16, N)) |i| {
+        embryo_ptr[i] = random.random_f16(@as(f16, -1.0), @as(f16, 1.0));
+    }
+
+    const matrix_ptr = _ptr_matrix(genome);
+    for (@range(u16, S_MATRIX)) |k| {
+        matrix_ptr[k] = 0.0;
+    }
+}
+
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+    if (!_check_parity(immigrant)) {
+        for (@range(u16, gSize)) |i| {
+            immigrant[i] = resident[i];
+        }
+        return true;
+    }
+    return false;
+}

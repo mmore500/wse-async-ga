@@ -1,0 +1,178 @@
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+const genome = @import_module(
+    "cerebraslib/genome/genome_evodd.csl", .{.rng = rng}
+);
+
+// reference values below are transcribed from a numpy float16 re-
+// implementation of `develop()`/`benefit()` from
+// https://github.com/mmore500/evodd/blob/main/bindle/2026-07-23-exploratory.py
+// (mirroring the CSL column-accumulation order for the matrix-vector
+// product), driven with a fixed embryo/dev-matrix fixture. Both embryo and
+// matrix fixture values are exact dyadic fractions (multiples of powers of
+// two), so there is no double-rounding ambiguity between numpy's float16
+// cast and CSL's f16 arithmetic. Empirically (verified on-simulator) CSL's
+// @fmach/tanh_f16 agree with the numpy reference to within ~0.001; the
+// tolerance below adds a safety margin on top of that for any remaining
+// hardware transcendental-approximation slack.
+const _tol_pa: f32 = 0.005;
+const _tol_fitness: f32 = 0.005;
+
+const _expected_pa = [genome.N]f32{
+    0.304199, -0.809570, -0.857910, 0.031128,
+    0.924316, 0.371338, -0.742188, -0.791016,
+    0.098267, 0.991211, 0.438232, -0.675293,
+    -0.723633, 0.165283, 1.058594, 0.505859,
+};
+
+// fitness for generation % 3 == 0, 1, 2 respectively (schedule round-robins
+// through the training set based on the genome's generation counter)
+const _expected_fitness = [3]f32{ 0.469220, 0.479497, 0.507381 };
+
+fn _check_parity(g: *genome.genome_t) void {
+    const gp = @ptrcast([*]u32, g);
+    @assert(!opscalar.parity32(gp[1])); // even parity over whole T word
+    @assert(@as(u32, opscalar.parity32(gp[2])) == ((gp[1] >> 1) & 1));
+    @assert(@as(u32, opscalar.parity32(gp[3])) == ((gp[1] >> 2) & 1));
+    @assert(@as(u32, opscalar.parity32(gp[4])) == ((gp[1] >> 3) & 1));
+}
+
+fn _assert_close(actual: f32, expected: f32, tol: f32) void {
+    @assert(math.abs(actual - expected) < tol);
+}
+
+// writes the fixed embryo/dev-matrix fixture (matching the reference
+// numpy script) into a genome's EMBRYO/DEV_MATRIX fields
+fn _write_fixture(g: genome.genomePtr_t) void {
+    const embryo_ptr = genome._ptr_embryo(g);
+    for (@range(u16, genome.N)) |i| {
+        embryo_ptr[i] = (@as(f16, i) / @as(f16, 8.0)) - @as(f16, 1.0);
+    }
+
+    const matrix_ptr = genome._ptr_matrix(g);
+    for (@range(u16, genome.N)) |i| {
+        for (@range(u16, genome.N)) |j| {
+            const raw = @as(i16, (i + j) % 5) - @as(i16, 2);
+            matrix_ptr[i * genome.N + j] = @as(f16, raw) * @as(f16, 0.0625);
+        }
+    }
+}
+
+fn test_calc_fitness_of() void {
+    var g = @zeros(genome.genome_t);
+    @assert(genome.calc_fitness_of(&g) == 0.0);
+}
+
+fn test_elapse_inheritance_of() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    genome.elapse_inheritance_of(&g);
+}
+
+fn test_get_trait_value() void {
+    var g = @zeros(genome.genome_t);
+    @assert(genome.get_trait_value(&g) == 0);
+    @assert(genome.get_trait_value(&g) < @as(u32, genome.nTraitVals));
+}
+
+fn test_initialize_one() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    @assert(genome.calc_fitness_of(&g) == 0.0);
+
+    const embryo_ptr = genome._ptr_embryo(&g);
+    for (@range(u16, genome.N)) |i| {
+        @assert(embryo_ptr[i] >= @as(f16, -1.0));
+        @assert(embryo_ptr[i] <= @as(f16, 1.0));
+    }
+
+    const matrix_ptr = genome._ptr_matrix(&g);
+    for (@range(u16, genome.S_MATRIX)) |k| {
+        @assert(matrix_ptr[k] == @as(f16, 0.0));
+    }
+}
+
+fn test_parity_after_init() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    _check_parity(&g);
+}
+
+fn test_parity_after_steps() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    _check_parity(&g);
+    for (@range(u16, 10)) |_| {
+        genome.elapse_inheritance_of(&g);
+        _check_parity(&g);
+    }
+}
+
+fn test_clobber_valid_immigrant() void {
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    genome.initialize_one(&resident);
+    genome.initialize_one(&immigrant);
+    @assert(!genome.clobber_immigrant(&resident, &immigrant));
+}
+
+fn test_clobber_invalid_immigrant() void {
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    genome.initialize_one(&resident);
+    genome.initialize_one(&immigrant);
+    var imm_ptr = @ptrcast([*]u32, &immigrant);
+    imm_ptr[1] = imm_ptr[1] ^ 1; // flip parity bit 0
+    @assert(genome.clobber_immigrant(&resident, &immigrant));
+    // immigrant should now be an exact copy of resident
+    var res_ptr = @ptrcast([*]u32, &resident);
+    imm_ptr = @ptrcast([*]u32, &immigrant);
+    for (@range(u16, genome.gSize)) |i| {
+        @assert(imm_ptr[i] == res_ptr[i]);
+    }
+}
+
+fn test_develop_matches_reference() void {
+    var g = @zeros(genome.genome_t);
+    _write_fixture(&g);
+
+    var out = @zeros([genome.N]f16);
+    genome._develop(
+        genome._ptr_embryo(&g), genome._ptr_matrix(&g), @ptrcast([*]f16, &out),
+    );
+
+    for (@range(u16, genome.N)) |i| {
+        _assert_close(@as(f32, out[i]), _expected_pa[i], _tol_pa);
+    }
+}
+
+fn test_calc_fitness_of_matches_reference() void {
+    for (@range(u16, 3)) |gen_mod| {
+        var g = @zeros(genome.genome_t);
+        _write_fixture(&g);
+        // encode a generation counter whose value % 3 == gen_mod, so the
+        // schedule (driven off the genome's own generation counter)
+        // selects the gen_mod'th training pattern
+        var gp = @ptrcast([*]u32, &g);
+        gp[1] = @as(u32, gen_mod) * genome._parity_T_dilation;
+
+        const fitness = genome._compute_fitness(&g);
+        _assert_close(fitness, _expected_fitness[gen_mod], _tol_fitness);
+    }
+}
+
+fn do_test() void {
+    test_calc_fitness_of();
+    test_elapse_inheritance_of();
+    test_get_trait_value();
+    test_initialize_one();
+    test_parity_after_init();
+    test_parity_after_steps();
+    test_clobber_valid_immigrant();
+    test_clobber_invalid_immigrant();
+    test_develop_matches_reference();
+    test_calc_fitness_of_matches_reference();
+}
