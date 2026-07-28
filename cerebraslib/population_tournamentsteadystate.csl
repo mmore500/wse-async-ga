@@ -64,6 +64,18 @@ fn _sample_one_tournament() u16 {
 
 fn _put_population_word(data: u32, loc: u32) void { buffer[loc] = data; }
 
+// swap genome at population index i with a uniformly random population
+// member (self-swaps allowed); used to sample/place migrants without a
+// dedicated index/swap buffer, in keeping with this flavor's low memory use
+fn _swap_ith_with_random(i: u16) void {
+    const j = opscalar.unif16(popSize);
+    for (@range(u16, genome.gSize)) |w| {
+        const tmp = buffer[i * genome.gSize + w];
+        buffer[i * genome.gSize + w] = buffer[j * genome.gSize + w];
+        buffer[j * genome.gSize + w] = tmp;
+    }
+}
+
 // internal routines ===========================================================
 fn _elapse_inheritance_all() void {
     for (@range(u16, popSize)) |i| { _elapse_ith_inheritance(i); }
@@ -90,13 +102,28 @@ fn _perform_selection_all() void {
 }
 
 // public API =================================================================
+/// Emigrate nGenomes genomes to toDsd. Each of the nGenomes copied-from slots
+/// is first swapped with a uniformly random population member, so the
+/// genomes sent are a random sample of the population (not always the same
+/// fixed slots) while only permuting buffer contents in place --- no
+/// dedicated sampling buffer needed.
 fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
+    for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
+
     const nWords = nGenomes * genome.gSize;
     const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
     @mov32(toDsd, bufferDsd_);
 }
 
+/// Immigrate nGenomes genomes from fromBuf. Each of the nGenomes copied-to
+/// slots is first swapped with a uniformly random population member, which
+/// relocates (rather than discards) whatever currently occupies that slot
+/// before the immigrant overwrites it --- so immigrants effectively replace
+/// a random population member instead of always clobbering the same fixed
+/// slots (and colliding with concurrent immigrations from other neighbors).
 fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
+    for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
+
     var nClobbers: u32 = 0;
     if (genome.hasImmClobber) {
         for (@range(u16, nGenomes)) |i| {

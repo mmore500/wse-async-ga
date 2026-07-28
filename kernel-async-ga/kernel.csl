@@ -68,9 +68,11 @@ const pExtinction = compconf.get_value_or(
 
 const population = @import_module(
   @strcat("cerebraslib/", compconf_raw.ASYNC_GA_POPULATION_FLAVOR, ".csl"),
-  .{ .genome = genome_, .popSize = popSize,
-  .pExtinction = pExtinction, .tournamentSize = tournSize,
-});
+  .{
+    .genome = genome_, .popSize = popSize,
+    .pExtinction = pExtinction, .tournamentSize = tournSize,
+  },
+);
 const wildtypeLogger = @import_module(
   "cerebraslib/traitlogger.csl", .{ .symbolName = "wildtypeLoggerRecord" }
 );
