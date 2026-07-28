@@ -273,7 +273,9 @@ fn _apply_mutation(genome: genomePtr_t) void {
     // most generations apply no mutation at all; when one does happen, it
     // is either a whole-matrix perturbation or (otherwise) a single embryo
     // gene tweak -- never both in the same generation
+    var mutated = false;
     if (opscalar.p(_mutation_p)) {
+        mutated = true;
         if (opscalar.p(_matrix_mutation_p)) {
             const matrix_ptr = _ptr_matrix(genome);
             for (@range(u16, S_MATRIX)) |k| {
@@ -290,12 +292,20 @@ fn _apply_mutation(genome: genomePtr_t) void {
         }
     }
 
-    // fitness must be refreshed every generation regardless of whether a
-    // mutation actually happened above: the training-pattern schedule (see
-    // `_target_ptr_for_generation`) advances every generation too, so an
-    // unconditionally-stale cache would silently score against a stale
-    // target once the schedule moves on to the next block.
-    @ptrcast(*f32, genome).* = _compute_fitness(genome);
+    // The cached fitness only needs refreshing when the developed
+    // phenotype actually changed (a mutation fired above) or when this
+    // generation is the first tick of a new schedule block -- i.e. the
+    // target pattern just changed. Since generation advances by exactly 1
+    // every call (see `_step_instrumentation`) and blocks are
+    // fixed-length, "the target just changed" is detectable with no extra
+    // state: it's exactly when the (not-yet-incremented) generation
+    // counter is a multiple of the block length. Otherwise the
+    // already-cached value -- computed against the same phenotype and the
+    // same target -- is still correct, so skip the expensive recompute.
+    const schedule_changed = genome[1] % _schedule_block_len == 0;
+    if (mutated or schedule_changed) {
+        @ptrcast(*f32, genome).* = _compute_fitness(genome);
+    }
 }
 
 fn _do_step_instrumentation(genome: genomePtr_t) void {
@@ -335,7 +345,6 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 }
 
 fn initialize_one(genome: genomePtr_t) void {
-    @ptrcast(*f32, genome).* = 0.0;
     @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation;
     @ptrcast([*]u32, genome)[2] = rng.next();
     @ptrcast([*]u32, genome)[3] = rng.next();
@@ -350,6 +359,11 @@ fn initialize_one(genome: genomePtr_t) void {
     for (@range(u16, S_MATRIX)) |k| {
         matrix_ptr[k] = 0.0;
     }
+
+    // seed the fitness cache with a real computed value (rather than a
+    // placeholder 0.0) so it isn't stale until the first mutation or
+    // schedule-block boundary triggers a recompute (see _apply_mutation)
+    @ptrcast(*f32, genome).* = _compute_fitness(genome);
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {

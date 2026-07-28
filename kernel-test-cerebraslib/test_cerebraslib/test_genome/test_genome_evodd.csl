@@ -81,7 +81,13 @@ fn test_get_trait_value() void {
 fn test_initialize_one() void {
     var g = @zeros(genome.genome_t);
     genome.initialize_one(&g);
-    @assert(genome.calc_fitness_of(&g) == 0.0);
+    // fitness is seeded with a real computed value at init (not a 0.0
+    // placeholder); with a freshly-zeroed dev matrix, regularization is 0
+    // and benefit (in [0, 1]) is the only contribution, regardless of the
+    // random embryo, so a loose range check suffices here.
+    const fitness = genome.calc_fitness_of(&g);
+    @assert(fitness >= 0.0);
+    @assert(fitness <= 1.0);
 
     const embryo_ptr = genome._ptr_embryo(&g);
     for (@range(u16, genome.N)) |i| {
@@ -93,6 +99,49 @@ fn test_initialize_one() void {
     for (@range(u16, genome.S_MATRIX)) |k| {
         @assert(matrix_ptr[k] == @as(f16, 0.0));
     }
+}
+
+// A schedule-block boundary must always force a fitness recompute,
+// regardless of whether the (probabilistic) mutation branch also fires
+// that same call -- deterministic, since crossing a block boundary is not
+// itself probabilistic.
+fn test_fitness_recomputes_on_schedule_boundary() void {
+    var g = @zeros(genome.genome_t);
+    _write_fixture(&g);
+    var gp = @ptrcast([*]u32, &g);
+    gp[1] = genome._schedule_block_len * 2; // exactly at a block boundary
+    var fp = @ptrcast(*f32, &g);
+    fp.* = -999.0; // obviously-stale sentinel
+
+    genome._apply_mutation(&g);
+
+    @assert(genome.calc_fitness_of(&g) != -999.0);
+}
+
+// Away from any schedule-block boundary, a call should skip the (expensive)
+// fitness recompute unless the probabilistic mutation branch fires --
+// statistical rather than strictly deterministic, but with mutation firing
+// at only ~1% per call, requiring a strong majority of 200 trials to leave
+// the cached value untouched is not expected to flake in practice.
+fn test_fitness_skips_when_unchanged() void {
+    var g = @zeros(genome.genome_t);
+    _write_fixture(&g);
+    var gp = @ptrcast([*]u32, &g);
+    gp[1] = genome._schedule_block_len / 2; // mid-block: never a boundary
+    const seeded = genome._compute_fitness(&g);
+    var fp = @ptrcast(*f32, &g);
+    fp.* = seeded;
+
+    var num_unchanged: u16 = 0;
+    for (@range(u16, 200)) |_| {
+        genome._apply_mutation(&g); // gp[1] held fixed: no boundary crossed
+        if (genome.calc_fitness_of(&g) == seeded) {
+            num_unchanged += 1;
+        } else {
+            fp.* = seeded; // reset the sentinel for the next trial
+        }
+    }
+    @assert(num_unchanged > 150);
 }
 
 // immigrant clobbering is disabled entirely for this genome (no parity
@@ -145,6 +194,8 @@ fn do_test() void {
     test_elapse_inheritance_of();
     test_get_trait_value();
     test_initialize_one();
+    test_fitness_recomputes_on_schedule_boundary();
+    test_fitness_skips_when_unchanged();
     test_clobber_immigrant_disabled();
     test_develop_matches_reference();
     test_calc_fitness_of_matches_reference();
