@@ -3,7 +3,7 @@
 // byte 1
 // byte 2
 // byte 3
-// byte 4 DSTREAM_T COUNTER (u32, 4 bytes) [bits 0-3: parity, bits 4-31: counter]
+// byte 4 DSTREAM_T COUNTER (u32, 4 bytes)
 // byte 5
 // byte 6
 // byte 7
@@ -29,10 +29,10 @@
 //
 // EMBRYO is the evolved genotype vector fed into development; DEV_MATRIX is
 // the evolved gene interaction matrix used to iteratively develop EMBRYO
-// into a phenotype (see `_develop`, below). Both are tracked by ordinary
-// (unprotected) mutation/inheritance -- only the hstrat bookkeeping fields
-// (DSTREAM_T COUNTER, BITFIELD) get parity-checked immigrant validation, in
-// keeping with genome_purifyingsweep.csl.
+// into a phenotype (see `_develop`, below). Unlike genome_purifyingsweep.csl,
+// this genome skips parity-protected immigrant validation entirely (no
+// parity bits, no clobber_immigrant enforcement) -- DSTREAM_T COUNTER is a
+// plain, unprotected counter.
 //
 // Ported (roughly) from the Kouvaris et al. 2017 gene regulatory network
 // (GRN) model as prototyped in
@@ -55,21 +55,8 @@
 //!         pl.UInt32,
 //!     ),
 //!     "dstream_T_dilation": (
-//!         16 * compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
 //!         pl.UInt32,
-//!     ),
-//!     "downstream_data_parity0_rule": (
-//!         "\n".join([
-//!             " ".join("0" * 32 + "1" * 32 + "0" * 96 + "0" * 4352),
-//!             " ".join("0" * 62 + "1" * 1 + "0" * 1 + "1" * 32 + "0" * 64 + "0" * 4352),
-//!             " ".join("0" * 61 + "1" * 1 + "0" * 34 + "1" * 32 + "0" * 32 + "0" * 4352),
-//!             " ".join("0" * 60 + "1" * 1 + "0" * 67 + "1" * 32 + "0" * 4352),
-//!         ]),
-//!         pl.String,
-//!     ),
-//!     "downstream_filter_packed": (
-//!         "pl.col('downstream_data_parity0_result') == 0",
-//!         pl.Categorical,
 //!     ),
 //!     "embryo_bitoffset": (160, pl.UInt16),
 //!     "embryo_bitwidth": (256, pl.UInt16),
@@ -109,7 +96,6 @@ const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 
 const S = 96;
-const _parity_T_dilation: u32 = 16;
 
 // GRN development model constants (Kouvaris et al. 2017) =====================
 const N: u16 = 16; // embryo/phenotype width
@@ -120,12 +106,14 @@ const TAU1: f16 = 1.0;
 const TAU2: f16 = 0.2;
 
 // elastic-net-style regularization weights, configurable to match the
-// reference notebook's `--l1-scale`/`--l2-scale`/model constants
+// reference notebook's `--l1-scale`/`--l2-scale`/model constants. Default to
+// pure L1 (matches typical elastic-net-as-lasso usage) rather than the
+// notebook CLI's blended default.
 const _l1_scale: f32 = compconf.get_value_or(
-    "CEREBRASLIB_EVODD_L1_SCALE", @as(f32, 0.995),
+    "CEREBRASLIB_EVODD_L1_SCALE", @as(f32, 1.0),
 );
 const _l2_scale: f32 = compconf.get_value_or(
-    "CEREBRASLIB_EVODD_L2_SCALE", @as(f32, 0.005),
+    "CEREBRASLIB_EVODD_L2_SCALE", @as(f32, 0.0),
 );
 const _lam1: f32 = compconf.get_value_or(
     "CEREBRASLIB_EVODD_LAM1", @as(f32, 0.22),
@@ -134,7 +122,17 @@ const _lam2: f32 = compconf.get_value_or(
     "CEREBRASLIB_EVODD_LAM2", @as(f32, 38.0),
 );
 
-// matrix mutation rate/magnitude, mirroring reference notebook's `mutate()`
+// how many consecutive generations the schedule dwells on one training
+// pattern before advancing to the next (mirrors the reference notebook's
+// per-block environment presentation, simplified to fixed-length blocks)
+const _schedule_block_len: u32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_SCHEDULE_BLOCKLEN", @as(u32, 100),
+);
+
+// mutation rate/magnitude, mirroring reference notebook's `mutate()`: most
+// generations apply no mutation at all; when a mutation does occur, it is
+// *either* a matrix perturbation *or* a single embryo gene tweak, never both
+const _mutation_p: f32 = 0.01;
 const _matrix_mutation_p: f32 = 1.0 / 15.0;
 const _matrix_mutation_bound: f16 = 1.0 / 38400.0; // 1 / (150 * N * N), N = 16
 const _embryo_mutation_lo: f16 = -0.1;
@@ -168,7 +166,7 @@ const gSize: u16 = 141; // 5 (hstrat) + 8 (embryo) + 128 (dev matrix)
 const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
-const hasImmClobber: bool = true;
+const hasImmClobber: bool = false;
 
 // internal functions =========================================================
 fn _ptr_embryo(genome: genomePtr_t) [*]f16 {
@@ -177,22 +175,6 @@ fn _ptr_embryo(genome: genomePtr_t) [*]f16 {
 
 fn _ptr_matrix(genome: genomePtr_t) [*]f16 {
     return @ptrcast([*]f16, &genome[13]);
-}
-
-fn _check_parity(genome: genomePtr_t) bool {
-    const t_ok = !opscalar.parity32(genome[1]); // even parity over whole T word
-    const s0_ok = opscalar.parity32(genome[2]) == ((genome[1] & 2) == 2);
-    const s1_ok = opscalar.parity32(genome[3]) == ((genome[1] & 4) == 4);
-    const s2_ok = opscalar.parity32(genome[4]) == ((genome[1] & 8) == 8);
-    return t_ok and s0_ok and s1_ok and s2_ok;
-}
-
-fn _set_parity_bits(genome: genomePtr_t) void {
-    genome[1] = genome[1] & 0xFFFFFFF0; // clear parity bits
-    genome[1] |= @as(u32, opscalar.parity32(genome[2])) << 1; // bit 1: storage[0] parity
-    genome[1] |= @as(u32, opscalar.parity32(genome[3])) << 2; // bit 2: storage[1] parity
-    genome[1] |= @as(u32, opscalar.parity32(genome[4])) << 3; // bit 3: storage[2] parity
-    genome[1] |= @as(u32, opscalar.parity32(genome[1])); // bit 0: T parity (must be last)
 }
 
 // Development: iteratively map EMBRYO -> phenotype through DEV_MATRIX,
@@ -258,11 +240,12 @@ fn _l2_cost(matrix_ptr: [*]f16) f32 {
 }
 
 // Selects the target training pattern from the *generation counter already
-// tracked in the genome* (the dstream T field), round-robining through the
-// 3-pattern training set -- a simplified stand-in for the reference
-// notebook's weighted-interleave block schedule.
+// tracked in the genome* (the dstream T field), dwelling on each pattern
+// for `_schedule_block_len` consecutive generations before round-robining
+// to the next -- a simplified, fixed-length-block stand-in for the
+// reference notebook's weighted-interleave block schedule.
 fn _target_ptr_for_generation(generation: u32) [*]f16 {
-    const t_idx = generation % 3;
+    const t_idx = (generation / _schedule_block_len) % 3;
     const target_ptr = if (t_idx == 0)
         @ptrcast([*]f16, &_S1)
     else if (t_idx == 1)
@@ -277,7 +260,7 @@ fn _compute_fitness(genome: genomePtr_t) f32 {
     const matrix_ptr = _ptr_matrix(genome);
     _develop(embryo_ptr, matrix_ptr, @ptrcast([*]f16, &_devP));
 
-    const generation = genome[1] / _parity_T_dilation;
+    const generation = genome[1];
     const target_ptr = _target_ptr_for_generation(generation);
 
     const benefit = _benefit_of(@ptrcast([*]f16, &_devP), target_ptr);
@@ -287,31 +270,38 @@ fn _compute_fitness(genome: genomePtr_t) f32 {
 }
 
 fn _apply_mutation(genome: genomePtr_t) void {
-    const embryo_ptr = _ptr_embryo(genome);
-    const matrix_ptr = _ptr_matrix(genome);
-
-    // mutate a single embryo gene, clipped to [-1, 1]
-    const i = opscalar.unif16(N);
-    var gi = embryo_ptr[i] + random.random_f16(_embryo_mutation_lo, _embryo_mutation_hi);
-    gi = math.max_f16(math.min_f16(gi, @as(f16, 1.0)), @as(f16, -1.0));
-    embryo_ptr[i] = gi;
-
-    // occasionally perturb the whole development matrix by a small amount
-    if (opscalar.p(_matrix_mutation_p)) {
-        for (@range(u16, S_MATRIX)) |k| {
-            matrix_ptr[k] += random.random_f16(
-                -_matrix_mutation_bound, _matrix_mutation_bound,
-            );
+    // most generations apply no mutation at all; when one does happen, it
+    // is either a whole-matrix perturbation or (otherwise) a single embryo
+    // gene tweak -- never both in the same generation
+    if (opscalar.p(_mutation_p)) {
+        if (opscalar.p(_matrix_mutation_p)) {
+            const matrix_ptr = _ptr_matrix(genome);
+            for (@range(u16, S_MATRIX)) |k| {
+                matrix_ptr[k] += random.random_f16(
+                    -_matrix_mutation_bound, _matrix_mutation_bound,
+                );
+            }
+        } else {
+            const embryo_ptr = _ptr_embryo(genome);
+            const i = opscalar.unif16(N);
+            var gi = embryo_ptr[i] + random.random_f16(_embryo_mutation_lo, _embryo_mutation_hi);
+            gi = math.max_f16(math.min_f16(gi, @as(f16, 1.0)), @as(f16, -1.0));
+            embryo_ptr[i] = gi;
         }
     }
 
+    // fitness must be refreshed every generation regardless of whether a
+    // mutation actually happened above: the training-pattern schedule (see
+    // `_target_ptr_for_generation`) advances every generation too, so an
+    // unconditionally-stale cache would silently score against a stale
+    // target once the schedule moves on to the next block.
     @ptrcast(*f32, genome).* = _compute_fitness(genome);
 }
 
 fn _do_step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     if (rng.next_bit()) {
-        const T = @ptrcast([*]u32, genome)[1] / (_parity_T_dilation * hstrat_T_dilation);
+        const T = @ptrcast([*]u32, genome)[1] / hstrat_T_dilation;
         const site = dstream_algo.assign_storage_site(S, T);
         @assert(site <= S);
 
@@ -324,11 +314,10 @@ fn _do_step_instrumentation(genome: genomePtr_t) void {
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
-    if ((@ptrcast([*]u32, genome)[1] / _parity_T_dilation) % hstrat_T_dilation == 0) {
+    if (@ptrcast([*]u32, genome)[1] % hstrat_T_dilation == 0) {
         _do_step_instrumentation(genome);
     }
-    @ptrcast([*]u32, genome)[1] += _parity_T_dilation;
-    _set_parity_bits(genome);
+    @ptrcast([*]u32, genome)[1] += 1;
 }
 
 // public API =================================================================
@@ -347,11 +336,10 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 
 fn initialize_one(genome: genomePtr_t) void {
     @ptrcast(*f32, genome).* = 0.0;
-    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation * _parity_T_dilation;
+    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation;
     @ptrcast([*]u32, genome)[2] = rng.next();
     @ptrcast([*]u32, genome)[3] = rng.next();
     @ptrcast([*]u32, genome)[4] = rng.next();
-    _set_parity_bits(genome);
 
     const embryo_ptr = _ptr_embryo(genome);
     for (@range(u16, N)) |i| {
@@ -365,11 +353,5 @@ fn initialize_one(genome: genomePtr_t) void {
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
-    if (!_check_parity(immigrant)) {
-        for (@range(u16, gSize)) |i| {
-            immigrant[i] = resident[i];
-        }
-        return true;
-    }
     return false;
 }
