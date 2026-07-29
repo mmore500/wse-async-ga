@@ -17,9 +17,15 @@ develops each sampled genome once and scores that single phenotype against
 
 Phenotype classification is via exact sign-match: a genome's phenotype is
 classified as pattern i if sign(Pa) == sign(pattern_i) elementwise; if it
-doesn't exactly match any of the 16, it is classified "other", and unique
-"other" sign-patterns are tallied separately (to distinguish "one genome
-degenerately explored many odd attractors" from "noise near a boundary").
+doesn't exactly match any of the 16, it is classified "other". Each
+genome's classification is reported as one-hot indicator columns (one
+column per of the 16 patterns, plus an "other" column) directly on the
+per-genome output table -- one row per sampled genome -- rather than as a
+separate pattern-indexed distribution table. The population-level fraction
+in each category is recoverable by averaging the corresponding column
+(e.g. `df["AAAA"].mean()`); "unique other" phenotypes are still tallied
+and printed as a summary statistic, since that's not recoverable from the
+one-hot columns alone.
 Loss is mean squared error between Pa and each candidate pattern.
 """
 
@@ -112,11 +118,6 @@ def main() -> None:
         default="a=evoddPhenotypes+ext=.pqt",
         help="output path for per-sampled-genome results",
     )
-    parser.add_argument(
-        "--summary-out",
-        default="a=evoddPhenotypeSummary+ext=.pqt",
-        help="output path for the 16-pattern summary table",
-    )
     args = parser.parse_args()
 
     print(f"loading {args.input}...", flush=True)
@@ -142,7 +143,8 @@ def main() -> None:
 
     train_losses = np.empty(n, dtype=np.float32)
     test_losses = np.empty(n, dtype=np.float32)
-    phenotype_class = np.full(n, -1, dtype=np.int16)  # -1 == "other"
+    # one-hot columns: one per pattern (16) plus "other", 1 row per genome
+    one_hot = np.zeros((n, 17), dtype=np.float32)  # columns 0..15 == labels, 16 == other
     other_signatures: dict[int, int] = {}
 
     t_compute0 = time.time()
@@ -161,8 +163,9 @@ def main() -> None:
         binarized = np.where(phenotype >= 0, 1, -1).astype(np.int8)
         exact_matches = np.flatnonzero(np.all(binarized[None, :] == patterns, axis=1))
         if exact_matches.size:
-            phenotype_class[i] = exact_matches[0]
+            one_hot[i, exact_matches[0]] = 1.0
         else:
+            one_hot[i, 16] = 1.0
             signature = int(
                 "".join("1" if b > 0 else "0" for b in binarized), base=2
             )
@@ -184,38 +187,36 @@ def main() -> None:
         flush=True,
     )
 
-    # per-genome results ------------------------------------------------------
+    # per-genome results --------------------------------------------------------
+    # one row per sampled genome; one column per phenotype category (16
+    # training/testing patterns + "other"), value 1.0 if that genome's
+    # developed phenotype exactly sign-matches that category, else 0.0.
+    # Column-averaging recovers the population-level fraction in each
+    # category, e.g. `per_genome_df["AAAA"].mean()`.
+    category_columns = {
+        label: one_hot[:, idx] for idx, label in enumerate(labels)
+    }
+    category_columns["other"] = one_hot[:, 16]
     per_genome_df = pl.DataFrame(
         {
             "train_loss": train_losses,
             "test_loss": test_losses,
-            "phenotype_class": phenotype_class,
-            "phenotype_label": [
-                labels[c] if c >= 0 else "other" for c in phenotype_class
-            ],
+            **category_columns,
         }
     )
     per_genome_df.write_parquet(args.per_genome_out, compression="lz4")
     print(f"wrote {args.per_genome_out}", flush=True)
 
-    # 16-pattern summary --------------------------------------------------------
-    counts = np.bincount(phenotype_class[phenotype_class >= 0], minlength=16)
-    n_other = int((phenotype_class < 0).sum())
-    summary_df = pl.DataFrame(
-        {
-            "pattern_index": list(range(16)),
-            "pattern_label": labels,
-            "is_training": training_mask.tolist(),
-            "count": counts.tolist(),
-            "fraction_of_sample": (counts / n).tolist(),
-        }
-    )
-    summary_df.write_parquet(args.summary_out, compression="lz4")
-    print(f"wrote {args.summary_out}", flush=True)
+    print("\n=== per-genome results preview ===", flush=True)
+    with pl.Config(tbl_cols=20):
+        print(per_genome_df.head(10), flush=True)
 
-    print("\n=== phenotype distribution (16 possible patterns) ===", flush=True)
-    with pl.Config(tbl_rows=20):
-        print(summary_df, flush=True)
+    n_other = int(one_hot[:, 16].sum())
+    print("\n=== category fractions (mean of each one-hot column) ===", flush=True)
+    for idx, label in enumerate(labels):
+        tag = "training" if training_mask[idx] else "testing"
+        print(f"  {label} ({tag}): {one_hot[:, idx].mean():.2%}", flush=True)
+    print(f"  other: {one_hot[:, 16].mean():.2%}", flush=True)
 
     print("\n=== other (non-canalized) phenotypes ===", flush=True)
     print(f"fraction other: {n_other / n:.2%} ({n_other}/{n})", flush=True)

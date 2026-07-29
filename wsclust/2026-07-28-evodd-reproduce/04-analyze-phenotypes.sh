@@ -135,7 +135,6 @@ python3 "${FLOWDIR}/analyze_phenotypes.py" \
     --seed 1 \
     --project-to 900000 \
     --per-genome-out "${WORKDIR_STEP}/a=evoddPhenotypes+ext=.pqt" \
-    --summary-out "${WORKDIR_STEP}/a=evoddPhenotypeSummary+ext=.pqt" \
     2>&1 | tee "${WORKDIR_STEP}/analyze-phenotypes.log"
 
 ###############################################################################
