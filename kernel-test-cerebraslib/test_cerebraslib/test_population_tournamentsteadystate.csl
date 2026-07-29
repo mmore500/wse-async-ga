@@ -93,7 +93,7 @@ fn test_immigrate_genomes() void {
 }
 
 fn test_immigrate_genomes_clobber() void {
-    populationClobber.immigrate_genomes(@ptrcast([*]u32, &populationClobber.buffer), 10);
+    populationClobber.immigrate_genomes(@ptrcast([*]u32, &populationClobber.buffer), 2);
 }
 
 fn test_do_generation() void {
