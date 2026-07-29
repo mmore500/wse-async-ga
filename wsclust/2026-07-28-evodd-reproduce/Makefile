@@ -33,5 +33,8 @@ resultdir/02-run: 02-run.sh resultdir/01-compile
 resultdir/03-postprocess: 03-postprocess.sh resultdir/02-run
 	./03-postprocess.sh
 
-resultdir/99-tarball: 99-tarball.sh resultdir/03-postprocess
+resultdir/04-analyze-phenotypes: 04-analyze-phenotypes.sh analyze_phenotypes.py resultdir/03-postprocess
+	./04-analyze-phenotypes.sh
+
+resultdir/99-tarball: 99-tarball.sh resultdir/04-analyze-phenotypes
 	./99-tarball.sh
