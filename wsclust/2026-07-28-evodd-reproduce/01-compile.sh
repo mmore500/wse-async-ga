@@ -198,11 +198,11 @@ export ASYNC_GA_MSEC_AT_LEAST=0
 # time (~330-430us/generation; less-connected corner/edge PEs in the small
 # test grid ran faster, up to ~3900/sec, so 2300/sec is the conservative
 # figure representative of a large grid's interior tiles). At that rate,
-# 1,000,000 cycles is ~6-7 minutes of real device time and covers ~3300
+# 1,000,000 cycles is ~6-7 minutes of real device time and covers ~330
 # full schedule periods (each period is
 # 3 * CEREBRASLIB_EVODD_SCHEDULE_BLOCKLEN generations; default block length
-# is 100, so 300 generations/period) -- ample for the switching-pattern GRN
-# benefit to converge, echoing the original numpy notebook/paper's
+# is 1000, so 3000 generations/period) -- ample for the switching-pattern
+# GRN benefit to converge, echoing the original numpy notebook/paper's
 # many-generation training runs. Tune up/down as needed; this genome/
 # population/grid combo does ~2300-2900 generations per real hardware
 # second, so ~700k-870k generations are achievable in 5 minutes of device
@@ -226,7 +226,7 @@ export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="hybrid
 export COMPCONFENV_CEREBRASLIB_HSTRAT_T_DILATION__u32=1
 # genome_evodd defaults (see cerebraslib/genome/genome_evodd.csl); spelled
 # out here for visibility/tunability rather than left implicit.
-export COMPCONFENV_CEREBRASLIB_EVODD_SCHEDULE_BLOCKLEN__u32=100
+export COMPCONFENV_CEREBRASLIB_EVODD_SCHEDULE_BLOCKLEN__u32=1000
 export COMPCONFENV_CEREBRASLIB_EVODD_L1_SCALE__f32=1.0
 export COMPCONFENV_CEREBRASLIB_EVODD_L2_SCALE__f32=0.0
 export COMPCONFENV_CEREBRASLIB_EVODD_LAM1__f32=0.22

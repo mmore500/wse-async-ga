@@ -108,6 +108,9 @@ fn test_initialize_one() void {
 fn test_fitness_recomputes_on_schedule_boundary() void {
     var g = @zeros(genome.genome_t);
     _write_fixture(&g);
+    // isolate from whatever `_highest_seen_generation` prior tests left
+    // behind, so the boundary crossing below is deterministic
+    genome._highest_seen_generation = 0;
     var gp = @ptrcast([*]u32, &g);
     gp[1] = genome._schedule_block_len * 2; // exactly at a block boundary
     var fp = @ptrcast(*f32, &g);
@@ -126,6 +129,9 @@ fn test_fitness_recomputes_on_schedule_boundary() void {
 fn test_fitness_skips_when_unchanged() void {
     var g = @zeros(genome.genome_t);
     _write_fixture(&g);
+    // isolate from whatever `_highest_seen_generation` prior tests left
+    // behind, so gp[1] unambiguously determines the block below
+    genome._highest_seen_generation = 0;
     var gp = @ptrcast([*]u32, &g);
     gp[1] = genome._schedule_block_len / 2; // mid-block: never a boundary
     const seeded = genome._compute_fitness(&g);
@@ -174,13 +180,19 @@ fn test_develop_matches_reference() void {
 }
 
 fn test_calc_fitness_of_matches_reference() void {
+    // isolate from whatever `_highest_seen_generation` prior tests left
+    // behind; gen_mod * _schedule_block_len increases monotonically across
+    // iterations below, so a single reset up front suffices -- each
+    // iteration's gp[1] always exceeds the shared clock's prior value
+    genome._highest_seen_generation = 0;
     for (@range(u16, 3)) |gen_mod| {
         var g = @zeros(genome.genome_t);
         _write_fixture(&g);
         // encode a generation counter landing exactly at the start of the
         // gen_mod'th schedule block, so the schedule (driven off the
-        // genome's own generation counter) selects the gen_mod'th
-        // training pattern
+        // shared `_highest_seen_generation` PE-local clock, bumped up to
+        // this genome's counter here) selects the gen_mod'th training
+        // pattern
         var gp = @ptrcast([*]u32, &g);
         gp[1] = @as(u32, gen_mod) * genome._schedule_block_len;
 

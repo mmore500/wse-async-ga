@@ -123,10 +123,11 @@ const _lam2: f32 = compconf.get_value_or(
 );
 
 // how many consecutive generations the schedule dwells on one training
-// pattern before advancing to the next (mirrors the reference notebook's
-// per-block environment presentation, simplified to fixed-length blocks)
+// pattern ("environment") before advancing to the next (mirrors the
+// reference notebook's per-block environment presentation, simplified to
+// fixed-length blocks)
 const _schedule_block_len: u32 = compconf.get_value_or(
-    "CEREBRASLIB_EVODD_SCHEDULE_BLOCKLEN", @as(u32, 100),
+    "CEREBRASLIB_EVODD_SCHEDULE_BLOCKLEN", @as(u32, 1000),
 );
 
 // mutation rate/magnitude, mirroring reference notebook's `mutate()`: most
@@ -152,6 +153,17 @@ var _S3 = [N]f16{
     1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0,
     -1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
 };
+
+// PE-local clock: the highest DSTREAM_T generation counter observed across
+// any genome evaluated on this PE so far (monotonically non-decreasing).
+// Evaluation (training-pattern/schedule selection, see
+// `_target_ptr_for_generation`) is driven by this shared clock rather than
+// any individual genome's own counter, so every population member on this
+// PE is scored against the same "current" environment at any given
+// wall-clock moment, regardless of how far a given lineage's own counter
+// has drifted (relative to its neighbors) due to migration/inheritance
+// history.
+var _highest_seen_generation: u32 = 0;
 
 // development scratch space (module-scope, per DSD requirements -- see
 // cerebraslib/opscalar.csl's `_as16` for the same pattern)
@@ -239,11 +251,12 @@ fn _l2_cost(matrix_ptr: [*]f16) f32 {
     return total / @as(f32, S_MATRIX);
 }
 
-// Selects the target training pattern from the *generation counter already
-// tracked in the genome* (the dstream T field), dwelling on each pattern
-// for `_schedule_block_len` consecutive generations before round-robining
-// to the next -- a simplified, fixed-length-block stand-in for the
-// reference notebook's weighted-interleave block schedule.
+// Selects the target training pattern from a generation counter (in
+// practice always `_highest_seen_generation`, the shared PE-local clock --
+// see `_compute_fitness`), dwelling on each pattern for
+// `_schedule_block_len` consecutive generations before round-robining to
+// the next -- a simplified, fixed-length-block stand-in for the reference
+// notebook's weighted-interleave block schedule.
 fn _target_ptr_for_generation(generation: u32) [*]f16 {
     const t_idx = (generation / _schedule_block_len) % 3;
     const target_ptr = if (t_idx == 0)
@@ -260,8 +273,12 @@ fn _compute_fitness(genome: genomePtr_t) f32 {
     const matrix_ptr = _ptr_matrix(genome);
     _develop(embryo_ptr, matrix_ptr, @ptrcast([*]f16, &_devP));
 
-    const generation = genome[1];
-    const target_ptr = _target_ptr_for_generation(generation);
+    // evaluation targets the shared PE-local clock, not this genome's own
+    // counter (see `_highest_seen_generation`); bump it here so it is kept
+    // up to date regardless of which caller (elapse_inheritance_of,
+    // initialize_one, direct test calls, ...) triggered this evaluation
+    _highest_seen_generation = math.max(_highest_seen_generation, genome[1]);
+    const target_ptr = _target_ptr_for_generation(_highest_seen_generation);
 
     const benefit = _benefit_of(@ptrcast([*]f16, &_devP), target_ptr);
     const regularization = _l1_scale * _lam1 * _l1_cost(matrix_ptr)
@@ -294,15 +311,17 @@ fn _apply_mutation(genome: genomePtr_t) void {
 
     // The cached fitness only needs refreshing when the developed
     // phenotype actually changed (a mutation fired above) or when this
-    // generation is the first tick of a new schedule block -- i.e. the
-    // target pattern just changed. Since generation advances by exactly 1
-    // every call (see `_step_instrumentation`) and blocks are
-    // fixed-length, "the target just changed" is detectable with no extra
-    // state: it's exactly when the (not-yet-incremented) generation
-    // counter is a multiple of the block length. Otherwise the
-    // already-cached value -- computed against the same phenotype and the
-    // same target -- is still correct, so skip the expensive recompute.
-    const schedule_changed = genome[1] % _schedule_block_len == 0;
+    // genome's own counter would newly advance the shared PE-local clock
+    // (`_highest_seen_generation`, see `_compute_fitness`) into a new
+    // schedule block -- i.e. the target pattern this genome is evaluated
+    // against just changed. This is checked here (against a *prospective*
+    // update, without actually mutating `_highest_seen_generation`) so the
+    // real update -- and the expensive recompute it implies -- only
+    // happens via `_compute_fitness` itself, below.
+    const t_idx_before = (_highest_seen_generation / _schedule_block_len) % 3;
+    const prospective_highest = math.max(_highest_seen_generation, genome[1]);
+    const t_idx_after = (prospective_highest / _schedule_block_len) % 3;
+    const schedule_changed = t_idx_before != t_idx_after;
     if (mutated or schedule_changed) {
         @ptrcast(*f32, genome).* = _compute_fitness(genome);
     }
