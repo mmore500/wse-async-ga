@@ -12,6 +12,9 @@ echo "CSLC ${CSLC}"
 ASYNC_GA_GENOME_FLAVOR="${ASYNC_GA_GENOME_FLAVOR:-genome_bitdrift}"
 echo "ASYNC_GA_GENOME_FLAVOR ${ASYNC_GA_GENOME_FLAVOR}"
 
+ASYNC_GA_POPULATION_FLAVOR="${ASYNC_GA_POPULATION_FLAVOR:-population_tournamentgenerational}"
+echo "ASYNC_GA_POPULATION_FLAVOR ${ASYNC_GA_POPULATION_FLAVOR}"
+
 ASYNC_GA_GLOBAL_SEED="${ASYNC_GA_GLOBAL_SEED:-0}"
 echo "ASYNC_GA_GLOBAL_SEED ${ASYNC_GA_GLOBAL_SEED}"
 
@@ -87,4 +90,4 @@ rsync -rI "$(readlink -f cerebraslib)" .
 # 9x4 because compiler says
 # RuntimeError: Fabric dimension must be at least 9-by-4
 
-python3 -m compconf --compconf-jq ". += {\"ASYNC_GA_GENOME_FLAVOR:comptime_string\": \"${ASYNC_GA_GENOME_FLAVOR}\"}" --compconf-verbose --compconf-cslc "${CSLC}" layout.csl --arch=${ASYNC_GA_ARCH_FLAG} --import-path ./downstream/include --fabric-dims=${ASYNC_GA_FABRIC_DIMS} --fabric-offsets=${ASYNC_GA_FABRIC_OFFSETS_FLAG} --channels=${ASYNC_GA_CHANNELS_FLAG} --memcpy --params=globalSeed:${ASYNC_GA_GLOBAL_SEED},nCycleAtLeast:${ASYNC_GA_NCYCLE_AT_LEAST},msecAtLeast:${ASYNC_GA_MSEC_AT_LEAST},tscAtLeast:${ASYNC_GA_TSC_AT_LEAST},nRow:${ASYNC_GA_NROW},nCol:${ASYNC_GA_NCOL},nRowSubgrid:${ASYNC_GA_NROW_SUBGRID},nColSubgrid:${ASYNC_GA_NCOL_SUBGRID},nonBlock:${ASYNC_GA_NONBLOCK},popSize:${ASYNC_GA_POPSIZE},tournSizeNumerator:${ASYNC_GA_TOURNSIZE_NUMERATOR},tournSizeDenominator:${ASYNC_GA_TOURNSIZE_DENOMINATOR} -o out
+python3 -m compconf --compconf-jq ". += {\"ASYNC_GA_GENOME_FLAVOR:comptime_string\": \"${ASYNC_GA_GENOME_FLAVOR}\", \"ASYNC_GA_POPULATION_FLAVOR:comptime_string\": \"${ASYNC_GA_POPULATION_FLAVOR}\"}" --compconf-verbose --compconf-cslc "${CSLC}" layout.csl --arch=${ASYNC_GA_ARCH_FLAG} --import-path ./downstream/include --fabric-dims=${ASYNC_GA_FABRIC_DIMS} --fabric-offsets=${ASYNC_GA_FABRIC_OFFSETS_FLAG} --channels=${ASYNC_GA_CHANNELS_FLAG} --memcpy --params=globalSeed:${ASYNC_GA_GLOBAL_SEED},nCycleAtLeast:${ASYNC_GA_NCYCLE_AT_LEAST},msecAtLeast:${ASYNC_GA_MSEC_AT_LEAST},tscAtLeast:${ASYNC_GA_TSC_AT_LEAST},nRow:${ASYNC_GA_NROW},nCol:${ASYNC_GA_NCOL},nRowSubgrid:${ASYNC_GA_NROW_SUBGRID},nColSubgrid:${ASYNC_GA_NCOL_SUBGRID},nonBlock:${ASYNC_GA_NONBLOCK},popSize:${ASYNC_GA_POPSIZE},tournSizeNumerator:${ASYNC_GA_TOURNSIZE_NUMERATOR},tournSizeDenominator:${ASYNC_GA_TOURNSIZE_DENOMINATOR} -o out
