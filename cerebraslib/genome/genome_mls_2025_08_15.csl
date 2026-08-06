@@ -64,7 +64,6 @@
 //! }
 
 // module imports =============================================================
-const math = @import_module("<math>");
 const random = @import_module("<random>");
 
 const compconf = @import_module("<compconf>");

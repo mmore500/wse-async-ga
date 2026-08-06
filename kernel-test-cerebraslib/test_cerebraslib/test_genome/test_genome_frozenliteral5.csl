@@ -1,5 +1,3 @@
-const random = @import_module("<random>");
-
 const genome_frozenliteral5 = @import_module("cerebraslib/genome/genome_frozenliteral5.csl");
 
 fn test_elapse_inheritance_of() void {

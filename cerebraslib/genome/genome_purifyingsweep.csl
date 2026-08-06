@@ -60,8 +60,6 @@
 param rng: imported_module;
 
 // module imports =============================================================
-const math = @import_module("<math>");
-
 const compconf = @import_module("<compconf>");
 comptime { // access via get_value for logging...
     const _ = compconf.get_value_or(
