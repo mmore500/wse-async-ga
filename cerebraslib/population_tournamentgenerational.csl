@@ -9,7 +9,6 @@ const math = @import_module("<math>");
 const random = @import_module("<random>");
 
 const dsd = @import_module("cerebraslib/dsd.csl");
-const opdsd = @import_module("cerebraslib/opdsd.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 
 // global state ===============================================================
