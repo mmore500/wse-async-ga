@@ -86,7 +86,6 @@ const hstrat_T_dilation = compconf.get_value_or(
 
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
-const tilted = @import_module("cerebraslib/tilted_sticky.csl");
 
 // module config specs ========================================================
 const gSize: u16 = 5;

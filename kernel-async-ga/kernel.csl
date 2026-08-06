@@ -76,8 +76,6 @@ const population = @import_module(
 const wildtypeLogger = @import_module(
   "cerebraslib/traitlogger.csl", .{ .symbolName = "wildtypeLoggerRecord" }
 );
-const ctrl = @import_module("cerebraslib/ctrl.csl");
-const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
 const optime = @import_module("cerebraslib/optime.csl");
 
 // global output variables ====================================================
