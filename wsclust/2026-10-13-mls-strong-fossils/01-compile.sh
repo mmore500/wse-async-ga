@@ -238,6 +238,7 @@ EOF
     cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" "${CONFIG_WORKDIR}/"
     cp -rL "${WORKDIR}/src/kernel-async-ga/out" "${CONFIG_WORKDIR}/"
     cp -L "${WORKDIR}/src/kernel-async-ga/client.py" "${CONFIG_WORKDIR}/"
+    cp -rL "${WORKDIR}/src/kernel-async-ga/wheelhouse" "${CONFIG_WORKDIR}/"
     cp -L "${WORKDIR}/src/kernel-async-ga/compconf.json" "${CONFIG_WORKDIR}/"
 
     echo "Config ${CONFIG_NAME} compile complete!"

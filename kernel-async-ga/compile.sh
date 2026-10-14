@@ -72,6 +72,19 @@ echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DILATION__u32 ${COMPCONFENV_CEREBRASLI
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string="${COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string:-steady_algo}"
 echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string ${COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string}"
 
+echo "setup dependency wheelhouse ---------------------------------------------"
+CS_PYTHON="${CS_PYTHON:-cs_python}"
+echo "CS_PYTHON ${CS_PYTHON}"
+if CS_PYTHON_VERSION="$("${CS_PYTHON}" -c \
+    'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null \
+    | tail -n 1)" && [[ "${CS_PYTHON_VERSION}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    export ASYNC_GA_WHEEL_PYTHON_VERSION="${CS_PYTHON_VERSION}"
+else
+    echo "could not determine python version from ${CS_PYTHON}, using default"
+fi
+echo "ASYNC_GA_WHEEL_PYTHON_VERSION ${ASYNC_GA_WHEEL_PYTHON_VERSION:-<default>}"
+./wheelhouse/fetch_wheels.sh
+
 
 pushd ..
 git submodule update --init --recursive || :

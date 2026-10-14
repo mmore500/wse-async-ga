@@ -172,6 +172,7 @@ for genome_flavor in genome_mls_2025_08_15; do
     cp -rL "${CONFIG_COMPILE_WORKDIR}/cerebraslib" .
     cp -rL "${CONFIG_COMPILE_WORKDIR}/out" .
     cp -L "${CONFIG_COMPILE_WORKDIR}/client.py" .
+    cp -rL "${CONFIG_COMPILE_WORKDIR}/wheelhouse" .
     cp -L "${CONFIG_COMPILE_WORKDIR}/compconf.json" .
     ls
     cat client.py
