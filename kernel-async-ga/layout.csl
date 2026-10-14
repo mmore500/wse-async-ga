@@ -14,14 +14,14 @@ param tournSizeDenominator: u32;
 const tournSize = @as(f32, tournSizeNumerator) / @as(f32, tournSizeDenominator);
 
 // Color used by memcpy for RPC mechanism
-const LAUNCH: color = @get_color(9);
+// const LAUNCH: color = @get_color(9);  // obsolte as of sdk v1.1.0
 
 // Import memcpy layout module for 2 x 2 grid of PEs
 // This module defines parameters passed to program on the single PE
 const memcpy = @import_module("<memcpy/get_params>", .{
   .width = nCol,
   .height = nRow,
-  .LAUNCH = LAUNCH
+  // .LAUNCH = LAUNCH  // obsolte as of sdk v1.1.0
 });
 
 
