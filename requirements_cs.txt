@@ -10,7 +10,7 @@ cerebras-sdk==2.10.0
     # via pylib-cs (pylib_cs/pyproject.toml)
 click==8.5.0
     # via black
-compconf==0.6.5
+compconf==1.0.0
     # via pylib-cs (pylib_cs/pyproject.toml)
 dill==0.3.8
     # via cerebras-appliance

@@ -1,4 +1,4 @@
-param memcpy_params: comptime_struct;
+param memcpy_params;
 
 // memcpy module provides infrastructure for copying data
 // and launching functions from the host

@@ -16,7 +16,7 @@ dependencies = [
     "cerebras_sdk==2.10.0",
     "rich",
     # workflow dependencies
-    "compconf==0.6.5",
+    "compconf==1.0.0",
     "numpy",
     "pandas",
     "polars",
