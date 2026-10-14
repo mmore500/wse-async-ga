@@ -1,8 +1,8 @@
 import os
 import pathlib
 
-from rich.tree import Tree as rich_Tree
 from rich.console import Console as rich_Console
+from rich.tree import Tree as rich_Tree
 
 
 def print_tree(path: str, ext: str) -> None:

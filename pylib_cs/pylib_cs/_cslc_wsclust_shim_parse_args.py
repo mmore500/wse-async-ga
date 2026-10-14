@@ -1,12 +1,13 @@
 import logging
-import typing
 
 from ._pairwise import pairwise
 
+_logger = logging.getLogger(__name__)
+
 
 def cslc_wsclust_shim_parse_args(
-    args: typing.List[str],
-) -> typing.Tuple[str, str]:
+    args: list[str],
+) -> tuple[str, str]:
     args = [*args, "---dropme"]
     for i, (first, second) in enumerate(pairwise(args)):
         if first == "-h":
@@ -20,10 +21,10 @@ def cslc_wsclust_shim_parse_args(
             args[i] = f"---import-path={second}"
             args[i + 1] = "---dropme"
 
-    logging.info(f"fix args: {args}")
+    _logger.info(f"fix args: {args}")
 
     targets = [arg for arg in args if not arg.startswith("--")]
-    logging.info(f"targets: {targets}")
+    _logger.info(f"targets: {targets}")
     if len(targets) == 0:
         target = None
     elif len(targets) > 1:
@@ -33,7 +34,7 @@ def cslc_wsclust_shim_parse_args(
     else:
         (target,) = targets
 
-    logging.info(f"target: {target}")
+    _logger.info(f"target: {target}")
 
     flags = " ".join(filter(lambda arg: arg.startswith("--"), args))
     flags = (
@@ -42,6 +43,6 @@ def cslc_wsclust_shim_parse_args(
         .replace("---dropme", "")
         .strip()
     )
-    logging.info(f"flags: {flags}")
+    _logger.info(f"flags: {flags}")
 
     return target, flags
