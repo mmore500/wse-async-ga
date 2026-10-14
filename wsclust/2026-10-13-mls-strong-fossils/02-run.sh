@@ -98,7 +98,7 @@ echo
 echo "setup venv  ------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-VENVDIR="${WORKDIR}/venv38"
+VENVDIR="${WORKDIR}/venv311"
 echo "VENVDIR ${VENVDIR}"
 
 echo "creating venv"
