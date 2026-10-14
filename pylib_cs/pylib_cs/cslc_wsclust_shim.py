@@ -8,6 +8,7 @@ from cerebras.sdk.client import _version as sdk_version
 from ._cslc_wsclust_shim_parse_args import cslc_wsclust_shim_parse_args
 from ._print_tree import print_tree
 
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
 
@@ -18,8 +19,8 @@ if __name__ == "__main__":
     )
 
     command, *args = sys.argv
-    logging.info(f"command: {args}")
-    logging.info(f"raw args: {args}")
+    logger.info(f"command: {args}")
+    logger.info(f"raw args: {args}")
 
     if len(args) == 0:
         print("Wrapper to run cslc CLI on Cerebras Wafer-Scale Cluster.")
@@ -37,18 +38,18 @@ if __name__ == "__main__":
         out_path: str = "."
 
         # Launch compile job
-        logging.info("compiling...")
-        logging.info(f"    sdk version: {sdk_version.__version__}")
-        logging.info(f"    {app_path=}")
-        logging.info(f"    {csl_main=}")
-        logging.info(f"    {options=}")
-        logging.info(f"    {out_path=}")
+        logger.info("compiling...")
+        logger.info(f"    sdk version: {sdk_version.__version__}")
+        logger.info(f"    {app_path=}")
+        logger.info(f"    {csl_main=}")
+        logger.info(f"    {options=}")
+        logger.info(f"    {out_path=}")
         print_tree(app_path, ".csl")
 
         artifact_path = compiler.compile(app_path, csl_main, options, out_path)
-        logging.info(f"...done! artifact_path: {artifact_path}")
+        logger.info(f"...done! artifact_path: {artifact_path}")
 
         # Write the artifact_path to a JSON file
         with open("artifact_path.json", "w", encoding="utf8") as f:
             json.dump({"artifact_path": artifact_path}, f)
-        logging.info("saved artifact_path to artifact_path.json")
+        logger.info("saved artifact_path to artifact_path.json")
