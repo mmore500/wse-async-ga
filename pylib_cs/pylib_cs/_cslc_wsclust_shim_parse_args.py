@@ -2,7 +2,7 @@ import logging
 
 from ._pairwise import pairwise
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 def cslc_wsclust_shim_parse_args(
@@ -21,10 +21,10 @@ def cslc_wsclust_shim_parse_args(
             args[i] = f"---import-path={second}"
             args[i + 1] = "---dropme"
 
-    logger.info(f"fix args: {args}")
+    _logger.info(f"fix args: {args}")
 
     targets = [arg for arg in args if not arg.startswith("--")]
-    logger.info(f"targets: {targets}")
+    _logger.info(f"targets: {targets}")
     if len(targets) == 0:
         target = None
     elif len(targets) > 1:
@@ -34,7 +34,7 @@ def cslc_wsclust_shim_parse_args(
     else:
         (target,) = targets
 
-    logger.info(f"target: {target}")
+    _logger.info(f"target: {target}")
 
     flags = " ".join(filter(lambda arg: arg.startswith("--"), args))
     flags = (
@@ -43,6 +43,6 @@ def cslc_wsclust_shim_parse_args(
         .replace("---dropme", "")
         .strip()
     )
-    logger.info(f"flags: {flags}")
+    _logger.info(f"flags: {flags}")
 
     return target, flags
