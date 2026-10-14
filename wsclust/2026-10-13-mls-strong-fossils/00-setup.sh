@@ -158,17 +158,17 @@ git -C "${SRCDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git 
 
 ###############################################################################
 echo
-echo "setup venv 3.8  --------------------------------------------------------"
+echo "setup venv 3.11  -------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 deactivate || :
 
-VENVDIR="${WORKDIR}/venv38"
+VENVDIR="${WORKDIR}/venv311"
 echo "VENVDIR ${VENVDIR}"
 
 echo "creating venv"
 rm -rf "${VENVDIR}"
-python3.8 -m venv "${VENVDIR}"
+python3.11 -m venv "${VENVDIR}"
 source "${VENVDIR}/bin/activate"
 which python3
 
