@@ -9,7 +9,7 @@ import pandas as pd
 
 def make_hamming_distance_matrix(
     seq: typing.Iterable[numbers.Integral],
-    taxa: typing.Optional[typing.Iterable[str]] = None,
+    taxa: typing.Iterable[str] | None = None,
 ) -> dp.PhylogeneticDistanceMatrix:
     """Constructs a Hamming distance matrix for a given sequence of integer
     bit fields.
