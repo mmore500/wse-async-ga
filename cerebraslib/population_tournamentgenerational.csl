@@ -108,6 +108,12 @@ fn _initialize_all() void {
     // @map(_initialize_ith_genome, indexBufDsd);
 }
 
+fn _clobber_residents_all() void {
+    for (@range(u16, popSize)) |i| {
+        genome.clobber_resident(_get_ith_genome(i));
+    }
+}
+
 fn _perform_extinction_all() void {
     @comptime_assert(0.0 <= pExtinction and pExtinction <= 1.0);
     if (pExtinction > 0.0) {
@@ -208,5 +214,6 @@ fn init_module() void { _initialize_all(); }
 fn do_generation() void {
     _elapse_inheritance_all();
     _perform_selection_all();
+    _clobber_residents_all();
     _perform_extinction_all();
 }

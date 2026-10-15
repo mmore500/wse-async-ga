@@ -185,3 +185,5 @@ fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
     }
     return false;
 }
+
+fn clobber_resident(resident: genomePtr_t) void {}
