@@ -293,17 +293,20 @@ def process_fossils(nWav: int) -> None:
                         )
 
             bookend_expr = validation_exprs[3]
-            corrupt_df = df.with_row_index("_row_idx").filter(~bookend_expr)
-            n_corrupt = corrupt_df.select(pl.len()).collect().item()
+            # materialize eagerly; a lazy join on the synthetic row index
+            # fails under polars projection pushdown ("_row_idx" not found)
+            corrupt_df = (
+                df.with_row_index("_row_idx").filter(~bookend_expr).collect()
+            )
+            n_corrupt = corrupt_df.height
             if n_corrupt:
                 log(f"  - bookend mismatch telemetry: {n_corrupt} corrupt rows")
-                indices_df = pl.scan_parquet(
-                    fi_path, cache=False,
-                ).with_row_index("_row_idx")
-                corrupt_with_meta = corrupt_df.join(
+                indices_df = pl.read_parquet(fi_path).with_row_index(
+                    "_row_idx",
+                )
+                corrupt_collected = corrupt_df.join(
                     indices_df, on="_row_idx", how="inner",
                 ).drop("_row_idx")
-                corrupt_collected = corrupt_with_meta.collect()
 
                 corrupt_pqt_path = (
                     "a=corrupt-bookends"
@@ -345,7 +348,7 @@ def process_fossils(nWav: int) -> None:
                     f" {hex_tuples}",
                 )
 
-                del corrupt_collected, corrupt_with_meta
+                del corrupt_collected, indices_df
                 gc.collect()
 
             del corrupt_df
