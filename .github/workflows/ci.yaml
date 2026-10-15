@@ -61,11 +61,11 @@ jobs:
 
   test-async-ga:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
       matrix:
         arch:
-          - wse2
           - wse3
         nonBlock:
           - 0
@@ -196,11 +196,11 @@ jobs:
   test-sample-populations:
     name: Test make sample population
     runs-on: ubuntu-latest
+    timeout-minutes: 60  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
       matrix:
         arch:
-          - wse2
           - wse3
     env:
       CSLC: cslc
@@ -306,11 +306,11 @@ jobs:
 
   test-hstrat:
     runs-on: ubuntu-latest
+    timeout-minutes: 45  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
       matrix:
         arch:
-          - wse2
           - wse3
         dstream_validator:
           - "block"
@@ -540,11 +540,11 @@ jobs:
   test-cerebraslib:
     name: Test cerebraslib
     runs-on: ubuntu-latest
+    timeout-minutes: 60  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
       matrix:
         arch:
-          - wse2
           - wse3
     env:
       CSLC: cslc

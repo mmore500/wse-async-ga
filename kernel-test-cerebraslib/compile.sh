@@ -39,7 +39,7 @@ echo "Compiling ${num_tests} tests"
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_NUM_BITS__u32="256"
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string="steady_algo"
 
-ASYNC_GA_ARCH_FLAG="${ASYNC_GA_ARCH_FLAG:-wse2}"
+ASYNC_GA_ARCH_FLAG="${ASYNC_GA_ARCH_FLAG:-wse3}"
 echo "ASYNC_GA_ARCH_FLAG ${ASYNC_GA_ARCH_FLAG}"
 
 for test_module_path in ${test_module_paths}; do

@@ -9,6 +9,7 @@ Incoprorates [hereditary stratigraphy](https://github.com/mmore500/hstrat) metho
 
 Requires [Cerebras SDK](https://www.cerebras.net/developers/sdk-request/), available through invitation.
 As of October 2026, library code is tested against Cerebras SDK v2.10.0.
+Only WSE-3 is tested; WSE-2 runs hang under SDK v2.10.0 (PE-to-PE sends stall).
 
 ## Contents
 
