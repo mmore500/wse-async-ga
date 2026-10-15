@@ -159,7 +159,7 @@ for CONFIG_COMPILE_DIR in "${WORKDIR}/01-compile"/*/; do
     ###########################################################################
     source "${CONFIG_COMPILE_WORKDIR}/env.sh"
 
-    export ASYNC_GA_MAX_FOSSIL_SETS=2
+    export ASYNC_GA_MAX_FOSSIL_SETS=100
     echo "ASYNC_GA_MAX_FOSSIL_SETS=${ASYNC_GA_MAX_FOSSIL_SETS}"
 
     export ASYNC_GA_MAX_FOSSIL_SETS_DSTREAM_ALGO="dstream.compressing_algo"
