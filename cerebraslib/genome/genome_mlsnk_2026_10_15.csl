@@ -264,11 +264,14 @@ fn _calc_nk_fitness(genome: genomePtr_t) f32 {
 }
 
 fn _get_cached_nk_fitness(genome: genomePtr_t) f32 {
-    return @ptrcast([*]f32, genome)[1];
+    const fitnessPtr = @ptrcast(*f32, &genome[1]);
+    return fitnessPtr.*;
 }
 
 fn _refresh_nk_fitness(genome: genomePtr_t) void {
-    @ptrcast([*]f32, genome)[1] = _calc_nk_fitness(genome);
+    const fitness = _calc_nk_fitness(genome);
+    const fitnessPtr = @ptrcast(*f32, &genome[1]);
+    fitnessPtr.* = fitness;
 }
 
 fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
