@@ -1,7 +1,7 @@
 const math = @import_module("<math>");
 const random = @import_module("<random>");
 
-const genome_mls = @import_module("cerebraslib/genome/genome_mlssweep_2026_10_15.csl");
+const genome_mls = @import_module("cerebraslib/genome/genome_mlsspectrum_2026_10_15.csl");
 
 
 fn test_builtin_random_seeding() void {

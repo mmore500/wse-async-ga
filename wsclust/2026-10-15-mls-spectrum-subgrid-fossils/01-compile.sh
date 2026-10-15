@@ -158,7 +158,7 @@ echo "compile configs --------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # sweep subgrid sizes (0 is full grid, i.e., no subgrids), one seed each
-genome_flavor=genome_mlssweep_2026_10_15
+genome_flavor=genome_mlsspectrum_2026_10_15
 seed=0
 for subgrid in 0 27 81 243; do
     seed=$((seed + 1))

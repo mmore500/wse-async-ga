@@ -87,7 +87,7 @@ jobs:
           - genome_purifyingstripped
           - genome_hypermutator
           - genome_mls_2025_08_15
-          - genome_mlssweep_2026_10_15
+          - genome_mlsspectrum_2026_10_15
     env:
       CSLC: cslc
       CS_PYTHON: cs_python
