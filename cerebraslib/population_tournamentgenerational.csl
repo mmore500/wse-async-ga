@@ -108,14 +108,6 @@ fn _initialize_all() void {
     // @map(_initialize_ith_genome, indexBufDsd);
 }
 
-fn _clobber_residents_all() void {
-    if (genome.hasResClobber) {
-        for (@range(u16, popSize)) |i| {
-            genome.clobber_resident(_get_ith_genome(i));
-        }
-    }
-}
-
 fn _perform_extinction_all() void {
     @comptime_assert(0.0 <= pExtinction and pExtinction <= 1.0);
     if (pExtinction > 0.0) {
@@ -143,10 +135,13 @@ fn _perform_selection_all() void {
     // }
 
     // alternate loop-based implementation
-    for (@range(u16, genome.gSize)) |w| {
-        for (@range(u16, popSize)) |i| {
-            buffer[i * genome.gSize + w] = swap[indexBuf[i] + w];
-        }
+    // copy each tournament winner (from swap buffer) over the resident it
+    // replaces, via genome hook
+    for (@range(u16, popSize)) |i| {
+        genome.trample_resident(
+            _get_ith_genome(i),
+            @ptrcast([*]u32, &swap[indexBuf[i]]),
+        );
     }
 }
 
@@ -216,6 +211,5 @@ fn init_module() void { _initialize_all(); }
 fn do_generation() void {
     _elapse_inheritance_all();
     _perform_selection_all();
-    _clobber_residents_all();
     _perform_extinction_all();
 }

@@ -29,7 +29,6 @@ const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = true;
-const hasResClobber: bool = false;
 
 // internal functions =========================================================
 fn _apply_mutation(genome: genomePtr_t) void {
@@ -79,4 +78,6 @@ fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
     return false;
 }
 
-fn clobber_resident(resident: genomePtr_t) void {}
+fn trample_resident(resident: genomePtr_t, winner: genomePtr_t) void {
+    for (@range(u16, gSize)) |i| { resident[i] = winner[i]; }
+}

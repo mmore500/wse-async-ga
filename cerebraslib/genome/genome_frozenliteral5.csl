@@ -31,7 +31,6 @@ const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
-const hasResClobber: bool = false;
 
 const val1: u32 = 1692398096;
 const val2: u32 = 2816128869;
@@ -68,4 +67,6 @@ fn initialize_one(genome: genomePtr_t) void {
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
 
-fn clobber_resident(resident: genomePtr_t) void {}
+fn trample_resident(resident: genomePtr_t, winner: genomePtr_t) void {
+    for (@range(u16, gSize)) |i| { resident[i] = winner[i]; }
+}
