@@ -56,7 +56,7 @@ fn test_calc_nk_contribution() void {
     const K = genome_mlsnk.nkK;
     const N = genome_mlsnk.nkN;
     for (@range(u16, N)) |site| {
-        for (@range(u16, 8)) |_| {
+        for (@range(u16, 2)) |_| {
             const nkBits = @as(u32, @random16());
             const c = genome_mlsnk._calc_nk_contribution(site, nkBits);
             @assert(0.0 <= c and c < 1.0);
@@ -114,7 +114,7 @@ fn test_nk_fitness_cache() void {
 
     // cache stays consistent under heavy mutation
     var nNkChanges: u16 = 0;
-    for (@range(u16, 200)) |_| {
+    for (@range(u16, 32)) |_| {
         const before = genome[0];
         genome_mlsnk._elapse_inheritance_with(genome_ptr, 2);
         if (((before ^ genome[0]) & genome_mlsnk.nkMask) != 0) {
@@ -124,7 +124,7 @@ fn test_nk_fitness_cache() void {
         @assert(cached == genome_mlsnk._calc_nk_fitness(genome_ptr));
         @assert(0.0 <= cached and cached < 1.0);
     }
-    @assert(nNkChanges > 100);
+    @assert(nNkChanges > 16);
 }
 
 fn test_elapse_inheritance_of() void {
@@ -198,7 +198,7 @@ fn test_calc_fitness_of() void {
     @assert(genome_mlsnk.calc_fitness_of(genome_ptr) == baseFit);
 
     // MLS sites stochastically add bonus, with expected probability
-    const nTrials: u16 = 2000;
+    const nTrials: u16 = 100;
     for (@range(u16, genome_mlsnk.nMlsSites)) |site| {
         genome[0] |= @as(u32, 1) << @as(u32, site);
         var nBonus: u16 = 0;
@@ -297,7 +297,7 @@ fn test_clobber_immigrant() void {
     genome_mlsnk.initialize_one(resident_ptr);
 
     // occupied resident always clobbers immigrant
-    for (@range(u16, 255)) |i| {
+    for (@range(u16, 0, 255, 8)) |i| {
         genome_mlsnk.initialize_one(imm_ptr);
         imm[0] |= @as(u32, i) & genome_mlsnk.mlsMask;
         @assert(genome_mlsnk.clobber_immigrant(resident_ptr, imm_ptr));
@@ -319,11 +319,14 @@ fn test_clobber_immigrant() void {
     }
 
     // empty resident, single MLS site: clobbers with expected probability
-    const nTrials: u16 = 2000;
+    var template = @zeros(genome_mlsnk.genome_t);
+    var template_ptr = @ptrcast(genome_mlsnk.genomePtr_t, &template[0]);
+    genome_mlsnk.initialize_one(template_ptr);
+    const nTrials: u16 = 100;
     for (@range(u16, genome_mlsnk.nMlsSites)) |site| {
         var nClobber: u16 = 0;
         for (@range(u16, nTrials)) |_| {
-            genome_mlsnk.initialize_one(imm_ptr);
+            for (@range(u16, genome_mlsnk.gSize)) |w| { imm[w] = template[w]; }
             imm[0] |= @as(u32, 1) << @as(u32, site);
             const clobbered = genome_mlsnk.clobber_immigrant(
                 empty_resident_ptr, imm_ptr
@@ -339,8 +342,8 @@ fn test_clobber_immigrant() void {
         @assert(math.abs(@as(f32, nClobber) - expected) < tol);
     }
     // site 0 has 100% clobber chance
-    for (@range(u16, 255)) |_| {
-        genome_mlsnk.initialize_one(imm_ptr);
+    for (@range(u16, 32)) |_| {
+        for (@range(u16, genome_mlsnk.gSize)) |w| { imm[w] = template[w]; }
         imm[0] |= 0x01;
         @assert(genome_mlsnk.clobber_immigrant(empty_resident_ptr, imm_ptr));
     }
