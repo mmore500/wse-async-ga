@@ -1,6 +1,7 @@
 const random = @import_module("<random>");
 
 const genome_bitdrift = @import_module("cerebraslib/genome/genome_bitdrift.csl");
+const genome_bitdrift_clobber = @import_module("cerebraslib/genome/genome_bitdrift_clobber.csl");
 
 
 fn test_builtin_random_seeding() void {
@@ -62,6 +63,22 @@ fn test_clobber_immigrant() void {
     @assert(immigrant[0] | immigrant[1] | immigrant[2] != 0);
 }
 
+fn test_trample_resident() void {
+    var resident = @zeros(genome_bitdrift_clobber.genome_t);
+    var winner = @zeros(genome_bitdrift_clobber.genome_t);
+    for (@range(u16, genome_bitdrift_clobber.gSize)) |i| {
+        winner[i] = 0x01234567 ^ (@as(u32, i) << 8);
+        resident[i] = ~winner[i];
+    }
+    genome_bitdrift_clobber.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &winner)
+    );
+    for (@range(u16, genome_bitdrift_clobber.gSize)) |i| {
+        @assert(resident[i] == winner[i]);
+        @assert(winner[i] == 0x01234567 ^ (@as(u32, i) << 8));
+    }
+}
+
 fn do_test() void {
     test_builtin_random_seeding();
     test_calc_fitness_of();
@@ -69,4 +86,5 @@ fn do_test() void {
     test_get_trait_value();
     test_initialize_one();
     test_clobber_immigrant();
+    test_trample_resident();
 }

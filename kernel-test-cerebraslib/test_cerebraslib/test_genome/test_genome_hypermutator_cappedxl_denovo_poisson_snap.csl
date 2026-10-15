@@ -27,9 +27,26 @@ fn test_get_trait_value() void {
     @assert(genome.get_trait_value(&g) == 1);
 }
 
+fn test_trample_resident() void {
+    var resident = @zeros(genome.genome_t);
+    var winner = @zeros(genome.genome_t);
+    for (@range(u16, genome.gSize)) |i| {
+        winner[i] = 0x01234567 ^ (@as(u32, i) << 8);
+        resident[i] = ~winner[i];
+    }
+    genome.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &winner)
+    );
+    for (@range(u16, genome.gSize)) |i| {
+        @assert(resident[i] == winner[i]);
+        @assert(winner[i] == 0x01234567 ^ (@as(u32, i) << 8));
+    }
+}
+
 fn do_test() void {
     test_calc_fitness_of();
     test_elapse_inheritance_of();
     test_initialize_one();
     test_get_trait_value();
+    test_trample_resident();
 }

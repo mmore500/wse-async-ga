@@ -38,10 +38,27 @@ fn test_initialize_one() void {
 }
 
 
+fn test_trample_resident() void {
+    var resident = @zeros(genome_bitdrift.genome_t);
+    var winner = @zeros(genome_bitdrift.genome_t);
+    for (@range(u16, genome_bitdrift.gSize)) |i| {
+        winner[i] = 0x01234567 ^ (@as(u32, i) << 8);
+        resident[i] = ~winner[i];
+    }
+    genome_bitdrift.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &winner)
+    );
+    for (@range(u16, genome_bitdrift.gSize)) |i| {
+        @assert(resident[i] == winner[i]);
+        @assert(winner[i] == 0x01234567 ^ (@as(u32, i) << 8));
+    }
+}
+
 fn do_test() void {
     test_builtin_random_seeding();
     test_calc_fitness_of();
     test_get_trait_value();
     test_elapse_inheritance_of();
     test_initialize_one();
+    test_trample_resident();
 }
