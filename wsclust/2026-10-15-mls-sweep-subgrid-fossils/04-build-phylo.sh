@@ -152,8 +152,9 @@ echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 # Reconstruct from fossils only (a=fossils+..., not end-state a=genomes+...).
 # Sample non-empty fossil genomes uniformly within each (layer, subgrid)
 # stratum, taking an equal share of SAMPLE_BUDGET per stratum (at least one).
-JOINEM_CONTAINER="docker://ghcr.io/mmore500/joinem:v0.15.0"
-echo "JOINEM_CONTAINER ${JOINEM_CONTAINER}"
+# note: --sample-stratify requires hstrat >=v1.25.3 (bundles joinem >=v0.15.0)
+HSTRAT_CONTAINER="docker://ghcr.io/mmore500/hstrat:v1.25.3"
+echo "HSTRAT_CONTAINER ${HSTRAT_CONTAINER}"
 SAMPLE_BUDGET=4000000
 echo "SAMPLE_BUDGET ${SAMPLE_BUDGET}"
 NONEMPTY='~pl.col("data_hex").str.contains(r"^0+$")'
@@ -180,19 +181,8 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
     PER_STRATUM=$(( SAMPLE_BUDGET / NUM_STRATA > 0 ? SAMPLE_BUDGET / NUM_STRATA : 1 ))
     echo "NUM_STRATA ${NUM_STRATA} PER_STRATUM ${PER_STRATUM}"
 
-    SAMPLED="${CONFIG_WORKDIR}/a=fossils-sampled+ext=.pqt"
     echo "${FOSSILS}" \
-        | singularity run "${JOINEM_CONTAINER}" "${SAMPLED}" \
-            --filter '~pl.col("is_extant")' \
-            --filter "${NONEMPTY}" \
-            --sample "pl.len().clip(upper_bound=${PER_STRATUM})" \
-            --sample-stratify 'pl.col("layer")' \
-            --sample-stratify 'pl.col("subgrid")' \
-            --seed 1 \
-            | tee "${CONFIG_RESULTDIR}/joinem-sample.log"
-
-    echo "${SAMPLED}" \
-        | singularity exec docker://ghcr.io/mmore500/hstrat:v1.25.2 \
+        | singularity exec "${HSTRAT_CONTAINER}" \
         python3 -O -m hstrat.dataframe.surface_build_tree \
             "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
             --trie-postprocessor \
@@ -204,6 +194,12 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
             --exploded-slice-size 100000 \
             --shrink-dtypes \
             --write-kwarg 'compression="lz4"' \
+            --filter '~pl.col("is_extant")' \
+            --filter "${NONEMPTY}" \
+            --sample "pl.len().clip(upper_bound=${PER_STRATUM})" \
+            --sample-stratify 'pl.col("layer")' \
+            --sample-stratify 'pl.col("subgrid")' \
+            --seed 1 \
             --how "diagonal_relaxed" \
             --eager-read --eager-write --string-cache \
             --with-column 'pl.lit(filepath).cast(pl.Categorical).alias("file")' \
@@ -239,8 +235,6 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
                 for alias in (f"trait_byte{B}_bit{b}", f"trait_num{B * 8 + b}")
             )' \
             | tee "${CONFIG_RESULTDIR}/surface_build_tree.log"
-
-    rm -f "${SAMPLED}"
 done
 
 ###############################################################################
