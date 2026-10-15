@@ -151,21 +151,13 @@ echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 
 # Reconstruct from fossils only (a=fossils+..., not end-state a=genomes+...).
 # Sample non-empty fossil genomes uniformly within each (layer, subgrid)
-# stratum, taking an equal share of the SAMPLE_BUDGET per stratum (at least
-# one); filters are evaluated per input file, i.e., per run.
-SAMPLE_BUDGET=4_000_000
+# stratum, taking an equal share of SAMPLE_BUDGET per stratum (at least one).
+JOINEM_CONTAINER="docker://ghcr.io/mmore500/joinem:v0.15.0"
+echo "JOINEM_CONTAINER ${JOINEM_CONTAINER}"
+SAMPLE_BUDGET=4000000
 echo "SAMPLE_BUDGET ${SAMPLE_BUDGET}"
 NONEMPTY='~pl.col("data_hex").str.contains(r"^0+$")'
-STRATUM='"layer", "subgrid"'
-SAMPLE_FILTER="(${NONEMPTY}) & (
-    pl.when(${NONEMPTY}).then(pl.int_range(pl.len()).shuffle(seed=1))
-    .rank(\"ordinal\").over(${STRATUM})
-    <= (
-        pl.lit(${SAMPLE_BUDGET})
-        // pl.struct(${STRATUM}).filter(${NONEMPTY}).n_unique()
-    ).clip(lower_bound=1)
-)"
-echo "SAMPLE_FILTER ${SAMPLE_FILTER}"
+echo "NONEMPTY ${NONEMPTY}"
 
 for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
     CONFIG_NAME="$(basename "${CONFIG_DIR}")"
@@ -177,7 +169,29 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
     mkdir -p "${CONFIG_WORKDIR}"
     mkdir -p "${CONFIG_RESULTDIR}"
 
-    find "${CONFIG_DIR}" -maxdepth 1 -type f -name 'a=fossils+*.pqt' \
+    FOSSILS="$(find "${CONFIG_DIR}" -maxdepth 1 -type f -name 'a=fossils+*.pqt')"
+    echo "FOSSILS ${FOSSILS}"
+    NUM_STRATA="$(
+        python3 -c 'import polars as pl, sys; print(
+            pl.scan_parquet(sys.argv[1]).filter(eval(sys.argv[2]))
+            .select(pl.struct("layer", "subgrid").n_unique()).collect().item()
+        )' "${FOSSILS}" "${NONEMPTY}"
+    )"
+    PER_STRATUM=$(( SAMPLE_BUDGET / NUM_STRATA > 0 ? SAMPLE_BUDGET / NUM_STRATA : 1 ))
+    echo "NUM_STRATA ${NUM_STRATA} PER_STRATUM ${PER_STRATUM}"
+
+    SAMPLED="${CONFIG_WORKDIR}/a=fossils-sampled+ext=.pqt"
+    echo "${FOSSILS}" \
+        | singularity run "${JOINEM_CONTAINER}" "${SAMPLED}" \
+            --filter '~pl.col("is_extant")' \
+            --filter "${NONEMPTY}" \
+            --sample "pl.len().clip(upper_bound=${PER_STRATUM})" \
+            --sample-stratify 'pl.col("layer")' \
+            --sample-stratify 'pl.col("subgrid")' \
+            --seed 1 \
+            | tee "${CONFIG_RESULTDIR}/joinem-sample.log"
+
+    echo "${SAMPLED}" \
         | singularity exec docker://ghcr.io/mmore500/hstrat:v1.25.2 \
         python3 -O -m hstrat.dataframe.surface_build_tree \
             "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
@@ -190,8 +204,6 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
             --exploded-slice-size 100000 \
             --shrink-dtypes \
             --write-kwarg 'compression="lz4"' \
-            --filter '~pl.col("is_extant")' \
-            --filter "${SAMPLE_FILTER}" \
             --how "diagonal_relaxed" \
             --eager-read --eager-write --string-cache \
             --with-column 'pl.lit(filepath).cast(pl.Categorical).alias("file")' \
@@ -227,6 +239,8 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
                 for alias in (f"trait_byte{B}_bit{b}", f"trait_num{B * 8 + b}")
             )' \
             | tee "${CONFIG_RESULTDIR}/surface_build_tree.log"
+
+    rm -f "${SAMPLED}"
 done
 
 ###############################################################################
