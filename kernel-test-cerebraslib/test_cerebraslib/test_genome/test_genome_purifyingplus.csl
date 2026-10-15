@@ -77,17 +77,17 @@ fn test_clobber_invalid_immigrant() void {
 
 fn test_trample_resident() void {
     var resident = @zeros(genome.genome_t);
-    var winner = @zeros(genome.genome_t);
+    var spawn = @zeros(genome.genome_t);
     for (@range(u16, genome.gSize)) |i| {
-        winner[i] = 0x01234567 ^ (@as(u32, i) << 8);
-        resident[i] = ~winner[i];
+        spawn[i] = 0x01234567 ^ (@as(u32, i) << 8);
+        resident[i] = ~spawn[i];
     }
     genome.trample_resident(
-        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &winner)
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
     );
     for (@range(u16, genome.gSize)) |i| {
-        @assert(resident[i] == winner[i]);
-        @assert(winner[i] == 0x01234567 ^ (@as(u32, i) << 8));
+        @assert(resident[i] == spawn[i]);
+        @assert(spawn[i] == 0x01234567 ^ (@as(u32, i) << 8));
     }
 }
 
