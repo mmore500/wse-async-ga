@@ -11,8 +11,8 @@ try:
     import cupy
 
     if cupy.cuda.is_available():
-        xp = cupy  # noqa: F811
-except Exception:
+        xp = cupy
+except Exception:  # noqa: BLE001, S110
     pass
 import pandas as pd
 import tqdm as tq
@@ -29,12 +29,8 @@ SLURM_ARRAY_JOB_ID = os.environ.get("SLURM_ARRAY_JOB_ID", "nojid")
 SLURM_JOB_ID = os.environ.get("SLURM_JOB_ID", "nojid")
 SLURM_ARRAY_TASK_ID = int(os.environ.get("SLURM_ARRAY_TASK_ID", "32"))
 
-print("HOME={} SLURM_ARRAY_JOB_ID={}".format(HOME, SLURM_ARRAY_JOB_ID))
-print(
-    "SLURM_JOB_ID={} SLURM_ARRAY_TASK_ID={}".format(
-        SLURM_JOB_ID, SLURM_ARRAY_TASK_ID
-    )
-)
+print(f"HOME={HOME} SLURM_ARRAY_JOB_ID={SLURM_ARRAY_JOB_ID}")
+print(f"SLURM_JOB_ID={SLURM_JOB_ID} SLURM_ARRAY_TASK_ID={SLURM_ARRAY_TASK_ID}")
 
 pben = 0.000001
 pdel = 0.0001

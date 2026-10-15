@@ -77,4 +77,4 @@ fn initialize_one(genome: genomePtr_t) void {
     genome_ptr[1] = 0;
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }

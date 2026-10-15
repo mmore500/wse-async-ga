@@ -1,0 +1,151 @@
+// module params ==============================================================
+param popSize: u16;
+param pExtinction: f32;
+param tournamentSize: f32;
+param genome: imported_module;
+
+// module imports =============================================================
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+// global state ===============================================================
+const bufSize = popSize * genome.gSize;
+
+var buffer = @zeros([bufSize]u32);
+const bufferDsd = @get_dsd(mem1d_dsd, .{
+    .tensor_access = |i|{bufSize} -> buffer[i],
+});
+
+// module functions ===========================================================
+///////////////////////////////////////////////////////////////////////////////
+
+// internal accessors ==========================================================
+fn _calc_ith_fitness(i: u16) f32 {
+    return genome.calc_fitness_of(_get_ith_genome(i));
+}
+
+fn _elapse_ith_inheritance(i: u16) void {
+    genome.elapse_inheritance_of(_get_ith_genome(i));
+}
+
+fn _get_ith_genome(i: u16) [*]u32 {
+    return @ptrcast([*]u32, &buffer[i * genome.gSize]);
+}
+
+fn _get_ith_trait_value(i: u16) u32 {
+    return genome.get_trait_value(_get_ith_genome(i));
+}
+
+fn _get_population_word(i: u32) u32 { return buffer[i]; }
+
+fn _initialize_ith_genome(i: u16) void {
+    genome.initialize_one(_get_ith_genome(i));
+}
+
+fn _sample_one_tournament() u16 {
+    var bestFit: f32 = math.NEGATIVE_INF(f32);
+    var bestIdx: u16 = 0;
+    const epsilon = random.random_f32(0.0, 1.0);
+    const effectiveTournamentSize = @as(i32, tournamentSize + epsilon);
+    for (@range(i32, effectiveTournamentSize)) |i| {
+        const idx = opscalar.unif16(popSize);
+        const fit = _calc_ith_fitness(idx);
+        if (fit > bestFit) {
+            bestFit = fit;
+            bestIdx = idx;
+        }
+    }
+    return bestIdx * genome.gSize;  // returns word index, not genome index
+}
+
+fn _put_population_word(data: u32, loc: u32) void { buffer[loc] = data; }
+
+// swap genome at population index i with a uniformly random population
+// member (self-swaps allowed); used to sample/place migrants without a
+// dedicated index/swap buffer, in keeping with this flavor's low memory use
+fn _swap_ith_with_random(i: u16) void {
+    const j = opscalar.unif16(popSize);
+    for (@range(u16, genome.gSize)) |w| {
+        const tmp = buffer[i * genome.gSize + w];
+        buffer[i * genome.gSize + w] = buffer[j * genome.gSize + w];
+        buffer[j * genome.gSize + w] = tmp;
+    }
+}
+
+// internal routines ===========================================================
+fn _elapse_inheritance_all() void {
+    for (@range(u16, popSize)) |i| { _elapse_ith_inheritance(i); }
+}
+
+fn _initialize_all() void {
+    for (@range(u16, popSize)) |i| { _initialize_ith_genome(i); }
+}
+
+fn _perform_extinction_all() void {
+    @comptime_assert(0.0 <= pExtinction and pExtinction <= 1.0);
+    if (pExtinction > 0.0) {
+        if (opscalar.p(pExtinction)) { @mov32(bufferDsd, 0); }
+    }
+}
+
+fn _perform_selection_all() void {
+    for (@range(u16, popSize)) |i| {
+        const selectedWordIdx = _sample_one_tournament();
+        for (@range(u16, genome.gSize)) |w| {
+            buffer[i * genome.gSize + w] = buffer[selectedWordIdx + w];
+        }
+    }
+}
+
+// public API =================================================================
+/// Emigrate nGenomes genomes to toDsd. Each of the nGenomes copied-from slots
+/// is first swapped with a uniformly random population member, so the
+/// genomes sent are a random sample of the population (not always the same
+/// fixed slots) while only permuting buffer contents in place --- no
+/// dedicated sampling buffer needed.
+fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
+    for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
+
+    const nWords = nGenomes * genome.gSize;
+    const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
+    @mov32(toDsd, bufferDsd_);
+}
+
+/// Immigrate nGenomes genomes from fromBuf. Each of the nGenomes copied-to
+/// slots is first swapped with a uniformly random population member, which
+/// relocates (rather than discards) whatever currently occupies that slot
+/// before the immigrant overwrites it --- so immigrants effectively replace
+/// a random population member instead of always clobbering the same fixed
+/// slots (and colliding with concurrent immigrations from other neighbors).
+fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
+    for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
+
+    var nClobbers: u32 = 0;
+    if (genome.hasImmClobber) {
+        for (@range(u16, nGenomes)) |i| {
+            nClobbers += @as(u32, genome.clobber_immigrant(
+                @ptrcast([*]u32, &buffer[i * genome.gSize]),
+                @ptrcast([*]u32, &fromBuf[i * genome.gSize]),
+            ));
+        }
+    }
+
+    const fromDsd = @get_dsd(mem1d_dsd, .{
+        .base_address = fromBuf,
+        .extent = nGenomes * genome.gSize,
+    });
+    const nWords = nGenomes * genome.gSize;
+    const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
+    @mov32(bufferDsd_, fromDsd);
+    return nClobbers;
+}
+
+fn init_module() void { _initialize_all(); }
+
+fn do_generation() void {
+    _elapse_inheritance_all();
+    _perform_selection_all();
+    _perform_extinction_all();
+}

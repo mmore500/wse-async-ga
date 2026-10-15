@@ -1,8 +1,6 @@
 const random = @import_module("<random>");
 
-const genome_bitdrift = @import_module("cerebraslib/genome/genome_bitdrift.csl", .{
-    .peId = 0,
-});
+const genome_bitdrift = @import_module("cerebraslib/genome/genome_bitdrift.csl");
 
 
 fn test_builtin_random_seeding() void {

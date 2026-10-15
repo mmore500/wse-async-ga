@@ -24,7 +24,7 @@ fn set_nth_bit(bitfield: [*]u8, n: u16, value: bool) void {
 fn flip_nth_bit_with_swaps(
     bitfield: [*]u8,
     n: u16,
-    comptime kwargs: comptime_struct,
+    comptime kwargs: anytype,
 ) void {
     const byteSwap = kwargs.byteSwap;
     const bitSwap = kwargs.bitSwap;
@@ -50,7 +50,7 @@ fn set_nth_bit_with_swaps(
     bitfield: [*]u8,
     n: u16,
     value: bool,
-    comptime kwargs: comptime_struct,
+    comptime kwargs: anytype,
 ) void {
     const byteSwap = kwargs.byteSwap;
     const bitSwap = kwargs.bitSwap;

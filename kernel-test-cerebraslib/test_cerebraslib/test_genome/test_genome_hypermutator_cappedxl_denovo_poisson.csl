@@ -1,5 +1,3 @@
-const random = @import_module("<random>");
-
 const genome = @import_module("cerebraslib/genome/genome_hypermutator_cappedxl_denovo_poisson.csl");
 
 fn test_elapse_inheritance_of() void {

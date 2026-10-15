@@ -10,14 +10,10 @@
 //! }
 
 // module imports =============================================================
-const math = @import_module("<math>");
-const random = @import_module("<random>");
-
 const compconf = @import_module("<compconf>");
 
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
-const tilted = @import_module("cerebraslib/dstream_tilted.csl");
 
 // module config specs ========================================================
 const gSize: u16 = 1;
@@ -91,4 +87,4 @@ fn initialize_one(genome: genomePtr_t) void {
     _ptr_mutator(genome).* = if (opscalar.unifbool()) 100 else 1;
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }

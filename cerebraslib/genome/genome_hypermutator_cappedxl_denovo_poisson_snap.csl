@@ -32,13 +32,11 @@
 
 // module imports =============================================================
 const math = @import_module("<math>");
-const random = @import_module("<random>");
 
 const compconf = @import_module("<compconf>");
 
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
-const tilted = @import_module("cerebraslib/dstream_tilted.csl");
 
 // module config specs ========================================================
 const gSize: u16 = 3;
@@ -136,4 +134,4 @@ fn initialize_one(genome: genomePtr_t) void {
     _ptr_snap_counter(genome).* = 0xBEEF;
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) void { }
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
