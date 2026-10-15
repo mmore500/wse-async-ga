@@ -93,6 +93,7 @@ const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = true;
+const hasResClobber: bool = false;
 
 // internal functions =========================================================
 fn _check_parity(genome: genomePtr_t) bool {

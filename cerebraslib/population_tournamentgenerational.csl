@@ -109,8 +109,10 @@ fn _initialize_all() void {
 }
 
 fn _clobber_residents_all() void {
-    for (@range(u16, popSize)) |i| {
-        genome.clobber_resident(_get_ith_genome(i));
+    if (genome.hasResClobber) {
+        for (@range(u16, popSize)) |i| {
+            genome.clobber_resident(_get_ith_genome(i));
+        }
     }
 }
 

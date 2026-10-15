@@ -28,6 +28,7 @@ const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
+const hasResClobber: bool = false;
 
 // internal functions =========================================================
 fn _step_instrumentation(genome: genomePtr_t) void {

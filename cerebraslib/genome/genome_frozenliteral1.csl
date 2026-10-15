@@ -16,6 +16,7 @@ const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
+const hasResClobber: bool = false;
 
 const val1: u32 = 1692398096;
 

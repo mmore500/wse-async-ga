@@ -95,6 +95,7 @@ const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = true;
+const hasResClobber: bool = false;
 
 // internal functions =========================================================
 const _parity_T_dilation: u32 = 16;
