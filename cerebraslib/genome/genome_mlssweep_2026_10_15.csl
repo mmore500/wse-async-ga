@@ -1,9 +1,9 @@
 // memory layout ===============================================================
-// byte 0 SITES (u32, 4 bytes; bit indices below refer to the u32 word value)
-// byte 1   bits 0-7: MLS sites (bit i -> effect size level i, see below)
-// byte 2   bits 8-15: neutral sites (bits 8-11 initialized as 1's)
-// byte 3   bits 16-31: NK landscape sites (N = 16, K via compconf)
-// byte 4 CACHED NK FITNESS (f32, 4 bytes)
+// byte 0 FLAG SITES (8 bytes)
+// byte 1   word 0 bits 0-7: MLS sites (bit i -> effect size level i)
+// byte 2   all other bits: neutral sites (word 0 bits 8-11 start as 1's)
+// byte 3
+// byte 4
 // byte 5
 // byte 6
 // byte 7
@@ -30,36 +30,26 @@
 // TOTAL: 7 words -> 28 bytes
 //
 // MLS sites ==================================================================
-// Each MLS site is beneficial within a population (i.e., host), but harmful
-// at the between-population level: immigrants carrying it are blocked from
-// colonizing an empty population (i.e., clobbered) with some probability.
-// Site i has base effect size s_i, for
-//     s = [1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005].
+// Each MLS site is beneficial within a population, but harmful between
+// populations: immigrants carrying it are blocked from colonizing an empty
+// population (i.e., clobbered) with some probability. Site i has effect size
+//     s_i in [1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005].
 //
 // Clobber chance for site i is s_i (times CEREBRASLIB_CLOBBER_IMMIGRANT_P,
 // default 1.0); multiple MLS sites clobber independently.
 //
-// Within-population selective advantage for site i is rescaled to the actual
-// population size, such that a selective sweep takes the same number of
-// generations as a sweep with advantage s_i would in a reference population
-// large enough to allow D = CEREBRASLIB_MLSNK_REFERENCE_DOUBLINGS (default 25)
-// doublings. That is, a sweep takes ~log(N) / log(1 + s) generations, so
-//     log2(N_actual) / log2(1 + s'_i) = D / log2(1 + s_i)
-//     s'_i = (1 + s_i) ^ (log2(N_actual) / D) - 1.
-// Note that s'_i ~= s_i * log2(N_actual) / D for small s_i.
+// Within-population advantage for site i is rescaled to actual population
+// size N so a sweep takes as many generations as one with advantage s_i would
+// in a population allowing D = CEREBRASLIB_MLS_REFERENCE_DOUBLINGS (default
+// 25) doublings: s'_i = (1 + s_i) ^ (log2(N) / D) - 1.
 //
-// Because tournament selection compares fitness deterministically, this
-// advantage is applied stochastically: on each fitness evaluation, each MLS
-// site present independently adds a large bonus with probability s'_i. Under
-// size-2 tournaments between otherwise-equal genomes, a carrier then wins with
-// probability 1/2 + s'_i / 2, i.e., has relative fitness 1 + s'_i.
+// Tournament selection compares fitness deterministically, so on each fitness
+// evaluation each MLS site present independently adds a bonus with probability
+// s'_i. In size-2 tournaments, a carrier then beats an otherwise-equal genome
+// with probability 1/2 + s'_i / 2, i.e., has relative fitness 1 + s'_i.
 //
-// NK sites ===================================================================
-// Site i's fitness contribution depends on itself and the K following sites
-// (wrapping around). Contributions are recomputed by hashing (site,
-// neighborhood state, seed) rather than stored in a lookup table. NK fitness
-// is the mean contribution, in [0, 1), cached in the genome and updated only
-// when mutation changes an NK site.
+// In data_hex (big-endian words), MLS site i is flag byte 3, bit i; the
+// metadata below gives each site's clobber and selection probabilities.
 
 //! {
 //!     "dstream_algo": (
@@ -75,23 +65,41 @@
 //!     "dstream_S": (128, pl.UInt8),
 //!     "flag_site_bitwidth": (1, pl.UInt8),
 //!     "flag_sites_bitoffset": (0, pl.UInt8),
-//!     "flag_sites_bitwidth": (32, pl.UInt8),
+//!     "flag_sites_bitwidth": (64, pl.UInt8),
 //!     "flag_is_focal_mask_byte0": (0x00, pl.UInt8),
 //!     "flag_is_focal_mask_byte1": (0x00, pl.UInt8),
 //!     "flag_is_focal_mask_byte2": (0x00, pl.UInt8),
 //!     "flag_is_focal_mask_byte3": (0xFF, pl.UInt8),
-//!     "flag_is_nk_mask_byte0": (0xFF, pl.UInt8),
-//!     "flag_is_nk_mask_byte1": (0xFF, pl.UInt8),
-//!     "flag_is_nk_mask_byte2": (0x00, pl.UInt8),
-//!     "flag_is_nk_mask_byte3": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte4": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte5": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte6": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte7": (0x00, pl.UInt8),
 //!     "flag_nand_mask_byte0": (0x00, pl.UInt8),
 //!     "flag_nand_mask_byte1": (0x00, pl.UInt8),
 //!     "flag_nand_mask_byte2": (0x0F, pl.UInt8),
 //!     "flag_nand_mask_byte3": (0x00, pl.UInt8),
-//!     "nk_fitness_bitoffset": (32, pl.UInt8),
-//!     "nk_fitness_bitwidth": (32, pl.UInt8),
-//!     "nk_N": (16, pl.UInt8),
-//!     "nk_K": (int(compconf_data.get("CEREBRASLIB_NK_K:u16", 3)), pl.UInt8),
+//!     "flag_nand_mask_byte4": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte5": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte6": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte7": (0x00, pl.UInt8),
+//!     **{
+//!         f"mls_{what}_p_byte3_bit{bit}": (p, pl.Float32)
+//!         for bit, s in enumerate(
+//!             (1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005),
+//!         )
+//!         for what, p in (
+//!             ("clobber", s * float(compconf_data.get(
+//!                 "CEREBRASLIB_CLOBBER_IMMIGRANT_P:f32", 1.0,
+//!             ))),
+//!             ("selection", (1.0 + s) ** (
+//!                 __import__("math").log2(int(compconf_data.get(
+//!                     "ASYNC_GA_POPSIZE:u32", 256,
+//!                 ))) / float(compconf_data.get(
+//!                     "CEREBRASLIB_MLS_REFERENCE_DOUBLINGS:f32", 25.0,
+//!                 ))
+//!             ) - 1.0),
+//!         )
+//!     },
 //!     "nWav": (7, pl.UInt8),
 //! }
 
@@ -130,21 +138,8 @@ const nTraitVals: u16 = nMlsSites + 2; // clear, or 1 + number of MLS sites
 const hasImmClobber: bool = true;
 
 const mlsMask: u32 = 0x000000FF;
-const neutralMask: u32 = 0x0000FF00;
-const nkMask: u32 = 0xFFFF0000;
-const nkShift: u32 = 16;
-const nkN: u16 = 16;
 
 // compile-time configuration =================================================
-const nkK: u16 = compconf.get_value_or( //nofmt
-    "CEREBRASLIB_NK_K", @as(u16, 3) // nofmt
-);
-comptime { @comptime_assert(nkK < nkN); }
-
-const _nkSeed: u32 = compconf.get_value_or( //nofmt
-    "CEREBRASLIB_NK_SEED", @as(u32, 0x2545F491) // nofmt
-);
-
 const _pmut_log2: u8 = compconf.get_value_or( //nofmt
     "CEREBRASLIB_LOG2_PMUT_BITWISE", // nofmt
     @as(u8, 18), // nofmt
@@ -165,7 +160,7 @@ const _popSize: u32 = compconf.get_value_or( //nofmt
 comptime { @comptime_assert(_popSize >= 1); }
 
 const _referenceDoublings: f32 = compconf.get_value_or( //nofmt
-    "CEREBRASLIB_MLSNK_REFERENCE_DOUBLINGS", @as(f32, 25.0) // nofmt
+    "CEREBRASLIB_MLS_REFERENCE_DOUBLINGS", @as(f32, 25.0) // nofmt
 );
 comptime { @comptime_assert(_referenceDoublings > 0.0); }
 
@@ -189,9 +184,8 @@ var _mlsLog1pEffectSizes = [nMlsSites]f32{
 var _mlsSelectionP = @zeros([nMlsSites]f32);
 var _mlsSelectionPIsInit: bool = false;
 
-// bonus added to fitness when an MLS site's advantage is expressed; exceeds
-// the [1, 2) range of NK fitness so expressed advantage is decisive
-const _mlsBonus: f32 = 2.0;
+// bonus added to fitness when an MLS site's advantage is expressed
+const _mlsBonus: f32 = 1.0;
 
 // internal functions =========================================================
 /// Binary logarithm of a positive integer, via the shift-and-square method.
@@ -233,49 +227,8 @@ fn _get_mls_clobber_p(site: u16) f32 {
     return _mlsEffectSizes[site] * _p_clobber_scale;
 }
 
-/// Integer hash (lowbias32, by Chris Wellons).
-fn _hash32(key: u32) u32 {
-    var x = key;
-    x ^= x >> 16;
-    x *= 0x7FEB352D;
-    x ^= x >> 15;
-    x *= 0x846CA68B;
-    x ^= x >> 16;
-    return x;
-}
-
-/// Fitness contribution of NK site, in [0, 1), given 16-bit NK site states.
-fn _calc_nk_contribution(site: u16, nkBits: u32) f32 {
-    const nbMask: u32 = (@as(u32, 1) << (nkK + 1)) - 1;
-    const doubled = (nkBits & 0xFFFF) | (nkBits << 16); // wrap neighborhood
-    const neighborhood = (doubled >> @as(u32, site)) & nbMask;
-    const key = ((@as(u32, site) << 16) | neighborhood) ^ _nkSeed;
-    const h = _hash32(key);
-    return @as(f32, h >> 8) * (1.0 / 16777216.0);
-}
-
-fn _calc_nk_fitness(genome: genomePtr_t) f32 {
-    const nkBits = genome[0] >> nkShift;
-    var total: f32 = 0.0;
-    for (@range(u16, nkN)) |i| {
-        total += _calc_nk_contribution(i, nkBits);
-    }
-    return total / @as(f32, nkN);
-}
-
-fn _get_cached_nk_fitness(genome: genomePtr_t) f32 {
-    const fitnessPtr = @ptrcast(*f32, &genome[1]);
-    return fitnessPtr.*;
-}
-
-fn _refresh_nk_fitness(genome: genomePtr_t) void {
-    const fitness = _calc_nk_fitness(genome);
-    const fitnessPtr = @ptrcast(*f32, &genome[1]);
-    fitnessPtr.* = fitness;
-}
-
 fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
-    bitmanip.mutate_log2p(@ptrcast([*]u16, genome), 2, log2p);
+    bitmanip.mutate_log2p(@ptrcast([*]u16, genome), 4, log2p);
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
@@ -299,17 +252,6 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     @ptrcast([*]u32, genome)[2] += 1;
 }
 
-fn _elapse_inheritance_with(genome: genomePtr_t, log2p: u8) void {
-    if (!_is_clear(genome)) {
-        const before = genome[0];
-        _apply_mutation(genome, log2p);
-        // recompute cached NK fitness only if an NK site changed
-        if (((before ^ genome[0]) & nkMask) != 0) _refresh_nk_fitness(genome);
-        _step_instrumentation(genome); // elapse two steps per generation
-        _step_instrumentation(genome);
-    }
-}
-
 inline fn _clear(genome: genomePtr_t) void {
     genome[0] = 0;
     genome[1] = 0;
@@ -328,13 +270,17 @@ inline fn _is_clear(genome: genomePtr_t) bool {
 // public API =================================================================
 
 fn elapse_inheritance_of(genome: genomePtr_t) void {
-    _elapse_inheritance_with(genome, _pmut_log2);
+    if (!_is_clear(genome)) {
+        _apply_mutation(genome, _pmut_log2);
+        _step_instrumentation(genome); // elapse two steps per generation
+        _step_instrumentation(genome);
+    }
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
     if (_is_clear(genome)) return 0.0;
 
-    var fitness: f32 = 1.0 + _get_cached_nk_fitness(genome);
+    var fitness: f32 = 1.0;
     const mlsBits = genome[0] & mlsMask;
     if (mlsBits != 0) {
         for (@range(u16, nMlsSites)) |i| {
@@ -357,12 +303,11 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 
 fn initialize_one(genome: genomePtr_t) void {
     _clear(genome);
-    genome[0] |= 0x0F00; // initialize bottom 4 neutral sites as 1's
+    genome[0] |= 0x0F00; // initialize 4 neutral sites as 1's
     // (to hint for testing endianness when decoding)
     genome[2] = S; // initialize counter to S
     // randomize hstrat bitfield
     bitmanip.randomize(@ptrcast([*]u16, &genome[3]), 8);
-    _refresh_nk_fitness(genome);
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
