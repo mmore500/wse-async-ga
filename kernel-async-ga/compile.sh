@@ -56,6 +56,10 @@ echo "ASYNC_GA_TOURNSIZE_DENOMINATOR ${ASYNC_GA_TOURNSIZE_DENOMINATOR}"
 
 ASYNC_GA_ARCH_FLAG="${ASYNC_GA_ARCH_FLAG:-wse3}"
 echo "ASYNC_GA_ARCH_FLAG ${ASYNC_GA_ARCH_FLAG}"
+if [[ "${ASYNC_GA_ARCH_FLAG}" == *wse2* ]]; then
+    echo "WARNING: wse2 is untested with Cerebras SDK v2.10.0;" \
+        "async-ga simulation is known to hang" >&2
+fi
 
 ASYNC_GA_CHANNELS_FLAG="${ASYNC_GA_CHANNELS_FLAG:-1}"
 echo "ASYNC_GA_CHANNELS_FLAG ${ASYNC_GA_CHANNELS_FLAG}"
