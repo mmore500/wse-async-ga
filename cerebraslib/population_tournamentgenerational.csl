@@ -136,7 +136,7 @@ fn _perform_selection_all() void {
 
     // alternate loop-based implementation
     // copy each tournament winner (from swap buffer) over the resident it
-    // replaces, via genome hook
+    // replaces
     for (@range(u16, popSize)) |i| {
         genome.trample_resident(
             _get_ith_genome(i),
