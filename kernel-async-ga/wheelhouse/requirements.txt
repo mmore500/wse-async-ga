@@ -1,0 +1,8 @@
+# Wheels client.py needs in cs_python (CPython 3.11); see ../fetch_wheels.sh.
+# Single source of truth: client.py checks that a matching wheel for every pin
+# is present (unless that exact version is already importable), then unpacks it.
+# Pins are not resolved transitively (fetch_wheels.sh uses pip download
+# --no-deps) so that cs_python's own numpy etc. is not shadowed.
+downstream==1.16.4
+lazy_loader==0.4
+polars==1.8.2

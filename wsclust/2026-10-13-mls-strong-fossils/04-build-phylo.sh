@@ -151,7 +151,7 @@ echo "SINGULARITYENV_POLARS_MAX_THREADS=${SINGULARITYENV_POLARS_MAX_THREADS}"
 echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 
 find . -type f -name 'a=fossil-genomes*.pqt' \
-    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.25.0 \
+    | singularity exec docker://ghcr.io/mmore500/hstrat:v1.25.2 \
     python3 -O -m hstrat.dataframe.surface_build_tree \
         "${WORKDIR_STEP}/a=phylogeny+ext=.pqt" \
         --trie-postprocessor \
@@ -166,7 +166,7 @@ find . -type f -name 'a=fossil-genomes*.pqt' \
         --filter '~pl.col("data_hex").str.contains(r"^0+$")' \
         --how "diagonal_relaxed" \
         --eager-read --eager-write --string-cache \
-        --seed 1 --sample 4000000 \
+        --seed 1 --sample 'pl.len().clip(upper_bound=4_000_000)' \
         --with-column 'pl.lit(filepath).cast(pl.Categorical).alias("file")' \
         --with-column 'pl.sum_horizontal(
             ((pl.col("data_hex").str.slice(2*b, 2).str.to_integer(base=16)

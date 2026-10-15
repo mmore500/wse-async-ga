@@ -457,78 +457,45 @@ for k, v in sorted(os.environ.items()):
     log(f"  - {k}={v}")
 
 log("- setting up temp dir")
-# need to add polars to Cerebras python
 temp_dir = f"{os.getenv('ASYNC_GA_LOCAL_PATH', 'local')}/tmp/{uuid.uuid4()}"
 os.makedirs(temp_dir, exist_ok=True)
 atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
 log(f"  - {temp_dir=}")
 
-log("- installing downstream")
-for attempt in range(4):
-    try:
-        subprocess.check_call(
-            [
-                "pip",
-                "install",
-                f"--target={temp_dir}",
-                "--no-cache-dir",
-                "--no-deps",  # prevent numpy from being reinstalled
-                "--ignore-requires-python",  # some components require py3.10+
-                "downstream==1.16.4",
-                "lazy_loader==0.4",
-            ],
-            env={
-                **os.environ,
-                "TMPDIR": temp_dir,
-            },
-        )
-        log("- pip install succeeded!")
-        break
-    except subprocess.CalledProcessError as e:
-        log(e)
-        log(f"retrying {attempt=}...")
-else:
-    raise e
-log(f"- extending sys path with temp dir {temp_dir=}")
-sys.path.append(temp_dir)
+log("- installing dependencies from wheelhouse")
+wheelhouse = pathlib.Path(
+    os.getenv(
+        "ASYNC_GA_WHEELHOUSE_PATH",
+        pathlib.Path(__file__).resolve().parent / "wheelhouse",
+    )
+)
+log(f"  - {wheelhouse=}")
+try:
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-index",  # offline: wheels only from wheelhouse
+            f"--find-links={wheelhouse}",
+            "--no-deps",  # prevent numpy from being reinstalled
+            f"--target={temp_dir}",
+            f"--requirement={wheelhouse / 'requirements.txt'}",
+        ],
+    )
+except subprocess.CalledProcessError as e:
+    raise RuntimeError(
+        f"could not install pinned wheels from {wheelhouse}",
+    ) from e
+
+log(f"- prepending temp dir to sys path {temp_dir=}")
+sys.path.insert(0, temp_dir)
 
 import downstream  # type: ignore
 from downstream import dstream  # type: ignore
 
 log(f"- downstream version: {downstream.__version__}")
-
-try:
-    import polars  # type: ignore
-
-    log("- polars already installed, skipping installation")
-    del polars
-except ImportError:
-    log("- installing polars")
-    for attempt in range(4):
-        try:
-            subprocess.check_call(
-                [
-                    "pip",
-                    "install",
-                    f"--target={temp_dir}",
-                    "--no-cache-dir",
-                    "polars==1.8.2",
-                ],
-                env={
-                    **os.environ,
-                    "TMPDIR": temp_dir,
-                },
-            )
-            log("- pip install succeeded!")
-            break
-        except subprocess.CalledProcessError as e:
-            log(e)
-            log(f"retrying {attempt=}...")
-    else:
-        raise e
-    log(f"- extending sys path with temp dir {temp_dir=}")
-    sys.path.append(temp_dir)
-
 
 log("- importing third-party dependencies")
 log("  - numpy...")
