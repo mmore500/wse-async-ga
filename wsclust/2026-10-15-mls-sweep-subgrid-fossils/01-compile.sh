@@ -160,7 +160,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # sweep subgrid sizes (0 is full grid, i.e., no subgrids), one seed each
 genome_flavor=genome_mlssweep_2026_10_15
 seed=0
-for subgrid in 0 1 3 9 27 81 243; do
+for subgrid in 0 27 81 243; do
     seed=$((seed + 1))
     CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+seed=${seed}"
     echo
