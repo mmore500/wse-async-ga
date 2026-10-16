@@ -153,9 +153,9 @@ echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 # (a=fossils+..., not end-state a=genomes+...), partitioning on `config`.
 # Within each run, sample non-empty fossil genomes uniformly within each
 # (layer, subgrid) stratum, taking an equal share of SAMPLE_BUDGET per stratum
-# (at least one). Requires hstrat >=v1.26.0 (surface_build_tree_over) bundling
-# joinem >=v0.16.0 (--sample-stratify takes column names).
-HSTRAT_CONTAINER="docker://ghcr.io/mmore500/hstrat:v1.26.0"
+# (at least one). Requires hstrat >=v1.26.1 (surface_build_tree_over, bundling
+# joinem >=v0.16.0, whose --sample-stratify takes column names).
+HSTRAT_CONTAINER="docker://ghcr.io/mmore500/hstrat:v1.26.1"
 echo "HSTRAT_CONTAINER ${HSTRAT_CONTAINER}"
 SAMPLE_BUDGET=4000000
 echo "SAMPLE_BUDGET ${SAMPLE_BUDGET}"
