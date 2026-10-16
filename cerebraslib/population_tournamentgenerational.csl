@@ -111,7 +111,10 @@ fn _initialize_all() void {
 fn _perform_extinction_all() void {
     @comptime_assert(0.0 <= pExtinction and pExtinction <= 1.0);
     if (pExtinction > 0.0) {
-        if (opscalar.p(pExtinction)) { @mov32(bufferDsd, 0); }
+        if (opscalar.p(pExtinction)) {
+            @mov32(bufferDsd, 0);
+            if (genome.hasNotifyExtinct) { genome.notify_extinct(); }
+        }
     }
 }
 

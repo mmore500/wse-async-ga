@@ -29,6 +29,7 @@ const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
+const hasNotifyExtinct: bool = false;
 
 const val1: u32 = 1692398096;
 const val2: u32 = 2816128869;
@@ -69,3 +70,5 @@ fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { retur
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
     for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
 }
+
+fn notify_extinct() void {}
