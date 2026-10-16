@@ -174,7 +174,7 @@ downsample_and_export() {
             | tee "${CONFIG_RESULTDIR}/_alifestd_as_newick_polars_${label}.log"
 
     echo "${outpqt}" \
-        | singularity run "${JOINEM_CONTAINER}" \
+        | singularity exec "${JOINEM_CONTAINER}" joinem \
             "${CONFIG_WORKDIR}/a=phylometa+${label}+ext=.csv" \
             --select "id" \
             --select "original_id" \
@@ -214,7 +214,7 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
     # workaround for pyarrow.lib.ArrowTypeError:
     # Converting unsigned dictionary indices to pandas not yet supported, index type: uint32
     echo "${PHYLO_SOURCE}" \
-        | singularity run "${JOINEM_CONTAINER}" \
+        | singularity exec "${JOINEM_CONTAINER}" joinem \
         --eager-read --eager-write \
         --with-column 'pl.selectors.categorical().cast(pl.String)' \
         --filter "pl.col(\"config\") == \"${CONFIG_NAME}\"" \
@@ -233,7 +233,7 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
             | tee "${CONFIG_RESULTDIR}/_alifestd_as_newick_polars.log"
 
     echo "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
-        | singularity run "${JOINEM_CONTAINER}" \
+        | singularity exec "${JOINEM_CONTAINER}" joinem \
             "${CONFIG_WORKDIR}/a=phylometa+ext=.csv" \
             --select "id" \
             --select "origin_time" \
