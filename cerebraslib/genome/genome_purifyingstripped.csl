@@ -44,3 +44,7 @@ fn get_trait_value(genome: genomePtr_t) u32 { return 0; }
 fn initialize_one(genome: genomePtr_t) void { @ptrcast(*f32, genome).* = 0.0; }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
+}

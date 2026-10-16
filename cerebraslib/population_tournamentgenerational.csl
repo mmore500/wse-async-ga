@@ -135,10 +135,13 @@ fn _perform_selection_all() void {
     // }
 
     // alternate loop-based implementation
-    for (@range(u16, genome.gSize)) |w| {
-        for (@range(u16, popSize)) |i| {
-            buffer[i * genome.gSize + w] = swap[indexBuf[i] + w];
-        }
+    // copy each tournament winner (from swap buffer) over the resident it
+    // replaces
+    for (@range(u16, popSize)) |i| {
+        genome.trample_resident(
+            _get_ith_genome(i),
+            @ptrcast([*]u32, &swap[indexBuf[i]]),
+        );
     }
 }
 

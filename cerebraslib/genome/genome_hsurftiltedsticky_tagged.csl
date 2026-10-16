@@ -69,3 +69,7 @@ fn initialize_one(genome: genomePtr_t) void {
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
+}

@@ -75,6 +75,22 @@ fn test_clobber_invalid_immigrant() void {
     @assert(imm_ptr[4] == res_ptr[4]);
 }
 
+fn test_trample_resident() void {
+    var resident = @zeros(genome.genome_t);
+    var spawn = @zeros(genome.genome_t);
+    for (@range(u16, genome.gSize)) |i| {
+        spawn[i] = 0x01234567 ^ (@as(u32, i) << 8);
+        resident[i] = ~spawn[i];
+    }
+    genome.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
+    );
+    for (@range(u16, genome.gSize)) |i| {
+        @assert(resident[i] == spawn[i]);
+        @assert(spawn[i] == 0x01234567 ^ (@as(u32, i) << 8));
+    }
+}
+
 fn do_test() void {
     test_calc_fitness_of();
     test_elapse_inheritance_of();
@@ -84,4 +100,5 @@ fn do_test() void {
     test_parity_after_steps();
     test_clobber_valid_immigrant();
     test_clobber_invalid_immigrant();
+    test_trample_resident();
 }

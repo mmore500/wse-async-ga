@@ -28,9 +28,26 @@ fn test_initialize_one() void {
     @assert(genome_frozenliteral5._validate(&genome));
 }
 
+fn test_trample_resident() void {
+    var resident = @zeros(genome_frozenliteral5.genome_t);
+    var spawn = @zeros(genome_frozenliteral5.genome_t);
+    for (@range(u16, genome_frozenliteral5.gSize)) |i| {
+        spawn[i] = 0x01234567 ^ (@as(u32, i) << 8);
+        resident[i] = ~spawn[i];
+    }
+    genome_frozenliteral5.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
+    );
+    for (@range(u16, genome_frozenliteral5.gSize)) |i| {
+        @assert(resident[i] == spawn[i]);
+        @assert(spawn[i] == 0x01234567 ^ (@as(u32, i) << 8));
+    }
+}
+
 fn do_test() void {
     test_calc_fitness_of();
     test_elapse_inheritance_of();
     test_get_trait_value();
     test_initialize_one();
+    test_trample_resident();
 }
