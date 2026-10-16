@@ -140,7 +140,7 @@ echo "export phylogeny -------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 PHYLOFRAME_CONTAINER="docker://ghcr.io/mmore500/phyloframe:v0.2.1"
-JOINEM_CONTAINER="docker://ghcr.io/mmore500/joinem:v0.11.1"
+JOINEM_CONTAINER="docker://ghcr.io/mmore500/joinem:v0.16.0"
 # downsample, collapse unifurcations, assign contiguous ids, export newick
 # usage: downsample_and_export <label> <phyloframe module> <module args...>
 downsample_and_export() {
@@ -195,12 +195,14 @@ downsample_and_export() {
     gzip -k "${CONFIG_WORKDIR}/a=phylometa+${label}+ext=.csv"
 }
 
-for PHYLO_DIR in "${WORKDIR}/04-build-phylo"/*/; do
-    CONFIG_NAME="$(basename "${PHYLO_DIR}")"
-    PHYLO_SOURCE="${PHYLO_DIR}/a=phylogeny+ext=.pqt"
+# 04-build-phylo writes one file holding an independent tree per run, keyed
+# by `config`; split it out and export each run's tree separately
+PHYLO_SOURCE="${WORKDIR}/04-build-phylo/a=phylogeny+ext=.pqt"
+echo "PHYLO_SOURCE ${PHYLO_SOURCE}"
+for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
+    CONFIG_NAME="$(basename "${CONFIG_DIR}")"
     echo
     echo "====== Exporting phylogeny for config: ${CONFIG_NAME} ======"
-    echo "PHYLO_SOURCE ${PHYLO_SOURCE}"
 
     CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
     CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
@@ -215,7 +217,14 @@ for PHYLO_DIR in "${WORKDIR}/04-build-phylo"/*/; do
         | singularity run "${JOINEM_CONTAINER}" \
         --eager-read --eager-write \
         --with-column 'pl.selectors.categorical().cast(pl.String)' \
+        --filter "pl.col(\"config\") == \"${CONFIG_NAME}\"" \
         "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt"
+
+    # tree ids were reassigned across runs; make this run's contiguous
+    echo "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
+        | singularity exec "${PHYLOFRAME_CONTAINER}" \
+            python3 -m phyloframe.legacy._alifestd_assign_contiguous_ids_polars \
+            "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" --eager-write
 
     singularity exec "${PHYLOFRAME_CONTAINER}" \
         python3 -m phyloframe.legacy._alifestd_as_newick_polars \
