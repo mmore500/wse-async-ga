@@ -36,7 +36,10 @@
 //     s_i in [1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005].
 //
 // Clobber chance for site i is s_i (times CEREBRASLIB_CLOBBER_IMMIGRANT_P,
-// default 1.0); multiple MLS sites clobber independently.
+// default 1.0); multiple MLS sites clobber independently. Immigrants are only
+// accepted while the population is extinct (tracked via notify_extinct); the
+// first non-empty immigrant to colonize ends extinction, so later immigrants
+// are clobbered.
 //
 // Within-population advantage for site i is rescaled to actual population
 // size N so a sweep takes as many generations as one with advantage s_i would
@@ -136,6 +139,7 @@ const genomePtr_t = [*]u32;
 const nMlsSites: u16 = 8;
 const nTraitVals: u16 = nMlsSites + 2; // clear, or 1 + number of MLS sites
 const hasImmClobber: bool = true;
+const hasNotifyExtinct: bool = true;
 
 const mlsMask: u32 = 0x000000FF;
 
@@ -183,6 +187,10 @@ var _mlsLog1pEffectSizes = [nMlsSites]f32{
 // within-population selection probabilities s'_i, lazily initialized
 var _mlsSelectionP = @zeros([nMlsSites]f32);
 var _mlsSelectionPIsInit: bool = false;
+
+// is this population extinct (i.e., open to colonization by immigrants)?
+// set by notify_extinct, cleared once an immigrant colonizes
+var _isExtinct: bool = false;
 
 // bonus added to fitness when an MLS site's advantage is expressed
 const _mlsBonus: f32 = 1.0;
@@ -311,8 +319,10 @@ fn initialize_one(genome: genomePtr_t) void {
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
-    if (!_is_clear(resident)) {
-        _clear(immigrant);
+    // only extinct populations accept immigrants; otherwise, overwrite
+    // immigrant with resident so that copying immigrant in is a no-op
+    if (!_isExtinct) {
+        for (@range(u16, gSize)) |i| { immigrant[i] = resident[i]; }
         return true;
     }
 
@@ -326,5 +336,14 @@ fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
             }
         }
     }
+
+    // a non-empty immigrant colonizes, so population is no longer extinct
+    if (!_is_clear(immigrant)) _isExtinct = false;
     return false;
 }
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
+}
+
+fn notify_extinct() void { _isExtinct = true; }

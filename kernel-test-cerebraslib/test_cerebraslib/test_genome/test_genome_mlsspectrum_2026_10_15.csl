@@ -206,30 +206,43 @@ fn test_clobber_immigrant() void {
     var resident_ptr = @ptrcast(genome_mls.genomePtr_t, &resident[0]);
     genome_mls.initialize_one(resident_ptr);
 
-    // occupied resident always clobbers immigrant
-    for (@range(u16, 0, 255, 8)) |i| {
-        genome_mls.initialize_one(imm_ptr);
-        imm[0] |= @as(u32, i) & genome_mls.mlsMask;
-        @assert(genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
-        @assert(genome_mls._is_clear(imm_ptr));
-        @assert(!genome_mls._is_clear(resident_ptr));
-    }
-
     var empty_resident = @zeros(genome_mls.genome_t);
     var empty_resident_ptr = @ptrcast(
         genome_mls.genomePtr_t, &empty_resident[0]
     );
 
-    // empty resident, no MLS sites: never clobbers
+    // not extinct: immigrant always clobbered, replaced by copy of resident
+    @assert(!genome_mls._isExtinct);
+    for (@range(u16, 0, 255, 8)) |i| {
+        genome_mls.initialize_one(imm_ptr);
+        imm[0] |= @as(u32, i) & genome_mls.mlsMask;
+        @assert(genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
+        for (@range(u16, genome_mls.gSize)) |w| {
+            @assert(imm[w] == resident[w]);
+        }
+        @assert(!genome_mls._isExtinct);
+    }
+
+    // extinct: empty immigrant is not clobbered and does not end extinction
+    genome_mls.notify_extinct();
+    @assert(genome_mls._isExtinct);
+    genome_mls._clear(imm_ptr);
+    @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
+    @assert(genome_mls._isExtinct);
+
+    // extinct: immigrant without MLS sites colonizes, ending extinction
     genome_mls.initialize_one(imm_ptr);
     imm[0] ^= ~genome_mls.mlsMask;
     imm[1] ^= 0xFFFFFFFF;
-    for (@range(u16, 255)) |_| {
-        @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
-        @assert(!genome_mls._is_clear(imm_ptr));
-    }
+    @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
+    @assert(!genome_mls._is_clear(imm_ptr));
+    @assert(!genome_mls._isExtinct);
+    // ... so subsequent immigrants are clobbered
+    genome_mls.initialize_one(imm_ptr);
+    @assert(genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
+    @assert(genome_mls._is_clear(imm_ptr));
 
-    // empty resident, single MLS site: clobbers with expected probability
+    // extinct, single MLS site: clobbers with expected probability
     var template = @zeros(genome_mls.genome_t);
     var template_ptr = @ptrcast(genome_mls.genomePtr_t, &template[0]);
     genome_mls.initialize_one(template_ptr);
@@ -237,13 +250,14 @@ fn test_clobber_immigrant() void {
     for (@range(u16, genome_mls.nMlsSites)) |site| {
         var nClobber: u16 = 0;
         for (@range(u16, nTrials)) |_| {
+            genome_mls.notify_extinct();
             for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
             imm[0] |= @as(u32, 1) << @as(u32, site);
             const clobbered = genome_mls.clobber_immigrant(
                 empty_resident_ptr, imm_ptr
             );
             @assert(clobbered == genome_mls._is_clear(imm_ptr));
-            @assert(genome_mls._is_clear(empty_resident_ptr));
+            @assert(clobbered == genome_mls._isExtinct);
             nClobber += @as(u16, clobbered);
         }
         const expected = (
@@ -252,16 +266,31 @@ fn test_clobber_immigrant() void {
         const tol = 0.25 * expected + 15.0;
         @assert(math.abs(@as(f32, nClobber) - expected) < tol);
     }
-    // site 0 has 100% clobber chance
+
+    // site 0 has 100% clobber chance, so extinction persists
+    genome_mls.notify_extinct();
     for (@range(u16, 32)) |_| {
         for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
         imm[0] |= 0x01;
         @assert(genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
+        @assert(genome_mls._isExtinct);
     }
+}
 
-    // empty immigrant onto empty resident: no clobber
-    genome_mls._clear(imm_ptr);
-    @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
+fn test_trample_resident() void {
+    var resident = @zeros(genome_mls.genome_t);
+    var spawn = @zeros(genome_mls.genome_t);
+    for (@range(u16, genome_mls.gSize)) |i| {
+        spawn[i] = 0x01234567 ^ (@as(u32, i) << 8);
+        resident[i] = ~spawn[i];
+    }
+    genome_mls.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
+    );
+    for (@range(u16, genome_mls.gSize)) |i| {
+        @assert(resident[i] == spawn[i]);
+        @assert(spawn[i] == 0x01234567 ^ (@as(u32, i) << 8));
+    }
 }
 
 fn do_test() void {
@@ -274,4 +303,5 @@ fn do_test() void {
     test_get_trait_value();
     test_initialize_one();
     test_clobber_immigrant();
+    test_trample_resident();
 }
