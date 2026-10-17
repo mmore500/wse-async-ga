@@ -139,7 +139,7 @@ echo
 echo "export phylogeny -------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-PHYLOFRAME_CONTAINER="docker://ghcr.io/mmore500/phyloframe:v0.2.1"
+PHYLOFRAME_CONTAINER="docker://ghcr.io/mmore500/phyloframe:v0.11.0"
 JOINEM_CONTAINER="docker://ghcr.io/mmore500/joinem:v0.16.0"
 # downsample, collapse unifurcations, assign contiguous ids, export newick
 # usage: downsample_and_export <label> <phyloframe module> <module args...>
