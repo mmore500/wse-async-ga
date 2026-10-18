@@ -110,7 +110,7 @@ const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 
 // module config specs ========================================================
-const gSize: u16 = 5;
+const gSize: u16 = 4;
 const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
