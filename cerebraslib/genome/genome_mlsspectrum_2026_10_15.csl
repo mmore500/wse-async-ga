@@ -1,0 +1,349 @@
+// memory layout ===============================================================
+// byte 0 FLAG SITES (8 bytes)
+// byte 1   word 0 bits 0-7: MLS sites (bit i -> effect size level i)
+// byte 2   all other bits: neutral sites (word 0 bits 8-11 start as 1's)
+// byte 3
+// byte 4
+// byte 5
+// byte 6
+// byte 7
+// byte 8 COUNTER (u32, 4 bytes)
+// byte 9
+// byte 10
+// byte 11
+// byte 12 BITFIELD (16 bytes)
+// byte 13
+// byte 14
+// byte 15
+// byte 16
+// byte 17
+// byte 18
+// byte 19
+// byte 20
+// byte 21
+// byte 22
+// byte 23
+// byte 24
+// byte 25
+// byte 26
+// byte 27
+// TOTAL: 7 words -> 28 bytes
+//
+// MLS sites ==================================================================
+// Each MLS site is beneficial within a population, but harmful between
+// populations: immigrants carrying it are blocked from colonizing an empty
+// population (i.e., clobbered) with some probability. Site i has effect size
+//     s_i in [1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005].
+//
+// Clobber chance for site i is s_i (times CEREBRASLIB_CLOBBER_IMMIGRANT_P,
+// default 1.0); multiple MLS sites clobber independently. Immigrants are only
+// accepted while the population is extinct (tracked via notify_extinct); the
+// first non-empty immigrant to colonize ends extinction, so later immigrants
+// are clobbered.
+//
+// Within-population advantage for site i is rescaled to actual population
+// size N so a sweep takes as many generations as one with advantage s_i would
+// in a population allowing D = CEREBRASLIB_MLS_REFERENCE_DOUBLINGS (default
+// 25) doublings: s'_i = (1 + s_i) ^ (log2(N) / D) - 1.
+//
+// Tournament selection compares fitness deterministically, so on each fitness
+// evaluation each MLS site present independently adds a bonus with probability
+// s'_i. In size-2 tournaments, a carrier then beats an otherwise-equal genome
+// with probability 1/2 + s'_i / 2, i.e., has relative fitness 1 + s'_i.
+//
+// In data_hex (big-endian words), MLS site i is flag byte 3, bit i; the
+// metadata below gives each site's clobber and selection probabilities.
+
+//! {
+//!     "dstream_algo": (
+//!         "dstream." + compconf_data.get(
+//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "hybrid_0_steady_1_tilted_2_algo"
+//!         ),
+//!         pl.Categorical,
+//!     ),
+//!     "dstream_storage_bitoffset": (96, pl.UInt8),
+//!     "dstream_storage_bitwidth": (128, pl.UInt8),
+//!     "dstream_T_bitoffset": (64, pl.UInt8),
+//!     "dstream_T_bitwidth": (32, pl.UInt8),
+//!     "dstream_S": (128, pl.UInt8),
+//!     "flag_site_bitwidth": (1, pl.UInt8),
+//!     "flag_sites_bitoffset": (0, pl.UInt8),
+//!     "flag_sites_bitwidth": (64, pl.UInt8),
+//!     "flag_is_focal_mask_byte0": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte1": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte2": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte3": (0xFF, pl.UInt8),
+//!     "flag_is_focal_mask_byte4": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte5": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte6": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte7": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte0": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte1": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte2": (0x0F, pl.UInt8),
+//!     "flag_nand_mask_byte3": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte4": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte5": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte6": (0x00, pl.UInt8),
+//!     "flag_nand_mask_byte7": (0x00, pl.UInt8),
+//!     **{
+//!         f"mls_{what}_p_byte3_bit{bit}": (p, pl.Float32)
+//!         for bit, s in enumerate(
+//!             (1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005),
+//!         )
+//!         for what, p in (
+//!             ("clobber", s * float(compconf_data.get(
+//!                 "CEREBRASLIB_CLOBBER_IMMIGRANT_P:f32", 1.0,
+//!             ))),
+//!             ("selection", (1.0 + s) ** (
+//!                 __import__("math").log2(int(compconf_data.get(
+//!                     "ASYNC_GA_POPSIZE:u32", 256,
+//!                 ))) / float(compconf_data.get(
+//!                     "CEREBRASLIB_MLS_REFERENCE_DOUBLINGS:f32", 25.0,
+//!                 ))
+//!             ) - 1.0),
+//!         )
+//!     },
+//!     "nWav": (7, pl.UInt8),
+//! }
+
+// module imports =============================================================
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const compconf = @import_module("<compconf>");
+comptime { // access via get_value for logging...
+    const _ = compconf.get_value_or(
+        "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+        "hybrid_0_steady_1_tilted_2_algo",
+    );
+} // ... raw string works around sdk v1.0.0 limitation
+const compconf_raw = @import_module("<compconf_raw>");
+const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const dstream_algo_name = (if (has_value)
+    compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
+else
+    "hybrid_0_steady_1_tilted_2_algo");
+const dstream_algo = @import_module(
+    @strcat("<downstream/dstream/", dstream_algo_name, ">"),
+);
+
+const bitmanip = @import_module("cerebraslib/bitmanip.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+const S = 128;
+
+// module config specs ========================================================
+const gSize: u16 = 7;
+const genome_t = [gSize]u32;
+const genomePtr_t = [*]u32;
+const nMlsSites: u16 = 8;
+const nTraitVals: u16 = nMlsSites + 2; // clear, or 1 + number of MLS sites
+const hasImmClobber: bool = true;
+const hasNotifyExtinct: bool = true;
+
+const mlsMask: u32 = 0x000000FF;
+
+// compile-time configuration =================================================
+const _pmut_log2: u8 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_LOG2_PMUT_BITWISE", // nofmt
+    @as(u8, 18), // nofmt
+);
+
+const _fit_fudge: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_NONZERO_FIT_FUDGE", @as(f32, 0.0) // nofmt
+);
+
+const _p_clobber_scale: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_CLOBBER_IMMIGRANT_P", @as(f32, 1.0) // nofmt
+);
+
+// actual population size, used to rescale within-population advantage
+const _popSize: u32 = compconf.get_value_or( //nofmt
+    "ASYNC_GA_POPSIZE", @as(u32, 256) // nofmt
+);
+comptime { @comptime_assert(_popSize >= 1); }
+
+const _referenceDoublings: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_MLS_REFERENCE_DOUBLINGS", @as(f32, 25.0) // nofmt
+);
+comptime { @comptime_assert(_referenceDoublings > 0.0); }
+
+// MLS effect sizes ============================================================
+// clobber chance per MLS site, i.e., base effect size s_i
+var _mlsEffectSizes = [nMlsSites]f32{
+    1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005,
+};
+// natural log of (1 + s_i), hardcoded to avoid runtime transcendentals
+var _mlsLog1pEffectSizes = [nMlsSites]f32{
+    0.6931471805599453,
+    0.4054651081081644,
+    0.22314355131420976,
+    0.09531017980432487,
+    0.04879016416943201,
+    0.0246926125903715,
+    0.009950330853168083,
+    0.004987541511039074,
+};
+// within-population selection probabilities s'_i, lazily initialized
+var _mlsSelectionP = @zeros([nMlsSites]f32);
+var _mlsSelectionPIsInit: bool = false;
+
+// is this population extinct (i.e., open to colonization by immigrants)?
+// set by notify_extinct, cleared once an immigrant colonizes
+var _isExtinct: bool = false;
+
+// bonus added to fitness when an MLS site's advantage is expressed
+const _mlsBonus: f32 = 1.0;
+
+// internal functions =========================================================
+/// Binary logarithm of a positive integer, via the shift-and-square method.
+fn _log2_u32(n: u32) f32 {
+    var intPart: u32 = 0;
+    var v = n;
+    while (v >= 2) {
+        v >>= 1;
+        intPart += 1;
+    }
+    var x: f32 = @as(f32, n) / @as(f32, @as(u32, 1) << intPart); // in [1, 2)
+    var fracPart: f32 = 0.0;
+    var bit: f32 = 0.5;
+    for (@range(u16, 20)) |_| {
+        x *= x;
+        if (x >= 2.0) {
+            x *= 0.5;
+            fracPart += bit;
+        }
+        bit *= 0.5;
+    }
+    return @as(f32, intPart) + fracPart;
+}
+
+fn _init_mls_selection_p() void {
+    const exponent = _log2_u32(_popSize) / _referenceDoublings;
+    for (@range(u16, nMlsSites)) |i| {
+        _mlsSelectionP[i] = math.exp(exponent * _mlsLog1pEffectSizes[i]) - 1.0;
+    }
+    _mlsSelectionPIsInit = true;
+}
+
+fn _get_mls_selection_p(site: u16) f32 {
+    if (!_mlsSelectionPIsInit) _init_mls_selection_p();
+    return _mlsSelectionP[site];
+}
+
+fn _get_mls_clobber_p(site: u16) f32 {
+    return _mlsEffectSizes[site] * _p_clobber_scale;
+}
+
+fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
+    bitmanip.mutate_log2p(@ptrcast([*]u16, genome), 4, log2p);
+}
+
+fn _step_instrumentation(genome: genomePtr_t) void {
+    // elapse generation in bitfield
+    if (opscalar.unifbool()) {
+        const T = @ptrcast([*]u32, genome)[2];
+        const site = dstream_algo.assign_storage_site(S, T);
+
+        const offset_bits: u16 = (8 + 4) * 8;
+        const target_bit = @as(u16, site) + offset_bits;
+
+        const genome_bytes = @ptrcast([*]u8, genome);
+        if (site != S) bitmanip.flip_nth_bit_with_swaps(
+            genome_bytes,
+            target_bit,
+            .{ .byteSwap = true, .bitSwap = true },
+        );
+    }
+
+    // elapse generation in counter
+    @ptrcast([*]u32, genome)[2] += 1;
+}
+
+inline fn _clear(genome: genomePtr_t) void {
+    genome[0] = 0;
+    genome[1] = 0;
+    genome[2] = 0;
+    genome[3] = 0;
+    genome[4] = 0;
+    genome[5] = 0;
+    genome[6] = 0;
+}
+
+inline fn _is_clear(genome: genomePtr_t) bool {
+    const res: bool = genome[2] == 0;
+    return res;
+}
+
+// public API =================================================================
+
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    if (!_is_clear(genome)) {
+        _apply_mutation(genome, _pmut_log2);
+        _step_instrumentation(genome); // elapse two steps per generation
+        _step_instrumentation(genome);
+    }
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    if (_is_clear(genome)) return 0.0;
+
+    var fitness: f32 = 1.0;
+    const mlsBits = genome[0] & mlsMask;
+    if (mlsBits != 0) {
+        for (@range(u16, nMlsSites)) |i| {
+            const isSet = ((mlsBits >> @as(u32, i)) & 1) != 0;
+            if (isSet and opscalar.p(_get_mls_selection_p(i))) {
+                fitness += _mlsBonus;
+            }
+        }
+    }
+    fitness += random.random_f32(0.0, _fit_fudge);
+    return fitness;
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    // 0: is_clear
+    // 1 + n: not clear, has n MLS sites set
+    if (_is_clear(genome)) return 0;
+    return 1 + opscalar.popcnt32(genome[0] & mlsMask);
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    _clear(genome);
+    genome[0] |= 0x0F00; // initialize 4 neutral sites as 1's
+    // (to hint for testing endianness when decoding)
+    genome[2] = S; // initialize counter to S
+    // randomize hstrat bitfield
+    bitmanip.randomize(@ptrcast([*]u16, &genome[3]), 8);
+}
+
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+    // only extinct populations accept immigrants; otherwise, overwrite
+    // immigrant with resident so that copying immigrant in is a no-op
+    if (!_isExtinct) {
+        for (@range(u16, gSize)) |i| { immigrant[i] = resident[i]; }
+        return true;
+    }
+
+    const mlsBits = immigrant[0] & mlsMask;
+    if (mlsBits != 0) {
+        for (@range(u16, nMlsSites)) |i| {
+            const isSet = ((mlsBits >> @as(u32, i)) & 1) != 0;
+            if (isSet and opscalar.p(_get_mls_clobber_p(i))) {
+                _clear(immigrant);
+                return true;
+            }
+        }
+    }
+
+    // a non-empty immigrant colonizes, so population is no longer extinct
+    if (!_is_clear(immigrant)) _isExtinct = false;
+    return false;
+}
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
+}
+
+fn notify_extinct() void { _isExtinct = true; }

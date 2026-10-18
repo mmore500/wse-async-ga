@@ -103,6 +103,30 @@ def assemble_genome_bookend_data(
     return assemble_binary_data(data, nWav=nWav + 2, verbose=verbose)
 
 
+def with_subgrid_columns(df: "pl.LazyFrame") -> "pl.LazyFrame":
+    """Add subgrid identity columns, computed from `row` and `col` columns.
+
+    Subgrids are the nRowSubgrid x nColSubgrid blocks of PEs between which
+    migration is disabled (0 means no partitioning along that axis). Adds
+    `subgrid_row` and `subgrid_col` (block coordinates) and `subgrid` (flat,
+    row-major block index, unique within a run).
+    """
+    nSubgridCols = -(-nCol // nColSubgrid) if nColSubgrid else 1
+    return df.with_columns(
+        subgrid_row=(
+            pl.col("row") // nRowSubgrid if nRowSubgrid else pl.lit(0)
+        ).cast(pl.UInt16),
+        subgrid_col=(
+            pl.col("col") // nColSubgrid if nColSubgrid else pl.lit(0)
+        ).cast(pl.UInt16),
+    ).with_columns(
+        subgrid=(
+            pl.col("subgrid_row").cast(pl.UInt32) * nSubgridCols
+            + pl.col("subgrid_col").cast(pl.UInt32)
+        ),
+    )
+
+
 def process_fossils(nWav: int) -> None:
     log("reading fossils ----------------------------------------------------")
     file_size_gb = os.path.getsize("raw/fossils.npz") / (1024 * 1024 * 1024)
@@ -212,15 +236,19 @@ def process_fossils(nWav: int) -> None:
         gc.collect()
 
         log(" - creating indices df...")  # use numpy to save memory vs polars
+        # fossil sets are stored as (nRow, nCol) arrays, so row-major
         df_indices = pl.DataFrame(
             {
                 "layer": pl.Series(layer, dtype=pl.UInt32),
                 "layer_T": pl.Series(layer_T, dtype=pl.UInt64),
                 "position": pl.Series(position, dtype=pl.UInt32),
+                "row": pl.Series(position // nCol, dtype=pl.UInt16),
+                "col": pl.Series(position % nCol, dtype=pl.UInt16),
             },
         ).lazy()
         del layer, layer_T, position
         gc.collect()
+        df_indices = with_subgrid_columns(df_indices)
 
         log(" - saving indices...")  # separate for sink compat
         fi_len = df_indices.select(pl.len()).collect().item()
@@ -1222,6 +1250,7 @@ df = pl.DataFrame({
     "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
     "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
 })
+df = with_subgrid_columns(df.lazy()).collect()
 log(f" - data_raw: {df['data_raw'].head(3)}")
 assert (df["data_raw"].bin.size(unit="b") == nWav * 4).all()
 df = df.with_columns(
