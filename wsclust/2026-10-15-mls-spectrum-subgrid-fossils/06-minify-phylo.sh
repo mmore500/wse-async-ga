@@ -139,7 +139,7 @@ echo
 echo "minify phylogeny -------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-PHYLOFRAME_CONTAINER="docker://ghcr.io/mmore500/phyloframe:v0.12.0"
+PHYLOFRAME_CONTAINER="docker://ghcr.io/mmore500/phyloframe:v0.12.1"
 echo "PHYLOFRAME_CONTAINER ${PHYLOFRAME_CONTAINER}"
 PHYLO_SOURCE="${WORKDIR}/04-build-phylo/a=phylogeny+ext=.pqt"
 echo "PHYLO_SOURCE ${PHYLO_SOURCE}"
@@ -224,18 +224,14 @@ echo "${PHYLO_SOURCE}" \
         --select "^ASYNC_GA_.*$" \
         --op 'lambda df: df.collect()' \
         --op 'lambda df: pfl.alifestd_agg_monomorphic_clades_polars(
-            # dense-rank trait bits into a small, null-free key, as values
-            # >2^53 lose precision if nulls force conversion to float64
-            df.with_columns(
-                trait_key=pl.col("trait_present").rank("dense").fill_null(0),
-            ),
-            by="trait_key",
+            df,
+            by="trait_present",
             trait_mask="is_genome",
             named_aggs={
                 **{
                     col: pl.col(col).filter(pl.col("is_genome")).first()
                     for col in df.columns
-                    if col not in ("id", "ancestor_id", "is_genome")
+                    if col not in ("id", "ancestor_id", "trait_present", "is_genome")
                 },
                 **{
                     col: pl.col(col).first()
@@ -247,7 +243,7 @@ echo "${PHYLO_SOURCE}" \
                 "clade_size": pl.col("is_genome").sum(),
                 "last_origin_time": pl.col("origin_time").max(),
             },
-        ).drop("trait_key", "is_monomorphic_clade")' \
+        ).drop("is_monomorphic_clade")' \
         --op 'lambda df: df.with_columns(
             pl.col(col).fill_null(df[col].drop_nulls().first())
             for col in df.columns
