@@ -85,40 +85,45 @@ fn test_elapse_inheritance_of() void {
     for (@range(u16, genome_mls.gSize)) |i| { @assert(genome[i] == 0); }
 
     genome_mls.initialize_one(genome_ptr);
-    @assert(genome[2] == 128);
+    @assert(genome_mls._get_counter(genome_ptr) == 128);
 
     genome_mls.elapse_inheritance_of(genome_ptr);
-    @assert(genome[2] == 130);
+    @assert(genome_mls._get_counter(genome_ptr) == 130);
 
     genome_mls.elapse_inheritance_of(genome_ptr);
-    @assert(genome[2] == 132);
+    @assert(genome_mls._get_counter(genome_ptr) == 132);
 
-    // bitwise mutation hits neutral flag sites, in both flag words...
+    // bitwise mutation hits neutral flag sites...
+    const neutralMask: u32 = 0xFF000000;
     var genome0 = genome[0];
     while (genome0 == genome[0]) { genome_mls._apply_mutation(genome_ptr, 4); }
-    var genome1 = genome[1];
-    while (genome1 == genome[1]) { genome_mls._apply_mutation(genome_ptr, 4); }
 
-    // ... but not MLS sites or counter word
-    const mlsBits = genome[0] & genome_mls.mlsMask;
-    const genome2 = genome[2];
+    // ... but not MLS sites, counter, or bitfield
+    var snapshot = @zeros(genome_mls.genome_t);
+    for (@range(u16, genome_mls.gSize)) |i| { snapshot[i] = genome[i]; }
     for (@range(u16, 64)) |_| { genome_mls._apply_mutation(genome_ptr, 1); }
-    @assert((genome[0] & genome_mls.mlsMask) == mlsBits);
-    @assert(genome[2] == genome2);
+    @assert((genome[0] & ~neutralMask) == (snapshot[0] & ~neutralMask));
+    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
+        @assert(genome[i] == snapshot[i]);
+    }
 
-    // within-host selection does not touch neutral sites
-    genome0 = genome[0] & ~genome_mls.mlsMask;
-    genome1 = genome[1];
+    // within-host selection does not touch neutral sites, counter, or bitfield
+    for (@range(u16, genome_mls.gSize)) |i| { snapshot[i] = genome[i]; }
     for (@range(u16, 64)) |_| {
         genome_mls._apply_withinhost_selection(genome_ptr);
     }
-    @assert((genome[0] & ~genome_mls.mlsMask) == genome0);
-    @assert(genome[1] == genome1);
+    @assert(
+        (genome[0] & ~genome_mls.mlsMask)
+        == (snapshot[0] & ~genome_mls.mlsMask)
+    );
+    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
+        @assert(genome[i] == snapshot[i]);
+    }
 
     // within-host selection gains MLS sites with expected probability
     const nTrials: u16 = 100;
     for (@range(u16, genome_mls.nMlsSites)) |site| {
-        const bit = @as(u32, 1) << @as(u32, site);
+        const bit = @as(u32, 1) << (genome_mls.mlsShift + @as(u32, site));
         var nGain: u16 = 0;
         for (@range(u16, nTrials)) |_| {
             genome[0] &= ~genome_mls.mlsMask;
@@ -136,14 +141,14 @@ fn test_elapse_inheritance_of() void {
     // site 0 is gained almost surely, and lost almost never
     genome[0] &= ~genome_mls.mlsMask;
     genome_mls.elapse_inheritance_of(genome_ptr);
-    @assert((genome[0] & 0x01) != 0);
+    @assert((genome[0] & 0x00010000) != 0);
     for (@range(u16, 32)) |_| {
         genome_mls.elapse_inheritance_of(genome_ptr);
-        @assert((genome[0] & 0x01) != 0);
+        @assert((genome[0] & 0x00010000) != 0);
     }
 
     // hstrat bitfield
-    for (@range(u16, 3, 7, 1)) |i| {
+    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
         var genome_i = genome[i];
         while (genome_i == genome[i]) {
             genome_mls.elapse_inheritance_of(genome_ptr);
@@ -160,8 +165,7 @@ fn test_calc_fitness_of() void {
     @assert(genome_mls.calc_fitness_of(genome_ptr) == 1.0);
 
     // neither neutral nor MLS sites affect fitness
-    genome[0] ^= 0xFFFFFFFF;
-    genome[1] ^= 0xFFFFFFFF;
+    genome[0] ^= 0xFFFF0000;
     @assert(genome_mls.calc_fitness_of(genome_ptr) == 1.0);
 
     genome_mls._clear(genome_ptr);
@@ -177,17 +181,17 @@ fn test_get_trait_value() void {
     @assert(genome_mls.get_trait_value(genome_ptr) == 1);
 
     // neutral sites don't affect trait value
-    genome[0] ^= 0xFFFFFF00;
+    genome[0] ^= 0xFF000000;
     genome[1] ^= 0xFFFFFFFF;
     @assert(genome_mls.get_trait_value(genome_ptr) == 1);
-    genome[0] ^= 0xFFFFFF00;
+    genome[0] ^= 0xFF000000;
     genome[1] ^= 0xFFFFFFFF;
 
-    genome[0] |= 0x01;
+    genome[0] |= 0x00010000;
     @assert(genome_mls.get_trait_value(genome_ptr) == 2);
-    genome[0] |= 0x80;
+    genome[0] |= 0x00800000;
     @assert(genome_mls.get_trait_value(genome_ptr) == 3);
-    genome[0] |= 0xFF;
+    genome[0] |= 0x00FF0000;
     @assert(genome_mls.get_trait_value(genome_ptr) == 9);
     @assert(
         genome_mls.get_trait_value(genome_ptr)
@@ -202,17 +206,16 @@ fn test_initialize_one() void {
     var genome = @zeros(genome_mls.genome_t);
     var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
     genome_mls.initialize_one(genome_ptr);
-    @assert(genome[0] == 0x0F00);
-    @assert(genome[1] == 0);
-    @assert(genome[2] == 128);
+    @assert(genome[0] == 0x0F000080);
+    @assert(genome_mls._get_counter(genome_ptr) == 128);
+    @assert(genome[1] != 0);
+    @assert(genome[2] != 0);
     @assert(genome[3] != 0);
     @assert(genome[4] != 0);
-    @assert(genome[5] != 0);
-    @assert(genome[6] != 0);
+    @assert(genome[1] != genome[2]);
+    @assert(genome[2] != genome[3]);
     @assert(genome[3] != genome[4]);
-    @assert(genome[4] != genome[5]);
-    @assert(genome[5] != genome[6]);
-    @assert(genome[6] != genome[3]);
+    @assert(genome[4] != genome[1]);
     @assert(!genome_mls._is_clear(genome_ptr));
 }
 
@@ -234,7 +237,7 @@ fn test_clobber_immigrant() void {
     // infected resident: immigrant always clobbered, replaced by resident
     for (@range(u16, 0, 255, 8)) |i| {
         genome_mls.initialize_one(imm_ptr);
-        imm[0] |= @as(u32, i) & genome_mls.mlsMask;
+        imm[0] |= (@as(u32, i) << genome_mls.mlsShift) & genome_mls.mlsMask;
         @assert(genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
         for (@range(u16, genome_mls.gSize)) |w| {
             @assert(imm[w] == resident[w]);
@@ -252,7 +255,7 @@ fn test_clobber_immigrant() void {
     // uninfected resident: immigrant without MLS sites always infects
     for (@range(u16, 32)) |_| {
         genome_mls.initialize_one(imm_ptr);
-        imm[0] ^= ~genome_mls.mlsMask;
+        imm[0] ^= 0xFF000000;
         imm[1] ^= 0xFFFFFFFF;
         @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
         @assert(!genome_mls._is_clear(imm_ptr));
@@ -267,7 +270,7 @@ fn test_clobber_immigrant() void {
         var nClobber: u16 = 0;
         for (@range(u16, nTrials)) |_| {
             for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
-            imm[0] |= @as(u32, 1) << @as(u32, site);
+            imm[0] |= @as(u32, 1) << (genome_mls.mlsShift + @as(u32, site));
             const clobbered = genome_mls.clobber_immigrant(
                 empty_resident_ptr, imm_ptr
             );
@@ -299,7 +302,7 @@ fn test_trample_resident() void {
 
     // infected spawn without MLS sites always infects uninfected resident
     genome_mls.initialize_one(spawn_ptr);
-    spawn[0] ^= ~genome_mls.mlsMask;
+    spawn[0] ^= 0xFF000000;
     for (@range(u16, 32)) |_| {
         genome_mls._clear(resident_ptr);
         genome_mls.trample_resident(resident_ptr, spawn_ptr);
@@ -309,13 +312,13 @@ fn test_trample_resident() void {
     }
 
     // infected spawn with MLS site 0 never infects
-    spawn[0] |= 0x01;
+    spawn[0] |= 0x00010000;
     for (@range(u16, 32)) |_| {
         genome_mls._clear(resident_ptr);
         genome_mls.trample_resident(resident_ptr, spawn_ptr);
         @assert(genome_mls._is_clear(resident_ptr));
     }
-    spawn[0] &= ~@as(u32, 0x01);
+    spawn[0] &= ~@as(u32, 0x00010000);
     var spawnSnapshot = @zeros(genome_mls.genome_t);
     for (@range(u16, genome_mls.gSize)) |i| { spawnSnapshot[i] = spawn[i]; }
 
@@ -324,7 +327,7 @@ fn test_trample_resident() void {
     var template = @zeros(genome_mls.genome_t);
     var template_ptr = @ptrcast(genome_mls.genomePtr_t, &template[0]);
     genome_mls.initialize_one(template_ptr);
-    template[0] |= 0x80;
+    template[0] |= 0x00800000;
     const nTrials: u16 = 200;
     var nClear: u16 = 0;
     for (@range(u16, nTrials)) |_| {

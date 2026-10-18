@@ -197,13 +197,13 @@ find "${WORKDIR}/03-postprocess" -mindepth 2 -maxdepth 2 -type f \
             ((pl.col("data_hex").str.slice(2*b, 2).str.to_integer(base=16)
             ^ pl.col(f"flag_nand_mask_byte{b}"))
             & pl.col(f"flag_is_focal_mask_byte{b}")).bitwise_count_ones()
-            for b in range(8)
+            for b in range(2)
         ).alias("focal_trait_count")' \
         --with-column 'pl.sum_horizontal(
             ((pl.col("data_hex").str.slice(2*b, 2).str.to_integer(base=16)
             ^ pl.col(f"flag_nand_mask_byte{b}"))
             & (~pl.col(f"flag_is_focal_mask_byte{b}"))).bitwise_count_ones()
-            for b in range(8)
+            for b in range(2)
         ).cast(pl.UInt8).alias("nonfocal_trait_count")' \
         --with-column '*(
             (
@@ -220,7 +220,7 @@ find "${WORKDIR}/03-postprocess" -mindepth 2 -maxdepth 2 -type f \
                     != 0
                 ).then(2).otherwise(1)
             ).cast(pl.UInt8).alias(alias)
-            for B in range(8)
+            for B in range(2)
             for b in range(8)
             for alias in (f"trait_byte{B}_bit{b}", f"trait_num{B * 8 + b}")
         )' \

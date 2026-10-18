@@ -1,17 +1,18 @@
 // memory layout ===============================================================
-// byte 0 FLAG SITES (8 bytes)
-// byte 1   word 0 bits 0-7: MLS sites (bit i -> effect size level i)
-// byte 2   all other bits: neutral sites (word 0 bits 8-11 start as 1's)
-// byte 3
-// byte 4
+// byte 0 COUNTER (u16, 2 bytes)
+// byte 1
+// byte 2 FLAG SITES (2 bytes)
+// byte 3   byte 2: MLS sites (bit i -> effect size level i)
+//          byte 3: neutral sites (bits 0-3 start as 1's)
+// byte 4 BITFIELD (16 bytes)
 // byte 5
 // byte 6
 // byte 7
-// byte 8 COUNTER (u32, 4 bytes)
+// byte 8
 // byte 9
 // byte 10
 // byte 11
-// byte 12 BITFIELD (16 bytes)
+// byte 12
 // byte 13
 // byte 14
 // byte 15
@@ -19,15 +20,12 @@
 // byte 17
 // byte 18
 // byte 19
-// byte 20
-// byte 21
-// byte 22
-// byte 23
-// byte 24
-// byte 25
-// byte 26
-// byte 27
-// TOTAL: 7 words -> 28 bytes
+// TOTAL: 5 words -> 20 bytes
+//
+// Bytes are as stored on device (little-endian); in data_hex (big-endian
+// words), word 0 reads as flag sites (neutral then MLS byte), then counter.
+// The counter saturates at 0xFFFF (~32k generations), after which
+// instrumentation stops advancing.
 //
 // individual-host interpretation ==============================================
 // Each population member is an independent host: a clear genome is an
@@ -61,12 +59,13 @@
 //     unless transmission is blocked: each MLS site present independently
 //     blocks transmission with probability s_i (times
 //     CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE, default 1.0).
-// Immigrants likewise only infect uninfected residents, subject to the same
+// Immigration (clobber_immigrant) likewise only allows infected immigrants to
+// infect the uninfected residents they would replace, subject to the same
 // transmission reduction.
 //
-// In data_hex (big-endian words), MLS site i is flag byte 3, bit i; the
-// metadata below gives each site's transmission reduction and within-host
-// gain and loss probabilities.
+// In data_hex, MLS site i is flag byte 1, bit i; the metadata below gives
+// each site's transmission reduction and within-host gain and loss
+// probabilities.
 
 //! {
 //!     "dstream_algo": (
@@ -75,35 +74,23 @@
 //!         ),
 //!         pl.Categorical,
 //!     ),
-//!     "dstream_storage_bitoffset": (96, pl.UInt8),
+//!     "dstream_storage_bitoffset": (32, pl.UInt8),
 //!     "dstream_storage_bitwidth": (128, pl.UInt8),
-//!     "dstream_T_bitoffset": (64, pl.UInt8),
-//!     "dstream_T_bitwidth": (32, pl.UInt8),
+//!     "dstream_T_bitoffset": (16, pl.UInt8),
+//!     "dstream_T_bitwidth": (16, pl.UInt8),
 //!     "dstream_S": (128, pl.UInt8),
 //!     "flag_site_bitwidth": (1, pl.UInt8),
 //!     "flag_sites_bitoffset": (0, pl.UInt8),
-//!     "flag_sites_bitwidth": (64, pl.UInt8),
+//!     "flag_sites_bitwidth": (16, pl.UInt8),
 //!     "flag_is_focal_mask_byte0": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte1": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte2": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte3": (0xFF, pl.UInt8),
-//!     "flag_is_focal_mask_byte4": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte5": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte6": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte7": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte0": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte1": (0xFF, pl.UInt8),
+//!     "flag_nand_mask_byte0": (0x0F, pl.UInt8),
 //!     "flag_nand_mask_byte1": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte2": (0x0F, pl.UInt8),
-//!     "flag_nand_mask_byte3": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte4": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte5": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte6": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte7": (0x00, pl.UInt8),
 //!     "mls_host_clear_p": (float(compconf_data.get(
 //!         "CEREBRASLIB_MLS_HOST_CLEAR_P:f32", 0.1,
 //!     )), pl.Float32),
 //!     **{
-//!         f"mls_{what}_p_byte3_bit{bit}": (p, pl.Float32)
+//!         f"mls_{what}_p_byte1_bit{bit}": (p, pl.Float32)
 //!         for bit, s in enumerate(
 //!             (1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005),
 //!         )
@@ -128,7 +115,7 @@
 //!             ),
 //!         )
 //!     },
-//!     "nWav": (7, pl.UInt8),
+//!     "nWav": (5, pl.UInt8),
 //! }
 
 // module imports =============================================================
@@ -158,7 +145,7 @@ const opscalar = @import_module("cerebraslib/opscalar.csl");
 const S = 128;
 
 // module config specs ========================================================
-const gSize: u16 = 7;
+const gSize: u16 = 5;
 const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
 const nMlsSites: u16 = 8;
@@ -166,7 +153,9 @@ const nTraitVals: u16 = nMlsSites + 2; // clear, or 1 + number of MLS sites
 const hasImmClobber: bool = true;
 const hasNotifyExtinct: bool = false;
 
-const mlsMask: u32 = 0x000000FF;
+const mlsMask: u32 = 0x00FF0000;
+const mlsShift: u32 = 16;
+const counterMax: u16 = 0xFFFF;
 
 // compile-time configuration =================================================
 const _pmut_log2: u8 = compconf.get_value_or( //nofmt
@@ -241,16 +230,21 @@ fn _get_mls_transmission_reduction_p(site: u16) f32 {
     return _mlsEffectSizes[site] * _p_transmission_reduction_scale;
 }
 
+fn _get_counter(genome: genomePtr_t) u16 {
+    const genome_halfwords = @ptrcast([*]u16, genome);
+    return genome_halfwords[0];
+}
+
 fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
     // bitwise mutation applies to neutral sites only
-    const mlsBits = genome[0] & mlsMask;
-    bitmanip.mutate_log2p(@ptrcast([*]u16, genome), 4, log2p);
-    genome[0] = (genome[0] & ~mlsMask) | mlsBits;
+    var flags = @zeros([1]u16);
+    bitmanip.mutate_log2p(@ptrcast([*]u16, &flags), 1, log2p);
+    genome[0] ^= (@as(u32, flags[0]) << mlsShift) & ~mlsMask;
 }
 
 fn _apply_withinhost_selection(genome: genomePtr_t) void {
     for (@range(u16, nMlsSites)) |i| {
-        const bit = @as(u32, 1) << @as(u32, i);
+        const bit = @as(u32, 1) << (mlsShift + @as(u32, i));
         const isSet = (genome[0] & bit) != 0;
         const p = (if (isSet)
             _get_mls_withinhost_loss_p(i)
@@ -262,7 +256,7 @@ fn _apply_withinhost_selection(genome: genomePtr_t) void {
 
 /// Does transmission of genome get blocked by its MLS sites?
 fn _is_transmission_blocked(genome: genomePtr_t) bool {
-    const mlsBits = genome[0] & mlsMask;
+    const mlsBits = (genome[0] & mlsMask) >> mlsShift;
     if (mlsBits != 0) {
         for (@range(u16, nMlsSites)) |i| {
             const isSet = ((mlsBits >> @as(u32, i)) & 1) != 0;
@@ -274,13 +268,26 @@ fn _is_transmission_blocked(genome: genomePtr_t) bool {
     return false;
 }
 
+/// Does infected donor transmit to uninfected recipient? Infected recipients
+/// can't be (re)infected, and donor's MLS sites may block transmission.
+fn _can_infect(recipient: genomePtr_t, donor: genomePtr_t) bool {
+    return (
+        _is_clear(recipient)
+        and !_is_clear(donor)
+        and !_is_transmission_blocked(donor)
+    );
+}
+
 fn _step_instrumentation(genome: genomePtr_t) void {
+    // saturated counter stops instrumentation, rather than wrapping to clear
+    if (_get_counter(genome) == counterMax) return;
+
     // elapse generation in bitfield
     if (opscalar.unifbool()) {
-        const T = @ptrcast([*]u32, genome)[2];
+        const T = @as(u32, _get_counter(genome));
         const site = dstream_algo.assign_storage_site(S, T);
 
-        const offset_bits: u16 = (8 + 4) * 8;
+        const offset_bits: u16 = 4 * 8;
         const target_bit = @as(u16, site) + offset_bits;
 
         const genome_bytes = @ptrcast([*]u8, genome);
@@ -292,7 +299,8 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     }
 
     // elapse generation in counter
-    @ptrcast([*]u32, genome)[2] += 1;
+    const genome_halfwords = @ptrcast([*]u16, genome);
+    genome_halfwords[0] += 1;
 }
 
 inline fn _clear(genome: genomePtr_t) void {
@@ -301,12 +309,10 @@ inline fn _clear(genome: genomePtr_t) void {
     genome[2] = 0;
     genome[3] = 0;
     genome[4] = 0;
-    genome[5] = 0;
-    genome[6] = 0;
 }
 
 inline fn _is_clear(genome: genomePtr_t) bool {
-    const res: bool = genome[2] == 0;
+    const res: bool = _get_counter(genome) == 0;
     return res;
 }
 
@@ -336,33 +342,27 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 
 fn initialize_one(genome: genomePtr_t) void {
     _clear(genome);
-    genome[0] |= 0x0F00; // initialize 4 neutral sites as 1's
+    genome[0] |= 0x0F000000; // initialize 4 neutral sites as 1's
     // (to hint for testing endianness when decoding)
-    genome[2] = S; // initialize counter to S
+    genome[0] |= S; // initialize counter to S
     // randomize hstrat bitfield
-    bitmanip.randomize(@ptrcast([*]u16, &genome[3]), 8);
+    bitmanip.randomize(@ptrcast([*]u16, &genome[1]), 8);
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
-    // immigrants only infect uninfected residents, subject to transmission
-    // reduction; otherwise, overwrite immigrant with resident so that copying
-    // immigrant in is a no-op
-    if (_is_clear(immigrant)) {
-        for (@range(u16, gSize)) |i| { immigrant[i] = resident[i]; }
-        return false;
-    } else if (!_is_clear(resident) or _is_transmission_blocked(immigrant)) {
-        for (@range(u16, gSize)) |i| { immigrant[i] = resident[i]; }
-        return true;
-    }
-    return false;
+    // if immigrant can't infect, overwrite immigrant with resident so that
+    // copying immigrant in is a no-op; count blocked infected immigrants
+    if (_can_infect(resident, immigrant)) return false;
+    const isClobbered = !_is_clear(immigrant);
+    for (@range(u16, gSize)) |i| { immigrant[i] = resident[i]; }
+    return isClobbered;
 }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
     if (!_is_clear(resident)) {
         // infected hosts are not reinfected, but are occasionally cleared
         if (opscalar.p(_p_host_clear)) _clear(resident);
-    } else if (!_is_clear(spawn) and !_is_transmission_blocked(spawn)) {
-        // infected spawn transmits to uninfected host
+    } else if (_can_infect(resident, spawn)) {
         for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
     }
 }

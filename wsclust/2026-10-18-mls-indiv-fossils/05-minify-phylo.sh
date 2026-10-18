@@ -149,7 +149,7 @@ echo "PHYLO_MINIFIED ${PHYLO_MINIFIED}"
 # Space-saving re-encoding (see phylogeny-space-optimizations.md); keeps
 # singleton roots. Lossy: drops data_hex and dstream_data_id, and collapses
 # each maximal clade of genomes sharing identical traits onto its root.
-# 1. pack 64 trait_num* (0/1/2) columns into two UInt64 bitmasks; rebuild as
+# 1. pack 16 trait_num* (0/1/2) columns into two UInt64 bitmasks; rebuild as
 #    trait_num{i} = bit i of trait_present * (bit i of trait_focal + 1)
 #    (null trait_present marks taxa without a genome)
 # 2. keep only selected columns, dropping ones redundant with others or
@@ -173,14 +173,14 @@ echo "${PHYLO_SOURCE}" \
             pl.sum_horizontal(
                 (pl.col(f"trait_num{i}") != 0).cast(pl.UInt64)
                 * pl.lit(1 << i, dtype=pl.UInt64)
-                for i in range(64)
+                for i in range(16)
             )
         ).alias("trait_present")' \
         --with-column 'pl.when(pl.col("data_hex").is_not_null()).then(
             pl.sum_horizontal(
                 pl.col(f"flag_is_focal_mask_byte{B}").cast(pl.UInt64)
                 * pl.lit(1 << (8 * B), dtype=pl.UInt64)
-                for B in range(8)
+                for B in range(2)
             )
         ).alias("trait_focal")' \
         --select "id" \
