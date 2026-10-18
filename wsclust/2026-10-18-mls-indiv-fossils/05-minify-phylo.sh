@@ -141,122 +141,135 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 PHYLOFRAME_CONTAINER="docker://ghcr.io/mmore500/phyloframe:v0.12.1"
 echo "PHYLOFRAME_CONTAINER ${PHYLOFRAME_CONTAINER}"
-PHYLO_SOURCE="${WORKDIR}/04-build-phylo/a=phylogeny+ext=.pqt"
-echo "PHYLO_SOURCE ${PHYLO_SOURCE}"
-PHYLO_MINIFIED="${WORKDIR_STEP}/a=phylogeny+minified+ext=.pqt"
-echo "PHYLO_MINIFIED ${PHYLO_MINIFIED}"
+# Minify each run's phylogeny independently, one output per config subdir.
+for CONFIG_DIR in "${WORKDIR}/04-build-phylo"/*/; do
+    CONFIG_NAME="$(basename "${CONFIG_DIR}")"
+    echo
+    echo "====== Minifying phylogeny for config: ${CONFIG_NAME} ======"
+    echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 
-# Space-saving re-encoding (see phylogeny-space-optimizations.md); keeps
-# singleton roots. Lossy: drops data_hex and dstream_data_id, and collapses
-# each maximal clade of genomes sharing identical traits onto its root.
-# 1. pack 16 trait_num* (0/1/2) columns into two UInt64 bitmasks; rebuild as
-#    trait_num{i} = bit i of trait_present * (bit i of trait_focal + 1)
-#    (null trait_present marks taxa without a genome)
-# 2. keep only selected columns, dropping ones redundant with others or
-#    rebuildable on load (trait_byte{B}_bit{b}: trait_num{8B+b};
-#    bookend_right/value: bookend_left; hstrat_rank: origin_time;
-#    position: row * nCol + col; (non)focal_trait_count: popcount of
-#    trait_present & (~)trait_focal), plus data_hex, dstream_data_id,
-#    bookend_left, and flag masks
-# 3. collapse monomorphic clades, keeping clade root's origin_time/rank cols,
-#    first member genome's other cols, genome count, and latest origin_time
-# 4. fill nulls in single-valued (e.g., config) columns
-# 5. reorder rows depth-first, replacing id/ancestor_id with ancestor_offset;
-#    rebuild as id = row index, ancestor_id = id - ancestor_offset
-# 6. write with zstd level 19
-echo "${PHYLO_SOURCE}" \
-    | singularity exec "${PHYLOFRAME_CONTAINER}" \
-        python3 -m phyloframe.legacy._alifestd_pipe_unary_ops_polars \
-        "${PHYLO_MINIFIED}" \
-        --with-column 'pl.col("data_hex").is_not_null().alias("is_genome")' \
-        --with-column 'pl.when(pl.col("data_hex").is_not_null()).then(
-            pl.sum_horizontal(
-                (pl.col(f"trait_num{i}") != 0).cast(pl.UInt64)
-                * pl.lit(1 << i, dtype=pl.UInt64)
-                for i in range(16)
-            )
-        ).alias("trait_present")' \
-        --with-column 'pl.when(pl.col("data_hex").is_not_null()).then(
-            pl.sum_horizontal(
-                pl.col(f"flag_is_focal_mask_byte{B}").cast(pl.UInt64)
-                * pl.lit(1 << (8 * B), dtype=pl.UInt64)
-                for B in range(2)
-            )
-        ).alias("trait_focal")' \
-        --select "id" \
-        --select "ancestor_id" \
-        --select "origin_time" \
-        --select "dstream_rank" \
-        --select "dstream_S" \
-        --select "hstrat_differentia_bitwidth" \
-        --select "is_extant" \
-        --select "is_genome" \
-        --select "trait_present" \
-        --select "trait_focal" \
-        --select "layer" \
-        --select "layer_T" \
-        --select "row" \
-        --select "col" \
-        --select "subgrid" \
-        --select "subgrid_row" \
-        --select "subgrid_col" \
-        --select "config" \
-        --select "file" \
-        --select "replicate" \
-        --select "sample_per_stratum" \
-        --select "genomeFlavor" \
-        --select "populationFlavor" \
-        --select "memcpyMajor" \
-        --select "globalSeed" \
-        --select "^n(Col|Row|Wav|Trait|Cycle|ColSubgrid|RowSubgrid)$" \
-        --select "nonBlock" \
-        --select "tilePopSize" \
-        --select "tournSize" \
-        --select "msec" \
-        --select "tsc" \
-        --select "dstream_algo" \
-        --select "^dstream_(storage|T)_bit(offset|width)$" \
-        --select "dstream_S_right" \
-        --select "^flag_sites?_bit(offset|width)$" \
-        --select "^mls_(transmission_reduction|withinhost_gain|withinhost_loss)_p_byte\d+_bit\d+$" \
-        --select "mls_host_clear_p" \
-        --select "_compconf_dummy" \
-        --select "^CEREBRASLIB_.*$" \
-        --select "^ASYNC_GA_.*$" \
-        --op 'lambda df: df.collect()' \
-        --op 'lambda df: pfl.alifestd_agg_monomorphic_clades_polars(
-            df,
-            by="trait_present",
-            trait_mask="is_genome",
-            named_aggs={
-                **{
-                    col: pl.col(col).filter(pl.col("is_genome")).first()
-                    for col in df.columns
-                    if col not in ("id", "ancestor_id", "trait_present", "is_genome")
+    CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
+    CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
+    mkdir -p "${CONFIG_WORKDIR}"
+    mkdir -p "${CONFIG_RESULTDIR}"
+
+    PHYLO_SOURCE="${CONFIG_DIR}a=phylogeny+ext=.pqt"
+    echo "PHYLO_SOURCE ${PHYLO_SOURCE}"
+    PHYLO_MINIFIED="${CONFIG_WORKDIR}/a=phylogeny+minified+ext=.pqt"
+    echo "PHYLO_MINIFIED ${PHYLO_MINIFIED}"
+
+    # Space-saving re-encoding (see phylogeny-space-optimizations.md); keeps
+    # singleton roots. Lossy: drops data_hex and dstream_data_id, and collapses
+    # each maximal clade of genomes sharing identical traits onto its root.
+    # 1. pack 16 trait_num* (0/1/2) columns into two UInt64 bitmasks; rebuild as
+    #    trait_num{i} = bit i of trait_present * (bit i of trait_focal + 1)
+    #    (null trait_present marks taxa without a genome)
+    # 2. keep only selected columns, dropping ones redundant with others or
+    #    rebuildable on load (trait_byte{B}_bit{b}: trait_num{8B+b};
+    #    bookend_right/value: bookend_left; hstrat_rank: origin_time;
+    #    position: row * nCol + col; (non)focal_trait_count: popcount of
+    #    trait_present & (~)trait_focal), plus data_hex, dstream_data_id,
+    #    bookend_left, and flag masks
+    # 3. collapse monomorphic clades, keeping clade root's origin_time/rank cols,
+    #    first member genome's other cols, genome count, and latest origin_time
+    # 4. fill nulls in single-valued (e.g., config) columns
+    # 5. reorder rows depth-first, replacing id/ancestor_id with ancestor_offset;
+    #    rebuild as id = row index, ancestor_id = id - ancestor_offset
+    # 6. write with zstd level 19
+    echo "${PHYLO_SOURCE}" \
+        | singularity exec "${PHYLOFRAME_CONTAINER}" \
+            python3 -m phyloframe.legacy._alifestd_pipe_unary_ops_polars \
+            "${PHYLO_MINIFIED}" \
+            --with-column 'pl.col("data_hex").is_not_null().alias("is_genome")' \
+            --with-column 'pl.when(pl.col("data_hex").is_not_null()).then(
+                pl.sum_horizontal(
+                    (pl.col(f"trait_num{i}") != 0).cast(pl.UInt64)
+                    * pl.lit(1 << i, dtype=pl.UInt64)
+                    for i in range(16)
+                )
+            ).alias("trait_present")' \
+            --with-column 'pl.when(pl.col("data_hex").is_not_null()).then(
+                pl.sum_horizontal(
+                    pl.col(f"flag_is_focal_mask_byte{B}").cast(pl.UInt64)
+                    * pl.lit(1 << (8 * B), dtype=pl.UInt64)
+                    for B in range(2)
+                )
+            ).alias("trait_focal")' \
+            --select "id" \
+            --select "ancestor_id" \
+            --select "origin_time" \
+            --select "dstream_rank" \
+            --select "dstream_S" \
+            --select "hstrat_differentia_bitwidth" \
+            --select "is_extant" \
+            --select "is_genome" \
+            --select "trait_present" \
+            --select "trait_focal" \
+            --select "layer" \
+            --select "layer_T" \
+            --select "row" \
+            --select "col" \
+            --select "subgrid" \
+            --select "subgrid_row" \
+            --select "subgrid_col" \
+            --select "config" \
+            --select "file" \
+            --select "replicate" \
+            --select "sample_per_stratum" \
+            --select "genomeFlavor" \
+            --select "populationFlavor" \
+            --select "memcpyMajor" \
+            --select "globalSeed" \
+            --select "^n(Col|Row|Wav|Trait|Cycle|ColSubgrid|RowSubgrid)$" \
+            --select "nonBlock" \
+            --select "tilePopSize" \
+            --select "tournSize" \
+            --select "msec" \
+            --select "tsc" \
+            --select "dstream_algo" \
+            --select "^dstream_(storage|T)_bit(offset|width)$" \
+            --select "dstream_S_right" \
+            --select "^flag_sites?_bit(offset|width)$" \
+            --select "^mls_(transmission_reduction|withinhost_gain|withinhost_loss)_p_byte\d+_bit\d+$" \
+            --select "mls_host_clear_p" \
+            --select "_compconf_dummy" \
+            --select "^CEREBRASLIB_.*$" \
+            --select "^ASYNC_GA_.*$" \
+            --op 'lambda df: df.collect()' \
+            --op 'lambda df: pfl.alifestd_agg_monomorphic_clades_polars(
+                df,
+                by="trait_present",
+                trait_mask="is_genome",
+                named_aggs={
+                    **{
+                        col: pl.col(col).filter(pl.col("is_genome")).first()
+                        for col in df.columns
+                        if col not in ("id", "ancestor_id", "trait_present", "is_genome")
+                    },
+                    **{
+                        col: pl.col(col).first()
+                        for col in (
+                            "origin_time", "dstream_rank", "dstream_S",
+                            "hstrat_differentia_bitwidth", "config",
+                        )
+                    },
+                    "clade_size": pl.col("is_genome").sum(),
+                    "last_origin_time": pl.col("origin_time").max(),
                 },
-                **{
-                    col: pl.col(col).first()
-                    for col in (
-                        "origin_time", "dstream_rank", "dstream_S",
-                        "hstrat_differentia_bitwidth", "config",
-                    )
-                },
-                "clade_size": pl.col("is_genome").sum(),
-                "last_origin_time": pl.col("origin_time").max(),
-            },
-        ).drop("is_monomorphic_clade")' \
-        --op 'lambda df: df.with_columns(
-            pl.col(col).fill_null(df[col].drop_nulls().first())
-            for col in df.columns
-            if df[col].has_nulls() and df[col].drop_nulls().n_unique() == 1
-        )' \
-        --op 'pfl.alifestd_assign_contiguous_ids_polars' \
-        --op 'pfl.alifestd_minify_polars' \
-        --shrink-dtypes \
-        --eager-read --eager-write \
-        --write-kwarg 'compression="zstd"' \
-        --write-kwarg 'compression_level=19' \
-        | tee "${RESULTDIR_STEP}/_alifestd_pipe_unary_ops_polars.log"
+            ).drop("is_monomorphic_clade")' \
+            --op 'lambda df: df.with_columns(
+                pl.col(col).fill_null(df[col].drop_nulls().first())
+                for col in df.columns
+                if df[col].has_nulls() and df[col].drop_nulls().n_unique() == 1
+            )' \
+            --op 'pfl.alifestd_assign_contiguous_ids_polars' \
+            --op 'pfl.alifestd_minify_polars' \
+            --shrink-dtypes \
+            --eager-read --eager-write \
+            --write-kwarg 'compression="zstd"' \
+            --write-kwarg 'compression_level=19' \
+            | tee "${CONFIG_RESULTDIR}/_alifestd_pipe_unary_ops_polars.log"
+done
 
 ls -l "${PHYLO_SOURCE}" "${PHYLO_MINIFIED}" \
     | tee "${RESULTDIR_STEP}/file-sizes.txt"
