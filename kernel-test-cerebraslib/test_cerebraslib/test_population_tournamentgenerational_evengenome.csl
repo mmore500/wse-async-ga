@@ -1,0 +1,94 @@
+const genome2 = @import_module("cerebraslib/genome/genome_frozenliteral2.csl");
+const population2 = @import_module("cerebraslib/population_tournamentgenerational.csl", .{
+    .genome = genome2,
+    .popSize = 32,
+    .tournamentSize = 5.0,
+    .pExtinction = 0.0,
+});
+
+const genome4 = @import_module("cerebraslib/genome/genome_frozenliteral4.csl");
+const population4 = @import_module("cerebraslib/population_tournamentgenerational.csl", .{
+    .genome = genome4,
+    .popSize = 32,
+    .tournamentSize = 5.0,
+    .pExtinction = 0.0,
+});
+
+// step 1: sample_n word indices
+fn check_sample_n2(n: u16) void {
+    population2._sample_n(n);
+    for (@range(u16, n)) |k| {
+        const base = population2.indexBuf[k];
+        @assert(base % genome2.gSize == 0);
+        @assert(base < population2.bufSize);
+        for (@range(u16, genome2.gSize)) |w| {
+            @assert(population2.swap[k * genome2.gSize + w] == base + w);
+        }
+    }
+}
+
+fn check_sample_n4(n: u16) void {
+    population4._sample_n(n);
+    for (@range(u16, n)) |k| {
+        const base = population4.indexBuf[k];
+        @assert(base % genome4.gSize == 0);
+        @assert(base < population4.bufSize);
+        for (@range(u16, genome4.gSize)) |w| {
+            @assert(population4.swap[k * genome4.gSize + w] == base + w);
+        }
+    }
+}
+
+// step 2: validate all genomes
+fn check_all2() void {
+    for (@range(u16, 32)) |i| {
+        @assert(genome2._validate(population2._get_ith_genome(i)));
+    }
+}
+
+fn check_all4() void {
+    for (@range(u16, 32)) |i| {
+        @assert(genome4._validate(population4._get_ith_genome(i)));
+    }
+}
+
+var emBuf2 = @zeros([4 * 2]u32);
+const emBufDsd2 = @get_dsd(mem1d_dsd, .{ .tensor_access = |i|{4 * 2} -> emBuf2[i] });
+var emBuf4 = @zeros([4 * 4]u32);
+const emBufDsd4 = @get_dsd(mem1d_dsd, .{ .tensor_access = |i|{4 * 4} -> emBuf4[i] });
+
+fn do_test() void {
+    population2.init_module();
+    check_all2();
+    check_sample_n2(1);
+    check_sample_n2(4);
+    check_sample_n2(32);
+    check_all2();
+
+    population2.emigrate_genomes(emBufDsd2, 4);
+    for (@range(u16, 4)) |k| {
+        @assert(genome2._validate(@ptrcast([*]u32, &emBuf2[k * 2])));
+    }
+    population2.immigrate_genomes(@ptrcast([*]u32, &emBuf2), 4);
+    check_all2();
+
+    population2._eval_fitness_all();
+    check_all2();
+    population2._perform_selection_all();
+    check_all2();
+    population2.do_generation();
+    check_all2();
+
+    population4.init_module();
+    check_all4();
+    check_sample_n4(1);
+    check_sample_n4(4);
+    check_sample_n4(32);
+    population4.emigrate_genomes(emBufDsd4, 4);
+    for (@range(u16, 4)) |k| {
+        @assert(genome4._validate(@ptrcast([*]u32, &emBuf4[k * 4])));
+    }
+    population4.immigrate_genomes(@ptrcast([*]u32, &emBuf4), 4);
+    population4.do_generation();
+    check_all4();
+}
