@@ -38,15 +38,19 @@
 //
 // Mutation step (elapse_inheritance_of) incorporates within-host selection.
 // Over an infection of T = CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS (default 25)
-// doublings, with per-doubling mutation rate m (10 ^
-// CEREBRASLIB_MLS_WITHINHOST_LOG10_MUTATION_RATE, default 1e-6), a mutant with
-// relative growth rate b reaches mutant:consensus ratio
+// doublings, with per-doubling mutation rate m = mu / T, where mu (10 ^
+// CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE, default 1e-6) is the
+// per-generation neutral mutation rate, a mutant with relative growth rate b
+// reaches mutant:consensus ratio
 //     y/x = m / (b - 1) * (exp((b - 1) * T) - 1)
 // (see https://github.com/mmore500/allele-evoepi-concept/blob/main/binder/2025-02-04-mutant-ratio-derivation.ipynb).
 // Each generation, each infected host's consensus strain independently flips
 // each MLS site with probability equal to the resulting mutant fraction
 // (y/x) / (1 + y/x): gain with b = 1 + s_i, loss (reversion) with
-// b = 1 / (1 + s_i). Neutral sites mutate bitwise as usual.
+// b = 1 / (1 + s_i). Neutral sites flip (gain or loss) with the b -> 1 limit
+// of the same mutant fraction, i.e., r = m * T = mu, so that neutral sites
+// provide a rate-matched baseline against which MLS site frequencies can be
+// compared (weak MLS sites converge to the neutral flip rate as s_i -> 0).
 //
 // Selection step (calc_fitness_of + trample_resident) incorporates
 // between-host transmission. Fitness is 1 for infected and 0 for uninfected
@@ -65,7 +69,7 @@
 //
 // In data_hex, MLS site i is flag byte 1, bit i; the metadata below gives
 // each site's transmission reduction and within-host gain and loss
-// probabilities.
+// probabilities, as well as the neutral site flip probability.
 
 //! {
 //!     "dstream_algo": (
@@ -89,19 +93,25 @@
 //!     "mls_host_clear_p": (float(compconf_data.get(
 //!         "CEREBRASLIB_MLS_HOST_CLEAR_P:f32", 0.1,
 //!     )), pl.Float32),
+//!     "mls_withinhost_neutral_p": next(
+//!         (r / (1.0 + r), pl.Float32)
+//!         for r in [
+//!             10.0 ** float(compconf_data.get(
+//!                 "CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE:f32", -6.0,
+//!             ))
+//!         ]
+//!     ),
 //!     **{
 //!         f"mls_{what}_p_byte1_bit{bit}": (p, pl.Float32)
 //!         for bit, s in enumerate(
 //!             (1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005),
 //!         )
-//!         for m, T in [(
-//!             10.0 ** float(compconf_data.get(
-//!                 "CEREBRASLIB_MLS_WITHINHOST_LOG10_MUTATION_RATE:f32", -6.0,
-//!             )),
-//!             float(compconf_data.get(
-//!                 "CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS:f32", 25.0,
-//!             )),
-//!         )]
+//!         for T in [float(compconf_data.get(
+//!             "CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS:f32", 25.0,
+//!         ))]
+//!         for m in [10.0 ** float(compconf_data.get(
+//!             "CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE:f32", -6.0,
+//!         )) / T]
 //!         for what, p in (
 //!             ("transmission_reduction", s * float(compconf_data.get(
 //!                 "CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE:f32", 1.0,
@@ -155,14 +165,12 @@ const hasNotifyExtinct: bool = false;
 
 const mlsMask: u32 = 0x00FF0000;
 const mlsShift: u32 = 16;
+const nNeutralSites: u16 = 8;
+const neutralMask: u32 = 0xFF000000;
+const neutralShift: u32 = 24;
 const counterMax: u16 = 0xFFFF;
 
 // compile-time configuration =================================================
-const _pmut_log2: u8 = compconf.get_value_or( //nofmt
-    "CEREBRASLIB_LOG2_PMUT_BITWISE", // nofmt
-    @as(u8, 18), // nofmt
-);
-
 const _fit_fudge: f32 = compconf.get_value_or( //nofmt
     "CEREBRASLIB_NONZERO_FIT_FUDGE", @as(f32, 0.0) // nofmt
 );
@@ -181,10 +189,10 @@ const _withinHostDoublings: f32 = compconf.get_value_or( //nofmt
 );
 comptime { @comptime_assert(_withinHostDoublings > 0.0); }
 
-const _withinHostLog10MutationRate: f32 = compconf.get_value_or( //nofmt
-    "CEREBRASLIB_MLS_WITHINHOST_LOG10_MUTATION_RATE", @as(f32, -6.0) // nofmt
+const _log10NeutralMutationRate: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE", @as(f32, -6.0) // nofmt
 );
-comptime { @comptime_assert(_withinHostLog10MutationRate <= 0.0); }
+comptime { @comptime_assert(_log10NeutralMutationRate <= 0.0); }
 
 // MLS effect sizes ============================================================
 // transmission reduction per MLS site, i.e., base effect size s_i
@@ -194,6 +202,7 @@ var _mlsEffectSizes = [nMlsSites]f32{
 // within-host gain and loss probabilities, lazily initialized
 var _mlsWithinHostGainP = @zeros([nMlsSites]f32);
 var _mlsWithinHostLossP = @zeros([nMlsSites]f32);
+var _mlsWithinHostNeutralP: f32 = 0.0;
 var _mlsWithinHostPIsInit: bool = false;
 
 // internal functions =========================================================
@@ -206,13 +215,16 @@ fn _calc_mutant_fraction(m: f32, b: f32, T: f32) f32 {
 
 fn _init_mls_withinhost_p() void {
     const ln10: f32 = 2.302585092994046;
-    const m = math.exp(ln10 * _withinHostLog10MutationRate);
+    const mu = math.exp(ln10 * _log10NeutralMutationRate);
     const T = _withinHostDoublings;
+    const m = mu / T; // per-doubling mutation rate
     for (@range(u16, nMlsSites)) |i| {
         const b = 1.0 + _mlsEffectSizes[i];
         _mlsWithinHostGainP[i] = _calc_mutant_fraction(m, b, T);
         _mlsWithinHostLossP[i] = _calc_mutant_fraction(m, 1.0 / b, T);
     }
+    // b -> 1 limit of mutant ratio is m * T = mu
+    _mlsWithinHostNeutralP = mu / (1.0 + mu);
     _mlsWithinHostPIsInit = true;
 }
 
@@ -226,6 +238,11 @@ fn _get_mls_withinhost_loss_p(site: u16) f32 {
     return _mlsWithinHostLossP[site];
 }
 
+fn _get_mls_withinhost_neutral_p() f32 {
+    if (!_mlsWithinHostPIsInit) _init_mls_withinhost_p();
+    return _mlsWithinHostNeutralP;
+}
+
 fn _get_mls_transmission_reduction_p(site: u16) f32 {
     return _mlsEffectSizes[site] * _p_transmission_reduction_scale;
 }
@@ -235,11 +252,12 @@ fn _get_counter(genome: genomePtr_t) u16 {
     return genome_halfwords[0];
 }
 
-fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
-    // bitwise mutation applies to neutral sites only
-    var flags = @zeros([1]u16);
-    bitmanip.mutate_log2p(@ptrcast([*]u16, &flags), 1, log2p);
-    genome[0] ^= (@as(u32, flags[0]) << mlsShift) & ~mlsMask;
+fn _apply_mutation(genome: genomePtr_t, p: f32) void {
+    // flip each neutral site with probability p
+    for (@range(u16, nNeutralSites)) |i| {
+        const bit = @as(u32, 1) << (neutralShift + @as(u32, i));
+        if (opscalar.p(p)) genome[0] ^= bit;
+    }
 }
 
 fn _apply_withinhost_selection(genome: genomePtr_t) void {
@@ -320,7 +338,7 @@ inline fn _is_clear(genome: genomePtr_t) bool {
 
 fn elapse_inheritance_of(genome: genomePtr_t) void {
     if (!_is_clear(genome)) {
-        _apply_mutation(genome, _pmut_log2);
+        _apply_mutation(genome, _get_mls_withinhost_neutral_p());
         _apply_withinhost_selection(genome);
         _step_instrumentation(genome); // elapse two steps per generation
         _step_instrumentation(genome);

@@ -17,26 +17,41 @@ fn _is_close(actual: f32, expected: f32) bool {
 }
 
 fn test_mls_withinhost_p() void {
-    // default compconf: mutation rate 1e-6, 25 within-host doublings
+    // default compconf: neutral mutation rate mu = 1e-6, 25 within-host
+    // doublings, so per-doubling mutation rate m = mu / T = 4e-8
     // expected f = r / (1 + r), r = m / (b - 1) * (exp((b - 1) * T) - 1)
     // with b = 1 + s_i for gain and b = 1 / (1 + s_i) for loss
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(0), 0.99998611));
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(1), 0.34924328));
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(2), 0.0020637833));
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(3), 0.00011181244));
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(4), 4.9804379e-05));
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(5), 3.4728632e-05));
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(6), 2.8401735e-05));
-    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(7), 2.6628981e-05));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(0), 0.99965292));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(1), 0.02101576));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(2), 8.271521e-05));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(3), 4.4729776e-06));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(4), 1.9922704e-06));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(5), 1.3891916e-06));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(6), 1.1361004e-06));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(7), 1.0651865e-06));
 
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(0), 1.9999885e-06));
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(1), 2.9992699e-06));
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(2), 4.9662856e-06));
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(3), 9.8665638e-06));
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(4), 1.4614181e-05));
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(5), 1.871683e-05));
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(6), 2.2145689e-05));
-    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(7), 2.3507224e-05));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(0), 7.9999695e-08));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(1), 1.1997114e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(2), 1.9865237e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(3), 3.9466629e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(4), 5.8457546e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(5), 7.4868665e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(6), 8.858464e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(7), 9.4031016e-07));
+
+    // neutral sites: b -> 1 limit, r = m * T = mu
+    @assert(_is_close(genome_mls._get_mls_withinhost_neutral_p(), 1e-6));
+
+    // weak MLS sites converge toward the neutral rate, from above for gain and
+    // from below for loss
+    @assert(
+        genome_mls._get_mls_withinhost_gain_p(genome_mls.nMlsSites - 1)
+        > genome_mls._get_mls_withinhost_neutral_p()
+    );
+    @assert(
+        genome_mls._get_mls_withinhost_loss_p(genome_mls.nMlsSites - 1)
+        < genome_mls._get_mls_withinhost_neutral_p()
+    );
 
     for (@range(u16, 1, genome_mls.nMlsSites, 1)) |i| {
         @assert(
@@ -93,16 +108,12 @@ fn test_elapse_inheritance_of() void {
     genome_mls.elapse_inheritance_of(genome_ptr);
     @assert(genome_mls._get_counter(genome_ptr) == 132);
 
-    // bitwise mutation hits neutral flag sites...
-    const neutralMask: u32 = 0xFF000000;
-    var genome0 = genome[0];
-    while (genome0 == genome[0]) { genome_mls._apply_mutation(genome_ptr, 4); }
-
-    // ... but not MLS sites, counter, or bitfield
+    // mutation with p = 1 flips exactly the 8 neutral flag sites, and not MLS
+    // sites, counter, or bitfield
     var snapshot = @zeros(genome_mls.genome_t);
     for (@range(u16, genome_mls.gSize)) |i| { snapshot[i] = genome[i]; }
-    for (@range(u16, 64)) |_| { genome_mls._apply_mutation(genome_ptr, 1); }
-    @assert((genome[0] & ~neutralMask) == (snapshot[0] & ~neutralMask));
+    genome_mls._apply_mutation(genome_ptr, 1.0);
+    @assert((genome[0] ^ snapshot[0]) == genome_mls.neutralMask);
     for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
         @assert(genome[i] == snapshot[i]);
     }
