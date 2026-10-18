@@ -152,6 +152,8 @@ echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 # Reconstruct one independent tree per run (config), from fossils only
 # (a=fossils+..., not end-state a=genomes+...), with a separate
 # surface_build_tree_over invocation per run writing to its own config subdir.
+# Within each run, partition on `subgrid` so each subgrid gets its own
+# independent tree (genomes from different subgrids never share a tree).
 # Within each run, sample non-empty fossil genomes uniformly within each
 # (layer, subgrid) stratum, taking an equal share of SAMPLE_BUDGET per stratum
 # (at least one). Requires hstrat >=v1.26.1 (surface_build_tree_over, bundling
@@ -181,6 +183,7 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
         python3 -O -m hstrat.dataframe.surface_build_tree_over \
             "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
             --partition-by config \
+            --partition-by subgrid \
             --trie-postprocessor \
                 'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
             --shuffle-over-same-T-seed 1 \
