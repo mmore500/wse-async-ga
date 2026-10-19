@@ -191,9 +191,22 @@ jobs:
         run: |
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
+          export ASYNC_GA_EXECUTE_FLAGS="--dump-population"
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/execute.sh
+
+      - name: Check population dump
+        run: |
+          python3 -c "
+          import glob, polars as pl
+          (path,) = glob.glob('./kernel-async-ga/a=population+*.pqt')
+          df = pl.read_parquet(path)
+          print(df)
+          assert len(df) == 3 * 3 * 32, len(df)
+          assert df['population_index'].max() == 31
+          assert df.select('tile', 'population_index').is_unique().all()
+          "
 
   test-sample-populations:
     name: Test make sample population
