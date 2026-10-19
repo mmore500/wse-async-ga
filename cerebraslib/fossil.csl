@@ -92,7 +92,7 @@ fn pull_sample(tag: u32) void {
 }
 
 comptime {  // symbols let memcpy gather data from device to host
-    if (@strlen(symbolName) > 0) {  // empty name skips export
+    if (@strlen(symbolName) > 0) {  // empty name skips export for testing
         @export_symbol(ptr_bookendBuffer, symbolName);
     }
 }
