@@ -1,0 +1,390 @@
+// memory layout ===============================================================
+// byte 0 FITNESS (f32, 4 bytes)
+// byte 1
+// byte 2
+// byte 3
+// byte 4 DSTREAM_T COUNTER (u32, 4 bytes)
+// byte 5
+// byte 6
+// byte 7
+// byte 8 BITFIELD (12 bytes)
+// byte 9
+// byte 10
+// byte 11
+// byte 12
+// byte 13
+// byte 14
+// byte 15
+// byte 16
+// byte 17
+// byte 18
+// byte 19
+// byte 20 EMBRYO (16 x f16, 32 bytes)
+// ...
+// byte 51
+// byte 52 DEV_MATRIX (256 x f16, 512 bytes, row-major 16x16)
+// ...
+// byte 563
+// TOTAL: 141 words -> 564 bytes
+//
+// EMBRYO is the evolved genotype vector fed into development; DEV_MATRIX is
+// the evolved gene interaction matrix used to iteratively develop EMBRYO
+// into a phenotype (see `_develop`, below). Unlike genome_purifyingsweep.csl,
+// this genome skips parity-protected immigrant validation entirely (no
+// parity bits, no clobber_immigrant enforcement) -- DSTREAM_T COUNTER is a
+// plain, unprotected counter.
+//
+// Ported (roughly) from the Kouvaris et al. 2017 gene regulatory network
+// (GRN) model as prototyped in
+// https://github.com/mmore500/evodd/blob/main/bindle/2026-07-23-exploratory.py
+
+//! {
+//!     "dstream_algo": (
+//!         "dstream." + compconf_data.get(
+//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "hybrid_0_steady_1_tilted_2_circular_3_algo"
+//!         ),
+//!         pl.Categorical,
+//!     ),
+//!     "dstream_storage_bitoffset": (64, pl.UInt8),
+//!     "dstream_storage_bitwidth": (96, pl.UInt8),
+//!     "dstream_T_bitoffset": (32, pl.UInt8),
+//!     "dstream_T_bitwidth": (32, pl.UInt8),
+//!     "dstream_S": (96, pl.UInt8),
+//!     "hstrat_T_dilation": (
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
+//!     "dstream_T_dilation": (
+//!         compconf_data.get("CEREBRASLIB_HSTRAT_T_DILATION:u32", 1),
+//!         pl.UInt32,
+//!     ),
+//!     "embryo_bitoffset": (160, pl.UInt16),
+//!     "embryo_bitwidth": (256, pl.UInt16),
+//!     "dev_matrix_bitoffset": (416, pl.UInt16),
+//!     "dev_matrix_bitwidth": (4096, pl.UInt16),
+//!     "nWav": (141, pl.UInt16),
+//! }
+
+param rng: imported_module;
+
+// module imports =============================================================
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const compconf = @import_module("<compconf>");
+comptime { // access via get_value for logging...
+    const _ = compconf.get_value_or(
+        "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+        "hybrid_0_steady_1_tilted_2_circular_3_algo",
+    );
+} // ... raw string works around sdk v1.0.0 limitation
+const compconf_raw = @import_module("<compconf_raw>");
+const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const dstream_algo_name = (if (has_value)
+    compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
+else
+    "hybrid_0_steady_1_tilted_2_circular_3_algo");
+const dstream_algo = @import_module(
+    @strcat("<downstream/dstream/", dstream_algo_name, ">"),
+);
+const hstrat_T_dilation = compconf.get_value_or(
+    "CEREBRASLIB_HSTRAT_T_DILATION",
+    @as(u32, 1),
+);
+
+const bitmanip = @import_module("cerebraslib/bitmanip.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+const S = 96;
+
+// GRN development model constants (Kouvaris et al. 2017) =====================
+const N: u16 = 16; // embryo/phenotype width
+const S_MATRIX: u16 = 256; // N * N, development matrix element count
+const T_DEVELOP: u16 = 10; // development iteration count
+const ALPHA: f16 = 0.5;
+const TAU1: f16 = 1.0;
+const TAU2: f16 = 0.2;
+
+// elastic-net-style regularization weights, configurable to match the
+// reference notebook's `--l1-scale`/`--l2-scale`/model constants. Default to
+// pure L1 (matches typical elastic-net-as-lasso usage) rather than the
+// notebook CLI's blended default.
+const _l1_scale: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_L1_SCALE", @as(f32, 1.0),
+);
+const _l2_scale: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_L2_SCALE", @as(f32, 0.0),
+);
+const _lam1: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_LAM1", @as(f32, 0.22),
+);
+const _lam2: f32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_LAM2", @as(f32, 38.0),
+);
+
+// how many consecutive generations the schedule dwells on one training
+// pattern ("environment") before advancing to the next (mirrors the
+// reference notebook's per-block environment presentation, simplified to
+// fixed-length blocks)
+const _schedule_block_len: u32 = compconf.get_value_or(
+    "CEREBRASLIB_EVODD_SCHEDULE_BLOCKLEN", @as(u32, 1000),
+);
+
+// mutation rate/magnitude, mirroring reference notebook's `mutate()`: most
+// generations apply no mutation at all; when a mutation does occur, it is
+// *either* a matrix perturbation *or* a single embryo gene tweak, never both
+const _mutation_p: f32 = 0.01;
+const _matrix_mutation_p: f32 = 1.0 / 15.0;
+const _matrix_mutation_bound: f16 = 1.0 / 38400.0; // 1 / (150 * N * N), N = 16
+const _embryo_mutation_lo: f16 = -0.1;
+const _embryo_mutation_hi: f16 = 0.1;
+
+// training-set target phenotypes, transcribed from TRAINING_SET in the
+// reference notebook (S1 = pattern(AAAA), S2 = pattern(ABBA), S3 = pattern(BBAA))
+var _S1 = [N]f16{
+    -1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0,
+    -1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+};
+var _S2 = [N]f16{
+    -1.0, 1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0,
+    1.0, -1.0, -1.0, 1.0, -1.0, -1.0, -1.0, -1.0,
+};
+var _S3 = [N]f16{
+    1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0,
+    -1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+};
+
+// PE-local clock: the highest DSTREAM_T generation counter observed across
+// any genome evaluated on this PE so far (monotonically non-decreasing).
+// Evaluation (training-pattern/schedule selection, see
+// `_target_ptr_for_generation`) is driven by this shared clock rather than
+// any individual genome's own counter, so every population member on this
+// PE is scored against the same "current" environment at any given
+// wall-clock moment, regardless of how far a given lineage's own counter
+// has drifted (relative to its neighbors) due to migration/inheritance
+// history.
+var _highest_seen_generation: u32 = 0;
+
+// development scratch space (module-scope, per DSD requirements -- see
+// cerebraslib/opscalar.csl's `_as16` for the same pattern)
+var _devP = @zeros([N]f16);
+var _devInter = @zeros([N]f16);
+const _devInterDsd = @get_dsd(mem1d_dsd, .{
+    .tensor_access = |i|{N} -> _devInter[i],
+});
+
+// module config specs ========================================================
+const gSize: u16 = 141; // 5 (hstrat) + 8 (embryo) + 128 (dev matrix)
+const genome_t = [gSize]u32;
+const genomePtr_t = [*]u32;
+const nTraitVals: u16 = 1;
+const hasImmClobber: bool = false;
+
+// internal functions =========================================================
+fn _ptr_embryo(genome: genomePtr_t) [*]f16 {
+    return @ptrcast([*]f16, &genome[5]);
+}
+
+fn _ptr_matrix(genome: genomePtr_t) [*]f16 {
+    return @ptrcast([*]f16, &genome[13]);
+}
+
+// Development: iteratively map EMBRYO -> phenotype through DEV_MATRIX,
+// following `develop()` in the reference notebook:
+//   p = G; repeat T_DEVELOP times:
+//     inter = DEV_MATRIX @ p
+//     p = p + TAU1 * tanh(ALPHA * inter) - TAU2 * p
+// The matrix-vector product uses CSL's native fused-multiply-add DSD
+// builtin (`@fmach`), accumulating one column of DEV_MATRIX (row-major,
+// so a stride-N access pattern picks out a column) at a time, mirroring
+// the GEMV pattern from the CSL SDK tutorials
+// (https://sdk.cerebras.ai/csl/tutorials/gemv-02-memory-dsds).
+fn _develop(embryo_ptr: [*]f16, matrix_ptr: [*]f16, out_ptr: [*]f16) void {
+    for (@range(u16, N)) |i| { out_ptr[i] = embryo_ptr[i]; }
+
+    for (@range(u16, T_DEVELOP)) |_| {
+        @fmovh(_devInterDsd, @as(f16, 0.0));
+
+        var col_dsd = @get_dsd(mem1d_dsd, .{
+            .base_address = matrix_ptr,
+            .extent = @as(u16, N),
+            .stride = @as(i8, N),
+        });
+        for (@range(u16, N)) |j| {
+            @fmach(_devInterDsd, _devInterDsd, col_dsd, out_ptr[j]);
+            col_dsd = @increment_dsd_offset(col_dsd, 1, f16);
+        }
+
+        for (@range(u16, N)) |i| {
+            const activated = math.tanh_f16(ALPHA * _devInter[i]);
+            out_ptr[i] = out_ptr[i] + TAU1 * activated - TAU2 * out_ptr[i];
+        }
+    }
+}
+
+// Benefit is the correlation (folded into [0, 1]) between the developed
+// phenotype and a target pattern, following `benefit()` in the reference
+// notebook. Accumulated in f32 for numerical stability.
+fn _benefit_of(p_ptr: [*]f16, target_ptr: [*]f16) f32 {
+    var dot: f32 = 0.0;
+    for (@range(u16, N)) |i| {
+        const p_norm = @as(f32, p_ptr[i]) * (@as(f32, TAU2) / @as(f32, TAU1));
+        dot += p_norm * @as(f32, target_ptr[i]);
+    }
+    return 0.5 * (1.0 + dot / @as(f32, N));
+}
+
+fn _l1_cost(matrix_ptr: [*]f16) f32 {
+    var total: f32 = 0.0;
+    for (@range(u16, S_MATRIX)) |k| {
+        total += math.abs(@as(f32, matrix_ptr[k]));
+    }
+    return total / @as(f32, S_MATRIX);
+}
+
+fn _l2_cost(matrix_ptr: [*]f16) f32 {
+    var total: f32 = 0.0;
+    for (@range(u16, S_MATRIX)) |k| {
+        const v = @as(f32, matrix_ptr[k]);
+        total += v * v;
+    }
+    return total / @as(f32, S_MATRIX);
+}
+
+// Selects the target training pattern from a generation counter (in
+// practice always `_highest_seen_generation`, the shared PE-local clock --
+// see `_compute_fitness`), dwelling on each pattern for
+// `_schedule_block_len` consecutive generations before round-robining to
+// the next -- a simplified, fixed-length-block stand-in for the reference
+// notebook's weighted-interleave block schedule.
+fn _target_ptr_for_generation(generation: u32) [*]f16 {
+    const t_idx = (generation / _schedule_block_len) % 3;
+    const target_ptr = if (t_idx == 0)
+        @ptrcast([*]f16, &_S1)
+    else if (t_idx == 1)
+        @ptrcast([*]f16, &_S2)
+    else
+        @ptrcast([*]f16, &_S3);
+    return target_ptr;
+}
+
+fn _compute_fitness(genome: genomePtr_t) f32 {
+    const embryo_ptr = _ptr_embryo(genome);
+    const matrix_ptr = _ptr_matrix(genome);
+    _develop(embryo_ptr, matrix_ptr, @ptrcast([*]f16, &_devP));
+
+    // evaluation targets the shared PE-local clock, not this genome's own
+    // counter (see `_highest_seen_generation`); bump it here so it is kept
+    // up to date regardless of which caller (elapse_inheritance_of,
+    // initialize_one, direct test calls, ...) triggered this evaluation
+    _highest_seen_generation = math.max(_highest_seen_generation, genome[1]);
+    const target_ptr = _target_ptr_for_generation(_highest_seen_generation);
+
+    const benefit = _benefit_of(@ptrcast([*]f16, &_devP), target_ptr);
+    const regularization = _l1_scale * _lam1 * _l1_cost(matrix_ptr)
+        + _l2_scale * _lam2 * _l2_cost(matrix_ptr);
+    return benefit - regularization;
+}
+
+fn _apply_mutation(genome: genomePtr_t) void {
+    // most generations apply no mutation at all; when one does happen, it
+    // is either a whole-matrix perturbation or (otherwise) a single embryo
+    // gene tweak -- never both in the same generation
+    var mutated = false;
+    if (opscalar.p(_mutation_p)) {
+        mutated = true;
+        if (opscalar.p(_matrix_mutation_p)) {
+            const matrix_ptr = _ptr_matrix(genome);
+            for (@range(u16, S_MATRIX)) |k| {
+                matrix_ptr[k] += random.random_f16(
+                    -_matrix_mutation_bound, _matrix_mutation_bound,
+                );
+            }
+        } else {
+            const embryo_ptr = _ptr_embryo(genome);
+            const i = opscalar.unif16(N);
+            var gi = embryo_ptr[i] + random.random_f16(_embryo_mutation_lo, _embryo_mutation_hi);
+            gi = math.max_f16(math.min_f16(gi, @as(f16, 1.0)), @as(f16, -1.0));
+            embryo_ptr[i] = gi;
+        }
+    }
+
+    // The cached fitness only needs refreshing when the developed
+    // phenotype actually changed (a mutation fired above) or when this
+    // genome's own counter would newly advance the shared PE-local clock
+    // (`_highest_seen_generation`, see `_compute_fitness`) into a new
+    // schedule block -- i.e. the target pattern this genome is evaluated
+    // against just changed. This is checked here (against a *prospective*
+    // update, without actually mutating `_highest_seen_generation`) so the
+    // real update -- and the expensive recompute it implies -- only
+    // happens via `_compute_fitness` itself, below.
+    const t_idx_before = (_highest_seen_generation / _schedule_block_len) % 3;
+    const prospective_highest = math.max(_highest_seen_generation, genome[1]);
+    const t_idx_after = (prospective_highest / _schedule_block_len) % 3;
+    const schedule_changed = t_idx_before != t_idx_after;
+    if (mutated or schedule_changed) {
+        @ptrcast(*f32, genome).* = _compute_fitness(genome);
+    }
+}
+
+fn _do_step_instrumentation(genome: genomePtr_t) void {
+    // elapse generation in bitfield
+    if (rng.next_bit()) {
+        const T = @ptrcast([*]u32, genome)[1] / hstrat_T_dilation;
+        const site = dstream_algo.assign_storage_site(S, T);
+        @assert(site <= S);
+
+        const offset_bits: u16 = (4 + 4) * 8;
+        const target_bit = @as(u16, site) + offset_bits;
+
+        const genome_bytes = @ptrcast([*]u8, genome);
+        if (site != S) bitmanip.flip_nth_bit_with_swaps(genome_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true });
+    }
+}
+
+fn _step_instrumentation(genome: genomePtr_t) void {
+    if (@ptrcast([*]u32, genome)[1] % hstrat_T_dilation == 0) {
+        _do_step_instrumentation(genome);
+    }
+    @ptrcast([*]u32, genome)[1] += 1;
+}
+
+// public API =================================================================
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    _apply_mutation(genome);
+    _step_instrumentation(genome);
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    return @ptrcast(*f32, genome).*;
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    return 0;
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation;
+    @ptrcast([*]u32, genome)[2] = rng.next();
+    @ptrcast([*]u32, genome)[3] = rng.next();
+    @ptrcast([*]u32, genome)[4] = rng.next();
+
+    const embryo_ptr = _ptr_embryo(genome);
+    for (@range(u16, N)) |i| {
+        embryo_ptr[i] = random.random_f16(@as(f16, -1.0), @as(f16, 1.0));
+    }
+
+    const matrix_ptr = _ptr_matrix(genome);
+    for (@range(u16, S_MATRIX)) |k| {
+        matrix_ptr[k] = 0.0;
+    }
+
+    // seed the fitness cache with a real computed value (rather than a
+    // placeholder 0.0) so it isn't stale until the first mutation or
+    // schedule-block boundary triggers a recompute (see _apply_mutation)
+    @ptrcast(*f32, genome).* = _compute_fitness(genome);
+}
+
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+    return false;
+}
