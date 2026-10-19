@@ -1,0 +1,112 @@
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const genome = @import_module("cerebraslib/genome/genome_bitdrift.csl");
+const population = @import_module(
+    "cerebraslib/population_tournamentgenerational.csl",
+    .{
+        .genome = genome,
+        .popSize = 4,
+        .tournamentSize = 2.0,
+        .pExtinction = 0.0,
+    },
+);
+const fossilSnapshot = @import_module(
+    "cerebraslib/fossil.csl",
+    .{
+        .genome = genome, .population = population, .rng = rng,
+        .sampling = "snapshot",
+    },
+);
+const fossilReservoir = @import_module(
+    "cerebraslib/fossil.csl",
+    .{
+        .genome = genome, .population = population, .rng = rng,
+        .sampling = "reservoir",
+    },
+);
+
+const bookendSize = genome.gSize + 2;
+var bookend = @zeros([bookendSize]u32);
+var expected = @zeros([genome.gSize]u32);
+
+fn _clear_bookend() void {
+    for (@range(u16, bookendSize)) |i| { bookend[i] = 0; }
+}
+
+fn _save_expected() void {
+    const genomePtr = population._get_ith_genome(0);
+    for (@range(u16, genome.gSize)) |i| { expected[i] = genomePtr[i]; }
+}
+
+fn _check_bookend(counter: u32, tag: u32) void {
+    @assert(bookend[0] == (tag << 10) | counter);
+    @assert(bookend[genome.gSize + 1] == (tag << 10) | counter);
+    for (@range(u16, genome.gSize)) |i| {
+        @assert(bookend[i + 1] == expected[i]);
+    }
+}
+
+fn test_snapshot() void {
+    _clear_bookend();
+    const bookendPtr = @ptrcast([*]u32, &bookend);
+
+    fossilSnapshot.update();  // no-op in snapshot mode
+    population.do_generation();
+    _save_expected();
+    fossilSnapshot.refresh(bookendPtr, 7);
+    _check_bookend(1, 7);
+
+    population.do_generation();
+    fossilSnapshot.update();
+    _save_expected();
+    fossilSnapshot.refresh(bookendPtr, 7);
+    _check_bookend(2, 7);
+}
+
+fn test_reservoir_fallback() void {
+    _clear_bookend();
+    const bookendPtr = @ptrcast([*]u32, &bookend);
+
+    // no generations since last collection, falls back to 0th genome
+    fossilReservoir.refresh(bookendPtr, 3);  // reset sampling window
+    _save_expected();
+    fossilReservoir.refresh(bookendPtr, 3);
+    _check_bookend(2, 3);
+}
+
+fn test_reservoir_single() void {
+    _clear_bookend();
+    const bookendPtr = @ptrcast([*]u32, &bookend);
+
+    fossilReservoir.refresh(bookendPtr, 5);  // reset sampling window
+    // first generation in window always fills reservoir (probability 1/1)
+    population.do_generation();
+    fossilReservoir.update();
+    _save_expected();
+    // later changes to population do not affect reservoir sample
+    population.do_generation();
+    fossilReservoir.refresh(bookendPtr, 5);
+    _check_bookend(2, 5);
+}
+
+fn test_reservoir_many() void {
+    _clear_bookend();
+    const bookendPtr = @ptrcast([*]u32, &bookend);
+
+    fossilReservoir.refresh(bookendPtr, 1);  // reset sampling window
+    for (@range(u16, 10)) |i| {
+        population.do_generation();
+        fossilReservoir.update();
+    }
+    fossilReservoir.refresh(bookendPtr, 1);
+    @assert(bookend[0] == (1 << 10) | 2);
+    @assert(bookend[genome.gSize + 1] == (1 << 10) | 2);
+}
+
+fn do_test() void {
+    rng.seed(42, 101);
+    population.init_module();
+    test_snapshot();
+    test_reservoir_fallback();
+    test_reservoir_single();
+    test_reservoir_many();
+}
