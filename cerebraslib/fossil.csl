@@ -1,0 +1,101 @@
+// module params ==============================================================
+param genome: imported_module;
+param population: imported_module;
+param rng: imported_module;
+param samplingMode: comptime_string;
+param symbolName: comptime_string;
+
+// module imports =============================================================
+const enum_ = @import_module("cerebraslib/enum.csl");
+
+// sampling mode ==============================================================
+const FossilSamplingEnum = enum(u8) {
+    snapshot,  // 0th population member at collection time
+    reservoir,  // 0th population member, uniform across generations
+};
+
+fn fossil_sampling_from_string(
+    comptime name: comptime_string,
+) FossilSamplingEnum {
+    return enum_.from_string(
+        FossilSamplingEnum,
+        .{
+            .snapshot = FossilSamplingEnum.snapshot,
+            .reservoir = FossilSamplingEnum.reservoir,
+        },
+        name,
+    );
+}
+
+const samplingMode_ = comptime fossil_sampling_from_string(samplingMode);
+
+// global state ===============================================================
+var bookendBuffer = @zeros([genome.gSize + 2]u32);  // w/ bookend validation
+var ptr_bookendBuffer : [*]u32 = &bookendBuffer;
+
+const reservoirSize = comptime if (
+    samplingMode_ == FossilSamplingEnum.reservoir
+) genome.gSize else 1;  // minimal buffer if unused
+var reservoirGenome = @zeros([reservoirSize]u32);
+var generationsSincePull: u32 = 0;
+
+// module functions ===========================================================
+///////////////////////////////////////////////////////////////////////////////
+
+// reservoir sample (algorithm R), kth generation kept w/ probability 1 / k
+fn _reservoir_sample() void {
+    if (rng.p_one_in(generationsSincePull)) {
+        const genomePtr = population._get_ith_genome(0);
+        for (@range(u16, genome.gSize)) |i| {
+            reservoirGenome[i] = genomePtr[i];
+        }
+    }
+}
+
+fn _take_fossil_snapshot() [*]u32 {
+    return population._get_ith_genome(0);
+}
+
+// falls back to snapshot if reservoir empty
+fn _take_fossil_reservoir() [*]u32 {
+    return if (generationsSincePull > 0)
+        @ptrcast([*]u32, &reservoirGenome)
+    else
+        _take_fossil_snapshot();
+}
+
+fn _take_fossil() [*]u32 {
+    if (samplingMode_ == FossilSamplingEnum.reservoir) {
+        return _take_fossil_reservoir();
+    } else {
+        return _take_fossil_snapshot();
+    }
+}
+
+// public interface ===========================================================
+/// Call once per generation, after population.do_generation.
+fn update_sample() void {
+    generationsSincePull += 1;
+    if (samplingMode_ == FossilSamplingEnum.reservoir) { _reservoir_sample(); }
+}
+
+/// Copy fossil genome into bookend buffer, w/ counter + tag bookends.
+fn pull_sample(tag: u32) void {
+    const genomePtr = _take_fossil();
+    generationsSincePull = 0;
+    bookendBuffer[genome.gSize + 1] += 1;
+    bookendBuffer[genome.gSize + 1] &= 0x3FF;  // clear upper bits
+    bookendBuffer[genome.gSize + 1] |= tag << 10;  // set tag
+    for (@range(u16, genome.gSize)) |i| {
+        bookendBuffer[i + 1] = genomePtr[i];
+    }
+    bookendBuffer[0] += 1;
+    bookendBuffer[0] &= 0x3FF;  // clear upper bits
+    bookendBuffer[0] |= tag << 10;  // set tag
+}
+
+comptime {  // symbols let memcpy gather data from device to host
+    if (@strlen(symbolName) > 0) {  // empty name skips export for testing
+        @export_symbol(ptr_bookendBuffer, symbolName);
+    }
+}

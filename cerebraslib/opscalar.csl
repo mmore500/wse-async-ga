@@ -46,6 +46,19 @@ fn p(probability: f32) bool {
     return random.random_f32(0.0, 1.0) < probability;
 }
 
+/// Draw a random 32-bit integer.
+fn random_u32() u32 {
+    const hi = @as(u32, @random16());
+    const lo = @as(u32, @random16());
+    return (hi << 16) | lo;
+}
+
+/// Sample a coin flip with probability one in n.
+fn p_one_in(n: u32) bool {
+    @assert(n > 0);
+    return random_u32() % n == 0;
+}
+
 /// Draw a random 32-bit integer from a poisson distribution with shape lambda
 /// Adapted from https://en.wikipedia.org/wiki/Poisson_distribution
 fn poisson32(lambda: f32) u32 {

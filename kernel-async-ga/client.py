@@ -787,7 +787,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     print("b", end="", flush=True)
     runner.memcpy_d2h(
         out_tensors.ravel(),
-        runner.get_id("genomeBookend"),
+        runner.get_id("fossilBookend"),
         0,  # x0
         0,  # y0
         nCol,  # width

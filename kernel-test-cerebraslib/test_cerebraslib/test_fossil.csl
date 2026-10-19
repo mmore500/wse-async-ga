@@ -1,0 +1,95 @@
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const genome = @import_module("cerebraslib/genome/genome_bitdrift.csl");
+const population = @import_module(
+    "cerebraslib/population_tournamentgenerational.csl",
+    .{
+        .genome = genome,
+        .popSize = 4,
+        .tournamentSize = 2.0,
+        .pExtinction = 0.0,
+    },
+);
+const fossilSnapshot = @import_module(
+    "cerebraslib/fossil.csl",
+    .{
+        .genome = genome, .population = population, .rng = rng,
+        .samplingMode = "snapshot",
+        .symbolName = "",
+    },
+);
+const fossilReservoir = @import_module(
+    "cerebraslib/fossil.csl",
+    .{
+        .genome = genome, .population = population, .rng = rng,
+        .samplingMode = "reservoir",
+        .symbolName = "",
+    },
+);
+
+var expected = @zeros([genome.gSize]u32);
+
+fn _save_expected() void {
+    const genomePtr = population._get_ith_genome(0);
+    for (@range(u16, genome.gSize)) |i| { expected[i] = genomePtr[i]; }
+}
+
+fn _check_bookend(bookend: [*]u32, counter: u32, tag: u32) void {
+    @assert(bookend[0] == (tag << 10) | counter);
+    @assert(bookend[genome.gSize + 1] == (tag << 10) | counter);
+    for (@range(u16, genome.gSize)) |i| {
+        @assert(bookend[i + 1] == expected[i]);
+    }
+}
+
+fn test_snapshot() void {
+    fossilSnapshot.update_sample();  // no-op in snapshot mode
+    population.do_generation();
+    _save_expected();
+    fossilSnapshot.pull_sample(7);
+    _check_bookend(fossilSnapshot.ptr_bookendBuffer, 1, 7);
+
+    population.do_generation();
+    fossilSnapshot.update_sample();
+    _save_expected();
+    fossilSnapshot.pull_sample(7);
+    _check_bookend(fossilSnapshot.ptr_bookendBuffer, 2, 7);
+}
+
+fn test_reservoir_fallback() void {
+    // empty reservoir falls back to 0th genome
+    fossilReservoir.pull_sample(3);  // reset window
+    _save_expected();
+    fossilReservoir.pull_sample(3);
+    _check_bookend(fossilReservoir.ptr_bookendBuffer, 2, 3);
+}
+
+fn test_reservoir_single() void {
+    fossilReservoir.pull_sample(5);  // reset window
+    // first generation always kept
+    population.do_generation();
+    fossilReservoir.update_sample();
+    _save_expected();
+    population.do_generation();
+    fossilReservoir.pull_sample(5);
+    _check_bookend(fossilReservoir.ptr_bookendBuffer, 4, 5);
+}
+
+fn test_reservoir_many() void {
+    fossilReservoir.pull_sample(1);  // reset window
+    for (@range(u16, 3)) |i| {
+        population.do_generation();
+        fossilReservoir.update_sample();
+    }
+    fossilReservoir.pull_sample(1);
+    @assert(fossilReservoir.bookendBuffer[0] == (1 << 10) | 6);
+    @assert(fossilReservoir.bookendBuffer[genome.gSize + 1] == (1 << 10) | 6);
+}
+
+fn do_test() void {
+    rng.seed(42, 101);
+    population.init_module();
+    test_snapshot();
+    test_reservoir_fallback();
+    test_reservoir_single();
+    test_reservoir_many();
+}

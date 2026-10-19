@@ -1,0 +1,14 @@
+/// Look up enum value for comptime string, via struct of string->value fields,
+/// e.g., from_string(fruit, .{ .apple = fruit.apple }, "apple") == fruit.apple
+fn from_string(
+    comptime enumType: type,
+    comptime mapping: anytype,
+    comptime name: comptime_string,
+) enumType {
+    if (!@has_field(mapping, name)) {
+        @comptime_print("enum.from_string: unrecognized value", name);
+    }
+    @comptime_assert(@has_field(mapping, name));
+    @comptime_assert(@type_of(@field(mapping, name)) == enumType);
+    return @field(mapping, name);
+}

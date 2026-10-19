@@ -759,6 +759,31 @@ fn test_p_global_half() void {
     @assert(count < 140);
 }
 
+// === Test p_one_in ===========================================================
+
+fn test_p_one_in_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+
+    var count: u16 = 0;
+    for (@range(u16, 20)) |i| {
+        @assert(rng.p_one_in_(sp, 1));
+        if (rng.p_one_in_(sp, 2)) { count += 1; }
+    }
+    @assert(count > 0 and count < 20);
+}
+
+fn test_p_one_in_global() void {
+    rng.seed(0xABCD1234, 0x5678EF00);
+    var count: u16 = 0;
+    for (@range(u16, 20)) |i| {
+        @assert(rng.p_one_in(1));
+        if (rng.p_one_in(2)) { count += 1; }
+    }
+    @assert(count > 0 and count < 20);
+}
+
 // Global and local p should be independent.
 fn test_p_independence() void {
     var s = [2]u32{ 0, 0 };
@@ -839,4 +864,6 @@ fn do_test() void {
     test_p_global_one();
     test_p_global_half();
     test_p_independence();
+    test_p_one_in_();
+    test_p_one_in_global();
 }

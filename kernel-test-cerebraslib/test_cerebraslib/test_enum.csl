@@ -1,0 +1,34 @@
+const enum_ = @import_module("cerebraslib/enum.csl");
+
+const fruit = enum(u16) { apple, banana = 4, cherry };
+const fruitMapping = .{
+    .apple = fruit.apple, .banana = fruit.banana, .cherry = fruit.cherry,
+};
+
+fn test_from_string() void {
+    const apple = comptime enum_.from_string(fruit, fruitMapping, "apple");
+    const banana = comptime enum_.from_string(fruit, fruitMapping, "banana");
+    const cherry = comptime enum_.from_string(fruit, fruitMapping, "cherry");
+    @comptime_assert(apple == fruit.apple);
+    @comptime_assert(banana == fruit.banana);
+    @comptime_assert(cherry == fruit.cherry);
+    @assert(apple == fruit.apple);
+    @assert(banana == fruit.banana);
+    @assert(cherry == fruit.cherry);
+    @assert(@as(u16, banana) == 4);
+}
+
+fn test_from_string_alias() void {
+    // multiple strings may map to the same enum value
+    const mapping = comptime .{
+        .apple = fruit.apple, .crabapple = fruit.apple,
+    };
+    const crabapple = comptime enum_.from_string(fruit, mapping, "crabapple");
+    @comptime_assert(crabapple == fruit.apple);
+    @assert(crabapple == fruit.apple);
+}
+
+fn do_test() void {
+    test_from_string();
+    test_from_string_alias();
+}

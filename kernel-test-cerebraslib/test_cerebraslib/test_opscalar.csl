@@ -115,6 +115,33 @@ fn test_p() void {
     while (!opscalar.p(0.5)) {}
 }
 
+fn test_random_u32() void {
+    random.set_global_prng_seed(1);
+    const first = opscalar.random_u32();
+    var anyHigh = false;
+    var anyOdd = false;
+    var anyEven = false;
+    var anyDiff = false;
+    for (@range(u16, 20)) |i| {
+        const x = opscalar.random_u32();
+        anyHigh = anyHigh or x >= 0x10000;
+        anyOdd = anyOdd or (x & 1) != 0;
+        anyEven = anyEven or (x & 1) == 0;
+        anyDiff = anyDiff or x != first;
+    }
+    @assert(anyHigh and anyOdd and anyEven and anyDiff);
+}
+
+fn test_p_one_in() void {
+    random.set_global_prng_seed(1);
+    var count: u16 = 0;
+    for (@range(u16, 20)) |i| {
+        @assert(opscalar.p_one_in(1));
+        if (opscalar.p_one_in(2)) { count += 1; }
+    }
+    @assert(count > 0 and count < 20);
+}
+
 fn test_poisson32() void {
     random.set_global_prng_seed(1);
     @assert(opscalar.poisson32(0.0) == 0);
@@ -604,6 +631,8 @@ fn do_test() void {
     test_mul32();
     test_p();
     test_parity32();
+    test_random_u32();
+    test_p_one_in();
     test_poisson32();
     test_popcnt32();
     test_unif16();
