@@ -1,0 +1,388 @@
+// memory layout ===============================================================
+// byte 0 COUNTER (u16, 2 bytes)
+// byte 1
+// byte 2 FLAG SITES (2 bytes)
+// byte 3   byte 2: MLS sites (bit i -> effect size level i)
+//          byte 3: neutral sites (bits 0-3 start as 1's)
+// byte 4 BITFIELD (16 bytes)
+// byte 5
+// byte 6
+// byte 7
+// byte 8
+// byte 9
+// byte 10
+// byte 11
+// byte 12
+// byte 13
+// byte 14
+// byte 15
+// byte 16
+// byte 17
+// byte 18
+// byte 19
+// TOTAL: 5 words -> 20 bytes
+//
+// Bytes are as stored on device (little-endian); in data_hex (big-endian
+// words), word 0 reads as flag sites (neutral then MLS byte), then counter.
+// The counter saturates at 0xFFFF (~32k generations), after which
+// instrumentation stops advancing.
+//
+// individual-host interpretation ==============================================
+// Each population member is an independent host: a clear genome is an
+// uninfected (susceptible) host, and a non-clear genome is an infected host
+// whose genome is the consensus (i.e., transmitted) strain of its infection.
+//
+// MLS sites are beneficial within a host, but harmful between hosts. Site i
+// has effect size
+//     s_i in [1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005].
+//
+// Mutation step (elapse_inheritance_of) incorporates within-host selection.
+// Over an infection of T = CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS (default 25)
+// doublings, with per-doubling mutation rate m = mu / T, where mu (10 ^
+// CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE, default 1e-6) is the
+// per-generation neutral mutation rate, a mutant with relative growth rate b
+// reaches mutant:consensus ratio
+//     y/x = m / (b - 1) * (exp((b - 1) * T) - 1)
+// (see https://github.com/mmore500/allele-evoepi-concept/blob/main/binder/2025-02-04-mutant-ratio-derivation.ipynb).
+// Each generation, each infected host's consensus strain independently flips
+// each MLS site with probability equal to the resulting mutant fraction
+// (y/x) / (1 + y/x): gain with b = 1 + s_i, loss (reversion) with
+// b = 1 / (1 + s_i). Neutral sites flip (gain or loss) with the b -> 1 limit
+// of the same mutant fraction, i.e., r = m * T = mu, so that neutral sites
+// provide a rate-matched baseline against which MLS site frequencies can be
+// compared (weak MLS sites converge to the neutral flip rate as s_i -> 0).
+//
+// Selection step (calc_fitness_of + trample_resident) incorporates
+// between-host transmission. Fitness is 1 for infected and 0 for uninfected
+// hosts, so tournament winners are infected whenever any entrant is. The
+// winner then attempts to infect the slot it would replace:
+//   - an infected resident is not reinfected, but instead is cleared (i.e.,
+//     recovers or dies, and is replaced by a susceptible host) with
+//     probability CEREBRASLIB_MLS_HOST_CLEAR_P (default 0.1);
+//   - an uninfected resident becomes infected with the winner's strain,
+//     unless transmission is blocked: each MLS site present independently
+//     blocks transmission with probability s_i (times
+//     CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE, default 1.0).
+// Immigration (clobber_immigrant) likewise only allows infected immigrants to
+// infect the uninfected residents they would replace, subject to the same
+// transmission reduction.
+//
+// In data_hex, MLS site i is flag byte 1, bit i; the metadata below gives
+// each site's transmission reduction and within-host gain and loss
+// probabilities, as well as the neutral site flip probability.
+
+//! {
+//!     "dstream_algo": (
+//!         "dstream." + compconf_data.get(
+//!             "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME:comptime_string", "hybrid_0_steady_1_tilted_2_algo"
+//!         ),
+//!         pl.Categorical,
+//!     ),
+//!     "dstream_storage_bitoffset": (32, pl.UInt8),
+//!     "dstream_storage_bitwidth": (128, pl.UInt8),
+//!     "dstream_T_bitoffset": (16, pl.UInt8),
+//!     "dstream_T_bitwidth": (16, pl.UInt8),
+//!     "dstream_S": (128, pl.UInt8),
+//!     "flag_site_bitwidth": (1, pl.UInt8),
+//!     "flag_sites_bitoffset": (0, pl.UInt8),
+//!     "flag_sites_bitwidth": (16, pl.UInt8),
+//!     "flag_is_focal_mask_byte0": (0x00, pl.UInt8),
+//!     "flag_is_focal_mask_byte1": (0xFF, pl.UInt8),
+//!     "flag_nand_mask_byte0": (0x0F, pl.UInt8),
+//!     "flag_nand_mask_byte1": (0x00, pl.UInt8),
+//!     "mls_host_clear_p": (float(compconf_data.get(
+//!         "CEREBRASLIB_MLS_HOST_CLEAR_P:f32", 0.1,
+//!     )), pl.Float32),
+//!     "mls_withinhost_neutral_p": next(
+//!         (r / (1.0 + r), pl.Float32)
+//!         for r in [
+//!             10.0 ** float(compconf_data.get(
+//!                 "CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE:f32", -6.0,
+//!             ))
+//!         ]
+//!     ),
+//!     **{
+//!         f"mls_{what}_p_byte1_bit{bit}": (p, pl.Float32)
+//!         for bit, s in enumerate(
+//!             (1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005),
+//!         )
+//!         for T in [float(compconf_data.get(
+//!             "CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS:f32", 25.0,
+//!         ))]
+//!         for m in [10.0 ** float(compconf_data.get(
+//!             "CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE:f32", -6.0,
+//!         )) / T]
+//!         for what, p in (
+//!             ("transmission_reduction", s * float(compconf_data.get(
+//!                 "CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE:f32", 1.0,
+//!             ))),
+//!             *(
+//!                 (f"withinhost_{which}", r / (1.0 + r))
+//!                 for which, b in (("gain", 1.0 + s), ("loss", 1.0 / (1.0 + s)))
+//!                 for r in [
+//!                     m / (b - 1.0) * (__import__("math").exp((b - 1.0) * T) - 1.0)
+//!                 ]
+//!             ),
+//!         )
+//!     },
+//!     "nWav": (5, pl.UInt8),
+//! }
+
+// module imports =============================================================
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const compconf = @import_module("<compconf>");
+comptime { // access via get_value for logging...
+    const _ = compconf.get_value_or(
+        "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+        "hybrid_0_steady_1_tilted_2_algo",
+    );
+} // ... raw string works around sdk v1.0.0 limitation
+const compconf_raw = @import_module("<compconf_raw>");
+const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const dstream_algo_name = (if (has_value)
+    compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
+else
+    "hybrid_0_steady_1_tilted_2_algo");
+const dstream_algo = @import_module(
+    @strcat("<downstream/dstream/", dstream_algo_name, ">"),
+);
+
+const bitmanip = @import_module("cerebraslib/bitmanip.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+const S = 128;
+
+// module config specs ========================================================
+const gSize: u16 = 5;
+const genome_t = [gSize]u32;
+const genomePtr_t = [*]u32;
+const nMlsSites: u16 = 8;
+const nTraitVals: u16 = nMlsSites + 2; // clear, or 1 + number of MLS sites
+const hasImmClobber: bool = true;
+const hasNotifyExtinct: bool = false;
+
+const mlsMask: u32 = 0x00FF0000;
+const mlsShift: u32 = 16;
+const nNeutralSites: u16 = 8;
+const neutralMask: u32 = 0xFF000000;
+const neutralShift: u32 = 24;
+const counterMax: u16 = 0xFFFF;
+
+// compile-time configuration =================================================
+const _fit_fudge: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_NONZERO_FIT_FUDGE", @as(f32, 0.0) // nofmt
+);
+
+const _p_transmission_reduction_scale: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE", @as(f32, 1.0) // nofmt
+);
+
+const _p_host_clear: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_MLS_HOST_CLEAR_P", @as(f32, 0.1) // nofmt
+);
+comptime { @comptime_assert(0.0 <= _p_host_clear and _p_host_clear <= 1.0); }
+
+const _withinHostDoublings: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS", @as(f32, 25.0) // nofmt
+);
+comptime { @comptime_assert(_withinHostDoublings > 0.0); }
+
+const _log10NeutralMutationRate: f32 = compconf.get_value_or( //nofmt
+    "CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE", @as(f32, -6.0) // nofmt
+);
+comptime { @comptime_assert(_log10NeutralMutationRate <= 0.0); }
+
+// MLS effect sizes ============================================================
+// transmission reduction per MLS site, i.e., base effect size s_i
+var _mlsEffectSizes = [nMlsSites]f32{
+    1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005,
+};
+// within-host gain and loss probabilities, lazily initialized
+var _mlsWithinHostGainP = @zeros([nMlsSites]f32);
+var _mlsWithinHostLossP = @zeros([nMlsSites]f32);
+var _mlsWithinHostNeutralP: f32 = 0.0;
+var _mlsWithinHostPIsInit: bool = false;
+
+// internal functions =========================================================
+/// Fraction of within-host population that is mutant after T doublings,
+/// given mutation rate m and mutant relative growth rate b != 1.
+fn _calc_mutant_fraction(m: f32, b: f32, T: f32) f32 {
+    const ratio = m / (b - 1.0) * (math.exp((b - 1.0) * T) - 1.0);
+    return ratio / (1.0 + ratio);
+}
+
+fn _init_mls_withinhost_p() void {
+    const ln10: f32 = 2.302585092994046;
+    const mu = math.exp(ln10 * _log10NeutralMutationRate);
+    const T = _withinHostDoublings;
+    const m = mu / T; // per-doubling mutation rate
+    for (@range(u16, nMlsSites)) |i| {
+        const b = 1.0 + _mlsEffectSizes[i];
+        _mlsWithinHostGainP[i] = _calc_mutant_fraction(m, b, T);
+        _mlsWithinHostLossP[i] = _calc_mutant_fraction(m, 1.0 / b, T);
+    }
+    // b -> 1 limit of mutant ratio is m * T = mu
+    _mlsWithinHostNeutralP = mu / (1.0 + mu);
+    _mlsWithinHostPIsInit = true;
+}
+
+fn _get_mls_withinhost_gain_p(site: u16) f32 {
+    if (!_mlsWithinHostPIsInit) _init_mls_withinhost_p();
+    return _mlsWithinHostGainP[site];
+}
+
+fn _get_mls_withinhost_loss_p(site: u16) f32 {
+    if (!_mlsWithinHostPIsInit) _init_mls_withinhost_p();
+    return _mlsWithinHostLossP[site];
+}
+
+fn _get_mls_withinhost_neutral_p() f32 {
+    if (!_mlsWithinHostPIsInit) _init_mls_withinhost_p();
+    return _mlsWithinHostNeutralP;
+}
+
+fn _get_mls_transmission_reduction_p(site: u16) f32 {
+    return _mlsEffectSizes[site] * _p_transmission_reduction_scale;
+}
+
+fn _get_counter(genome: genomePtr_t) u16 {
+    const genome_halfwords = @ptrcast([*]u16, genome);
+    return genome_halfwords[0];
+}
+
+fn _apply_mutation(genome: genomePtr_t, p: f32) void {
+    // flip each neutral site with probability p
+    for (@range(u16, nNeutralSites)) |i| {
+        const bit = @as(u32, 1) << (neutralShift + @as(u32, i));
+        if (opscalar.p(p)) genome[0] ^= bit;
+    }
+}
+
+fn _apply_withinhost_selection(genome: genomePtr_t) void {
+    for (@range(u16, nMlsSites)) |i| {
+        const bit = @as(u32, 1) << (mlsShift + @as(u32, i));
+        const isSet = (genome[0] & bit) != 0;
+        const p = (if (isSet)
+            _get_mls_withinhost_loss_p(i)
+        else
+            _get_mls_withinhost_gain_p(i));
+        if (opscalar.p(p)) genome[0] ^= bit;
+    }
+}
+
+/// Does transmission of genome get blocked by its MLS sites?
+fn _is_transmission_blocked(genome: genomePtr_t) bool {
+    const mlsBits = (genome[0] & mlsMask) >> mlsShift;
+    if (mlsBits != 0) {
+        for (@range(u16, nMlsSites)) |i| {
+            const isSet = ((mlsBits >> @as(u32, i)) & 1) != 0;
+            if (isSet and opscalar.p(_get_mls_transmission_reduction_p(i))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Does infected donor transmit to uninfected recipient? Infected recipients
+/// can't be (re)infected, and donor's MLS sites may block transmission.
+fn _can_infect(recipient: genomePtr_t, donor: genomePtr_t) bool {
+    return (
+        _is_clear(recipient)
+        and !_is_clear(donor)
+        and !_is_transmission_blocked(donor)
+    );
+}
+
+fn _step_instrumentation(genome: genomePtr_t) void {
+    // saturated counter stops instrumentation, rather than wrapping to clear
+    if (_get_counter(genome) == counterMax) return;
+
+    // elapse generation in bitfield
+    if (opscalar.unifbool()) {
+        const T = @as(u32, _get_counter(genome));
+        const site = dstream_algo.assign_storage_site(S, T);
+
+        const offset_bits: u16 = 4 * 8;
+        const target_bit = @as(u16, site) + offset_bits;
+
+        const genome_bytes = @ptrcast([*]u8, genome);
+        if (site != S) bitmanip.flip_nth_bit_with_swaps(
+            genome_bytes,
+            target_bit,
+            .{ .byteSwap = true, .bitSwap = true },
+        );
+    }
+
+    // elapse generation in counter
+    const genome_halfwords = @ptrcast([*]u16, genome);
+    genome_halfwords[0] += 1;
+}
+
+inline fn _clear(genome: genomePtr_t) void {
+    genome[0] = 0;
+    genome[1] = 0;
+    genome[2] = 0;
+    genome[3] = 0;
+    genome[4] = 0;
+}
+
+inline fn _is_clear(genome: genomePtr_t) bool {
+    const res: bool = _get_counter(genome) == 0;
+    return res;
+}
+
+// public API =================================================================
+
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    if (!_is_clear(genome)) {
+        _apply_mutation(genome, _get_mls_withinhost_neutral_p());
+        _apply_withinhost_selection(genome);
+        _step_instrumentation(genome); // elapse two steps per generation
+        _step_instrumentation(genome);
+    }
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    // only infected hosts can transmit, so they win over uninfected hosts
+    if (_is_clear(genome)) return 0.0;
+    return 1.0 + random.random_f32(0.0, _fit_fudge);
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    // 0: is_clear
+    // 1 + n: not clear, has n MLS sites set
+    if (_is_clear(genome)) return 0;
+    return 1 + opscalar.popcnt32(genome[0] & mlsMask);
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    _clear(genome);
+    genome[0] |= 0x0F000000; // initialize 4 neutral sites as 1's
+    // (to hint for testing endianness when decoding)
+    genome[0] |= S; // initialize counter to S
+    // randomize hstrat bitfield
+    bitmanip.randomize(@ptrcast([*]u16, &genome[1]), 8);
+}
+
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+    // if immigrant can't infect, overwrite immigrant with resident so that
+    // copying immigrant in is a no-op; count blocked infected immigrants
+    if (_can_infect(resident, immigrant)) return false;
+    const isClobbered = !_is_clear(immigrant);
+    for (@range(u16, gSize)) |i| { immigrant[i] = resident[i]; }
+    return isClobbered;
+}
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    if (!_is_clear(resident)) {
+        // infected hosts are not reinfected, but are occasionally cleared
+        if (opscalar.p(_p_host_clear)) _clear(resident);
+    } else if (_can_infect(resident, spawn)) {
+        for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
+    }
+}
+
+fn notify_extinct() void {}
