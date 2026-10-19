@@ -62,6 +62,14 @@ const pExtinction = compconf.get_value_or(
     @as(f32, 0.0),
 );
 
+// fossil sampling mode, 0 = snapshot 0th population member at collection time,
+// 1 = reservoir sample, so that between consecutive fossil collections each
+// generation's sampled genome is equally likely to become the streamed fossil
+const fossilReservoir = compconf.get_value_or(
+    "ASYNC_GA_FOSSIL_RESERVOIR", @as(u32, 0)
+);
+comptime { @comptime_assert(fossilReservoir == 0 or fossilReservoir == 1); }
+
 const population = @import_module(
   @strcat("cerebraslib/", compconf_raw.ASYNC_GA_POPULATION_FLAVOR, ".csl"),
   .{
@@ -121,6 +129,11 @@ var ptr_genome : [*]u32 = &genome;  // (which is convenient)
 
 var genomeBookend = @zeros([genome_.gSize + 2]u32);  // w/ bookend validation
 var ptr_genomeBookend : [*]u32 = &genomeBookend;  // for async memcpy
+
+// reservoir of one genome, sampled uniformly across generations elapsed since
+// last fossil collection (used only if fossilReservoir is enabled)
+var fossilReservoirGenome = @zeros([genome_.gSize]u32);
+var fossilReservoirCount: u32 = 0;  // generations sampled since collection
 
 var fitness = @zeros([1]f32);  // samples 0th population element (convenient)
 var ptr_fitness : [*]f32 = &fitness;
@@ -627,6 +640,10 @@ task cycleTask() void {
   // --------------------------------------------------------------------------
   population.do_generation();
 
+  // reservoir sample one genome per generation for fossil streaming
+  // --------------------------------------------------------------------------
+  if (fossilReservoir != 0) { fossilReservoirSample(); }
+
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
   const shuf2 = @random16() & 3;
@@ -692,8 +709,26 @@ task cycleTask() void {
 // numbers of cycles on different PEs at launch to desynchronize them at startup
 fn desync() void { for (@range(u16, @random16() % 256)) |i| { @random16(); } }
 
+// reservoir sampling (algorithm R) with reservoir size one: kth generation
+// since last collection replaces reservoir with probability 1 / k
+fn fossilReservoirSample() void {
+  fossilReservoirCount += 1;
+  if (rng.next() % fossilReservoirCount == 0) {
+    const genome_ptr = population._get_ith_genome(0);
+    for (@range(u16, genome_.gSize)) |i| {
+      fossilReservoirGenome[i] = genome_ptr[i];
+    }
+  }
+}
+
 fn genomerefresh() void {
-  const genome_ptr = population._get_ith_genome(0);
+  // use reservoir sample if available, otherwise fall back to current genome
+  const genome_ptr = (
+    if (fossilReservoir != 0 and fossilReservoirCount > 0)
+      @ptrcast([*]u32, &fossilReservoirGenome)
+    else population._get_ith_genome(0)
+  );
+  fossilReservoirCount = 0;  // start new reservoir sampling window
   genomeBookend[genome_.gSize + 1] += 1;
   genomeBookend[genome_.gSize + 1] &= 0x3FF;  // clear upper bits
   genomeBookend[genome_.gSize + 1] |= whoami[0] << 10;  // set whoami
