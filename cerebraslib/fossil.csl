@@ -9,19 +9,19 @@ param symbolName: comptime_string;
 const enum_ = @import_module("cerebraslib/enum.csl");
 
 // sampling mode ==============================================================
-const FossilSampling = enum(u8) {
+const FossilSamplingEnum = enum(u8) {
     snapshot,  // 0th population member at collection time
     reservoir,  // 0th population member, uniform across generations
 };
 
 fn fossil_sampling_from_string(
     comptime name: comptime_string,
-) FossilSampling {
+) FossilSamplingEnum {
     return enum_.from_string(
-        FossilSampling,
+        FossilSamplingEnum,
         .{
-            .snapshot = FossilSampling.snapshot,
-            .reservoir = FossilSampling.reservoir,
+            .snapshot = FossilSamplingEnum.snapshot,
+            .reservoir = FossilSamplingEnum.reservoir,
         },
         name,
     );
@@ -62,7 +62,7 @@ fn _take_fossil_reservoir() [*]u32 {
 }
 
 fn _take_fossil() [*]u32 {
-    if (samplingMode_ == FossilSampling.reservoir) {
+    if (samplingMode_ == FossilSamplingEnum.reservoir) {
         return _take_fossil_reservoir();
     } else {
         return _take_fossil_snapshot();
@@ -73,7 +73,7 @@ fn _take_fossil() [*]u32 {
 /// Call once per generation, after population.do_generation.
 fn update_sample() void {
     generationsSincePull += 1;
-    if (samplingMode_ == FossilSampling.reservoir) { _reservoir_sample(); }
+    if (samplingMode_ == FossilSamplingEnum.reservoir) { _reservoir_sample(); }
 }
 
 /// Copy fossil genome into bookend buffer, w/ counter + tag bookends.
