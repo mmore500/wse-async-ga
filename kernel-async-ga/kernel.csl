@@ -76,7 +76,7 @@ const fossil = @import_module(
     .samplingMode = compconf.get_value_or(
       "ASYNC_GA_FOSSIL_SAMPLING_MODE", "snapshot"
     ),
-    .symbolName = "genomeBookend",
+    .symbolName = "fossilBookend",
   },
 );
 const wildtypeLogger = @import_module(

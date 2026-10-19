@@ -46,13 +46,13 @@ fn test_snapshot() void {
     population.do_generation();
     _save_expected();
     fossilSnapshot.pull_sample(7);
-    _check_bookend(fossilSnapshot.ptr_bookend, 1, 7);
+    _check_bookend(fossilSnapshot.ptr_bookendBuffer, 1, 7);
 
     population.do_generation();
     fossilSnapshot.update_sample();
     _save_expected();
     fossilSnapshot.pull_sample(7);
-    _check_bookend(fossilSnapshot.ptr_bookend, 2, 7);
+    _check_bookend(fossilSnapshot.ptr_bookendBuffer, 2, 7);
 }
 
 fn test_reservoir_fallback() void {
@@ -60,7 +60,7 @@ fn test_reservoir_fallback() void {
     fossilReservoir.pull_sample(3);  // reset window
     _save_expected();
     fossilReservoir.pull_sample(3);
-    _check_bookend(fossilReservoir.ptr_bookend, 2, 3);
+    _check_bookend(fossilReservoir.ptr_bookendBuffer, 2, 3);
 }
 
 fn test_reservoir_single() void {
@@ -71,7 +71,7 @@ fn test_reservoir_single() void {
     _save_expected();
     population.do_generation();
     fossilReservoir.pull_sample(5);
-    _check_bookend(fossilReservoir.ptr_bookend, 4, 5);
+    _check_bookend(fossilReservoir.ptr_bookendBuffer, 4, 5);
 }
 
 fn test_reservoir_many() void {
@@ -81,8 +81,8 @@ fn test_reservoir_many() void {
         fossilReservoir.update_sample();
     }
     fossilReservoir.pull_sample(1);
-    @assert(fossilReservoir.bookend[0] == (1 << 10) | 6);
-    @assert(fossilReservoir.bookend[genome.gSize + 1] == (1 << 10) | 6);
+    @assert(fossilReservoir.bookendBuffer[0] == (1 << 10) | 6);
+    @assert(fossilReservoir.bookendBuffer[genome.gSize + 1] == (1 << 10) | 6);
 }
 
 fn do_test() void {
