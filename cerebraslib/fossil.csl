@@ -2,7 +2,7 @@
 param genome: imported_module;
 param population: imported_module;
 param rng: imported_module;
-param sampling: comptime_string;  // "snapshot" or "reservoir"
+param samplingMode: comptime_string;  // "snapshot" or "reservoir"
 
 // module imports =============================================================
 const enum_ = @import_module("cerebraslib/enum.csl");
@@ -26,7 +26,7 @@ fn fossil_sampling_from_string(
     );
 }
 
-const samplingMode = fossil_sampling_from_string(sampling);
+const samplingMode_ = fossil_sampling_from_string(samplingMode);
 
 // global state ===============================================================
 var reservoirGenome = @zeros([genome.gSize]u32);
@@ -49,7 +49,7 @@ fn _reservoir_sample() void {
 // get fossil genome & reset window, falls back to 0th if reservoir empty
 fn _take_fossil() [*]u32 {
     const useReservoir = (
-        samplingMode == FossilSampling.reservoir and reservoirCount > 0
+        samplingMode_ == FossilSampling.reservoir and reservoirCount > 0
     );
     reservoirCount = 0;
     return if (useReservoir)
@@ -61,7 +61,7 @@ fn _take_fossil() [*]u32 {
 // public interface ===========================================================
 /// Call once per generation, after population.do_generation.
 fn update() void {
-    if (samplingMode == FossilSampling.reservoir) { _reservoir_sample(); }
+    if (samplingMode_ == FossilSampling.reservoir) { _reservoir_sample(); }
 }
 
 /// Copy fossil genome into bookend buffer, w/ counter + tag bookends.

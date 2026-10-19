@@ -13,14 +13,14 @@ const fossilSnapshot = @import_module(
     "cerebraslib/fossil.csl",
     .{
         .genome = genome, .population = population, .rng = rng,
-        .sampling = "snapshot",
+        .samplingMode = "snapshot",
     },
 );
 const fossilReservoir = @import_module(
     "cerebraslib/fossil.csl",
     .{
         .genome = genome, .population = population, .rng = rng,
-        .sampling = "reservoir",
+        .samplingMode = "reservoir",
     },
 );
 

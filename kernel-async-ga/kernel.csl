@@ -73,7 +73,9 @@ const fossil = @import_module(
   "cerebraslib/fossil.csl",
   .{
     .genome = genome_, .population = population, .rng = rng,
-    .sampling = compconf.get_value_or("ASYNC_GA_FOSSIL_SAMPLING", "snapshot"),
+    .samplingMode = compconf.get_value_or(
+      "ASYNC_GA_FOSSIL_SAMPLING", "snapshot"
+    ),
   },
 );
 const wildtypeLogger = @import_module(
