@@ -76,8 +76,8 @@ export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string="$
 echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string ${COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string}"
 
 # snapshot or reservoir
-export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string="${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string:-snapshot}"
-echo "COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string ${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string}"
+export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string="${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string:-snapshot}"
+echo "COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string ${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string}"
 
 echo "setup dependency wheelhouse ---------------------------------------------"
 CS_PYTHON="${CS_PYTHON:-cs_python}"

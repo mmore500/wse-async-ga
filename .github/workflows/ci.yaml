@@ -474,7 +474,7 @@ jobs:
           export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_S__u32="${{ matrix.dstream_S }}"
           export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
           export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
-          export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string="${{ matrix.fossil_sampling }}"
+          export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string="${{ matrix.fossil_sampling }}"
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/compile.sh \
             # >/dev/null 2>&1

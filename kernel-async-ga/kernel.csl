@@ -74,7 +74,7 @@ const fossil = @import_module(
   .{
     .genome = genome_, .population = population, .rng = rng,
     .samplingMode = compconf.get_value_or(
-      "ASYNC_GA_FOSSIL_SAMPLING", "snapshot"
+      "ASYNC_GA_FOSSIL_SAMPLING_MODE", "snapshot"
     ),
   },
 );
@@ -638,7 +638,7 @@ task cycleTask() void {
 
   // update fossil sample
   // --------------------------------------------------------------------------
-  fossil.update();
+  fossil.sample_generation();
 
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
@@ -706,7 +706,7 @@ task cycleTask() void {
 fn desync() void { for (@range(u16, @random16() % 256)) |i| { @random16(); } }
 
 fn genomerefresh() void {
-  fossil.refresh(@ptrcast([*]u32, &genomeBookend), whoami[0]);
+  fossil.fill_bookend(@ptrcast([*]u32, &genomeBookend), whoami[0]);
 }
 
 fn dorefresh() void {  // launched by RPC (remote procedure call)
