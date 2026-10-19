@@ -34,15 +34,15 @@ var bookendBuffer = @zeros([genome.gSize + 2]u32);  // w/ bookend validation
 var ptr_bookendBuffer : [*]u32 = &bookendBuffer;
 
 var reservoirGenome = @zeros([genome.gSize]u32);
-var reservoirCount: u32 = 0;  // generations since last collection
+var generationsSincePull: u32 = 0;
 
 // module functions ===========================================================
 ///////////////////////////////////////////////////////////////////////////////
 
 // reservoir sample (algorithm R), kth generation kept w/ probability 1 / k
 fn _reservoir_sample() void {
-    reservoirCount += 1;
-    if (rng.p_one_in(reservoirCount)) {
+    generationsSincePull += 1;
+    if (rng.p_one_in(generationsSincePull)) {
         const genomePtr = population._get_ith_genome(0);
         for (@range(u16, genome.gSize)) |i| {
             reservoirGenome[i] = genomePtr[i];
@@ -50,16 +50,26 @@ fn _reservoir_sample() void {
     }
 }
 
-// get fossil genome & reset window, falls back to 0th if reservoir empty
-fn _take_fossil() [*]u32 {
-    const useReservoir = (
-        samplingMode_ == FossilSampling.reservoir and reservoirCount > 0
-    );
-    reservoirCount = 0;
-    return if (useReservoir)
+fn _take_fossil_snapshot() [*]u32 {
+    return population._get_ith_genome(0);
+}
+
+// falls back to snapshot if reservoir empty
+fn _take_fossil_reservoir() [*]u32 {
+    const fossilPtr = if (generationsSincePull > 0)
         @ptrcast([*]u32, &reservoirGenome)
     else
-        population._get_ith_genome(0);
+        _take_fossil_snapshot();
+    generationsSincePull = 0;
+    return fossilPtr;
+}
+
+fn _take_fossil() [*]u32 {
+    if (samplingMode_ == FossilSampling.reservoir) {
+        return _take_fossil_reservoir();
+    } else {
+        return _take_fossil_snapshot();
+    }
 }
 
 // public interface ===========================================================

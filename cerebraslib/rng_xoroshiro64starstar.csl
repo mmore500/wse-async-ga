@@ -82,9 +82,9 @@ fn p_(s: [*]u32, probability: f32) bool {
     return f < probability;
 }
 
-// Sample a coin flip with probability 1 / n, false if n == 0.
+// Sample a coin flip with probability one in n.
 fn p_one_in_(s: [*]u32, n: u32) bool {
-    if (n == 0) return false;
+    @assert(n > 0);
     return next_(s) % n == 0;
 }
 
@@ -181,7 +181,7 @@ fn p(probability: f32) bool {
     return p_(@ptrcast([*]u32, &_state), probability);
 }
 
-// Sample a coin flip with probability 1 / n, false if n == 0.
+// Sample a coin flip with probability one in n.
 fn p_one_in(n: u32) bool {
     return p_one_in_(@ptrcast([*]u32, &_state), n);
 }

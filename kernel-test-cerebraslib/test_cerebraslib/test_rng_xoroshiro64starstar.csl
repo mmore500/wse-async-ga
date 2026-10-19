@@ -766,10 +766,6 @@ fn test_p_one_in_() void {
     const sp = @ptrcast([*]u32, &s);
     rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
 
-    @assert(rng.p_one_in_(sp, 0) == false);
-    @assert(s[0] == 0x12345678);  // n == 0 draws nothing
-    @assert(s[1] == 0x9ABCDEF0);
-
     var count: u16 = 0;
     for (@range(u16, 20)) |i| {
         @assert(rng.p_one_in_(sp, 1));
@@ -783,7 +779,6 @@ fn test_p_one_in_global() void {
     var count: u16 = 0;
     for (@range(u16, 20)) |i| {
         @assert(rng.p_one_in(1));
-        @assert(!rng.p_one_in(0));
         if (rng.p_one_in(2)) { count += 1; }
     }
     @assert(count > 0 and count < 20);

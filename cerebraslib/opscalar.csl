@@ -53,9 +53,9 @@ fn random_u32() u32 {
     return (hi << 16) | lo;
 }
 
-/// Sample a coin flip with probability 1 / n, false if n == 0.
+/// Sample a coin flip with probability one in n.
 fn p_one_in(n: u32) bool {
-    if (n == 0) return false;
+    @assert(n > 0);
     return random_u32() % n == 0;
 }
 

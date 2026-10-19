@@ -137,7 +137,6 @@ fn test_p_one_in() void {
     var count: u16 = 0;
     for (@range(u16, 20)) |i| {
         @assert(opscalar.p_one_in(1));
-        @assert(!opscalar.p_one_in(0));
         if (opscalar.p_one_in(2)) { count += 1; }
     }
     @assert(count > 0 and count < 20);
