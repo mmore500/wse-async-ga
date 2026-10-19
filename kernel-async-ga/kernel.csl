@@ -634,7 +634,7 @@ task cycleTask() void {
   // --------------------------------------------------------------------------
   population.do_generation();
 
-  // update fossil sampling (e.g., reservoir sample) for fossil streaming
+  // update fossil sample
   // --------------------------------------------------------------------------
   fossil.update();
 

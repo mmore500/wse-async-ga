@@ -46,16 +46,14 @@ fn p(probability: f32) bool {
     return random.random_f32(0.0, 1.0) < probability;
 }
 
-/// Draw a uniform random 32-bit integer using builtin PRNG.
+/// Draw a random 32-bit integer.
 fn random_u32() u32 {
     const hi = @as(u32, @random16());
     const lo = @as(u32, @random16());
     return (hi << 16) | lo;
 }
 
-/// Sample a coin flip with probability 1 / n, for integer n, using builtin
-/// PRNG. Always true for n == 1; always false for n == 0 (consumes no
-/// randomness). Uses modulo reduction, so bias is at most n / 2^32.
+/// Sample a coin flip with probability 1 / n, false if n == 0.
 fn p_one_in(n: u32) bool {
     if (n == 0) return false;
     return random_u32() % n == 0;

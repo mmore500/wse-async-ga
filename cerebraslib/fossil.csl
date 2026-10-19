@@ -2,17 +2,15 @@
 param genome: imported_module;
 param population: imported_module;
 param rng: imported_module;
-// fossil sampling mode, see FossilSampling below
-param sampling: comptime_string;
+param sampling: comptime_string;  // "snapshot" or "reservoir"
 
 // module imports =============================================================
 const enum_ = @import_module("cerebraslib/enum.csl");
 
 // sampling mode ==============================================================
-//   snapshot: 0th population member at collection time
-//   reservoir: reservoir sample one genome (0th population member) per
-//     generation, so that between consecutive fossil collections each
-//     generation's sampled genome is equally likely to be streamed fossil
+// snapshot: 0th population member at collection time
+// reservoir: 0th population member, uniformly sampled across generations
+//   since last collection
 const FossilSampling = enum(u8) { snapshot, reservoir };
 
 fn fossil_sampling_from_string(
@@ -31,16 +29,13 @@ fn fossil_sampling_from_string(
 const samplingMode = fossil_sampling_from_string(sampling);
 
 // global state ===============================================================
-// reservoir of one genome, sampled uniformly across generations elapsed since
-// last fossil collection (used only in reservoir mode)
 var reservoirGenome = @zeros([genome.gSize]u32);
-var reservoirCount: u32 = 0;  // generations sampled since last collection
+var reservoirCount: u32 = 0;  // generations since last collection
 
 // module functions ===========================================================
 ///////////////////////////////////////////////////////////////////////////////
 
-// reservoir sampling (algorithm R) with reservoir size one: kth generation
-// since last collection replaces reservoir with probability 1 / k
+// reservoir sample (algorithm R), kth generation kept w/ probability 1 / k
 fn _reservoir_sample() void {
     reservoirCount += 1;
     if (rng.p_one_in(reservoirCount)) {
@@ -51,14 +46,12 @@ fn _reservoir_sample() void {
     }
 }
 
-/// Get pointer to genome to stream back as fossil, and reset sampling window.
-/// In reservoir mode, falls back to 0th population member if no generations
-/// have elapsed since last collection.
+// get fossil genome & reset window, falls back to 0th if reservoir empty
 fn _take_fossil() [*]u32 {
     const useReservoir = (
         samplingMode == FossilSampling.reservoir and reservoirCount > 0
     );
-    reservoirCount = 0;  // start new sampling window
+    reservoirCount = 0;
     return if (useReservoir)
         @ptrcast([*]u32, &reservoirGenome)
     else
@@ -66,14 +59,12 @@ fn _take_fossil() [*]u32 {
 }
 
 // public interface ===========================================================
-/// Call once per generation, after population.do_generation().
+/// Call once per generation, after population.do_generation.
 fn update() void {
     if (samplingMode == FossilSampling.reservoir) { _reservoir_sample(); }
 }
 
-/// Fill bookend buffer (length genome.gSize + 2) with fossil genome. First
-/// and last words hold a 10-bit refresh counter, with `tag` in upper bits,
-/// so host can validate that memcpy did not tear.
+/// Copy fossil genome into bookend buffer, w/ counter + tag bookends.
 fn refresh(bookend: [*]u32, tag: u32) void {
     const genomePtr = _take_fossil();
     bookend[genome.gSize + 1] += 1;

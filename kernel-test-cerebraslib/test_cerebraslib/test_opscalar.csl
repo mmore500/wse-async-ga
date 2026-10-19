@@ -117,23 +117,18 @@ fn test_p() void {
 
 fn test_random_u32() void {
     random.set_global_prng_seed(1);
-    // upper and lower halves should both be populated
     while (opscalar.random_u32() < 0x10000) {}
     while (opscalar.random_u32() & 0xFFFF == 0) {}
-    // top and bottom bits should both take both values
     while (opscalar.random_u32() & 0x80000000 == 0) {}
     while (opscalar.random_u32() & 0x80000000 != 0) {}
     while (opscalar.random_u32() & 1 == 0) {}
     while (opscalar.random_u32() & 1 != 0) {}
-    // successive draws should differ
     while (opscalar.random_u32() == opscalar.random_u32()) {}
 
-    // high bit set about half the time
     var count: u32 = 0;
     for (@range(u16, 200)) |i| {
         if (opscalar.random_u32() >= 0x80000000) { count += 1; }
     }
-    // expect ~100; loose bounds [60, 140]
     @assert(count > 60);
     @assert(count < 140);
 }
@@ -149,7 +144,6 @@ fn test_p_one_in() void {
     for (@range(u16, 200)) |i| {
         if (opscalar.p_one_in(4)) { count += 1; }
     }
-    // expect ~50; loose bounds [20, 80]
     @assert(count > 20);
     @assert(count < 80);
 
@@ -157,7 +151,6 @@ fn test_p_one_in() void {
     for (@range(u16, 200)) |i| {
         if (opscalar.p_one_in(1000000)) { count += 1; }
     }
-    // expect ~0.0002
     @assert(count < 3);
 }
 

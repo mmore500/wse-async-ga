@@ -1,14 +1,5 @@
-// comptime helpers for working with enumeration types
-
-/// Translate a comptime string into an enum value.
-///
-/// `mapping` is an anonymous struct whose field names are the accepted
-/// strings and whose field values are the corresponding enum values, e.g.,
-///   const color = enum(u8) { red, blue };
-///   from_string(color, .{ .red = color.red, .blue = color.blue }, "blue")
-/// returns color.blue.
-///
-/// Compilation aborts if `name` is not a field of `mapping`.
+/// Look up enum value for comptime string, via struct of string->value fields,
+/// e.g., from_string(color, .{ .red = color.red }, "red") == color.red
 fn from_string(
     comptime enumType: type,
     comptime mapping: anytype,

@@ -66,8 +66,8 @@ fn test_reservoir_fallback() void {
     _clear_bookend();
     const bookendPtr = @ptrcast([*]u32, &bookend);
 
-    // no generations since last collection, falls back to 0th genome
-    fossilReservoir.refresh(bookendPtr, 3);  // reset sampling window
+    // empty reservoir falls back to 0th genome
+    fossilReservoir.refresh(bookendPtr, 3);  // reset window
     _save_expected();
     fossilReservoir.refresh(bookendPtr, 3);
     _check_bookend(2, 3);
@@ -77,12 +77,11 @@ fn test_reservoir_single() void {
     _clear_bookend();
     const bookendPtr = @ptrcast([*]u32, &bookend);
 
-    fossilReservoir.refresh(bookendPtr, 5);  // reset sampling window
-    // first generation in window always fills reservoir (probability 1/1)
+    fossilReservoir.refresh(bookendPtr, 5);  // reset window
+    // first generation always kept
     population.do_generation();
     fossilReservoir.update();
     _save_expected();
-    // later changes to population do not affect reservoir sample
     population.do_generation();
     fossilReservoir.refresh(bookendPtr, 5);
     _check_bookend(2, 5);
@@ -92,7 +91,7 @@ fn test_reservoir_many() void {
     _clear_bookend();
     const bookendPtr = @ptrcast([*]u32, &bookend);
 
-    fossilReservoir.refresh(bookendPtr, 1);  // reset sampling window
+    fossilReservoir.refresh(bookendPtr, 1);  // reset window
     for (@range(u16, 10)) |i| {
         population.do_generation();
         fossilReservoir.update();

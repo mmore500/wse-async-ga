@@ -768,7 +768,6 @@ fn test_p_one_in_zero_() void {
     for (@range(u16, 100)) |i| {
         @assert(rng.p_one_in_(sp, 0) == false);
     }
-    // n == 0 consumes no randomness
     @assert(s[0] == 0x12345678);
     @assert(s[1] == 0x9ABCDEF0);
 }
@@ -793,7 +792,6 @@ fn test_p_one_in_two_() void {
             count += 1;
         }
     }
-    // expect ~100; loose bounds [60, 140]
     @assert(count > 60);
     @assert(count < 140);
 }
@@ -809,7 +807,6 @@ fn test_p_one_in_four_() void {
             count += 1;
         }
     }
-    // expect ~50; loose bounds [20, 80]
     @assert(count > 20);
     @assert(count < 80);
 }
@@ -825,7 +822,6 @@ fn test_p_one_in_large_() void {
             count += 1;
         }
     }
-    // expect ~0.0002
     @assert(count < 3);
 }
 
