@@ -77,7 +77,7 @@ fn reset() void {
 }
 
 comptime {  // symbols let memcpy gather end-state data from device to host
-    if (@strlen(symbolName) > 0) {
+    if (@strlen(symbolName) > 0) {  // empty name skips export
         @export_symbol(ptr_recordBuffer, symbolName);
     }
 }
