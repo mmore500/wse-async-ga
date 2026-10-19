@@ -95,15 +95,16 @@ mkdir -p "${RESULTDIR_STEP}"
 
 ###############################################################################
 echo
-echo "setup venv  ------------------------------------------------------------"
+echo "setup venv -------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-VENVDIR="${WORKDIR}/venv3x"
+VENVDIR="${WORKDIR}/venv311"
 echo "VENVDIR ${VENVDIR}"
 
 echo "creating venv"
 source "${VENVDIR}/bin/activate"
 python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt"
+python3 -m pylib_cs.cslc_wsclust_shim  # test install
 
 ###############################################################################
 echo
@@ -119,7 +120,7 @@ git -C "$(git -C "${FLOWDIR}" rev-parse --show-toplevel)" status \
     > "${RESULTDIR_STEP}/git-status.txt"
 echo "log diff"
 git -C "${FLOWDIR}" --no-pager diff > "${RESULTDIR_STEP}/git-status.diff" || :
-git -C "${FLOWDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git -C "${FLOWDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/git-status.diff" || :
+git -C "${FLOWDIR}" ls-files -z --others --exclude-standard --exclude=resultdir --exclude=workdir | xargs -0 -I {} git -C "${FLOWDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/git-status.diff" || :
 
 SRCDIR="${WORKDIR}/src"
 echo "SRCDIR ${SRCDIR}"
@@ -136,141 +137,126 @@ git -C "${SRCDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git 
 
 ###############################################################################
 echo
-echo "export phylogeny -------------------------------------------------------"
+echo "setup compile ----------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-PHYLOFRAME_CONTAINER="docker://ghcr.io/mmore500/phyloframe:v0.11.0"
-JOINEM_CONTAINER="docker://ghcr.io/mmore500/joinem:v0.16.0"
-# downsample, collapse unifurcations, assign contiguous ids, export newick
-# usage: downsample_and_export <label> <phyloframe module> <module args...>
-downsample_and_export() {
-    local label="$1" module="$2"
-    shift 2
-    local outpqt="${CONFIG_WORKDIR}/a=phylogeny+${label}+ext=.pqt"
-    echo "downsample ${label} ----------------------------------------------"
+export CSLC="${CSLC:-cslc}"
+echo "CSLC ${CSLC}"
+export ASYNC_GA_FABRIC_DIMS="762,1172"
+echo "ASYNC_GA_FABRIC_DIMS ${ASYNC_GA_FABRIC_DIMS}"
 
-    echo "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
-        | singularity exec --env POLARS_ENGINE_AFFINITY="streaming" \
-            "${PHYLOFRAME_CONTAINER}" \
-            python3 -m "phyloframe.legacy.${module}" \
-            "${outpqt}" "$@" --eager-write \
-            --with-column 'pl.col("id").alias("original_id")' \
-            | tee "${CONFIG_RESULTDIR}/${module}_${label}.log"
+WORKDIR_MNT="$(realpath path)"
+WORKDIR_MNT="${WORKDIR_MNT#/}"
+WORKDIR_MNT="${WORKDIR_MNT%%/*}"
+echo "WORKDIR_MNT ${WORKDIR_MNT}"
+export SINGULARITY_BIND="${SINGULARITY_BIND:+${SINGULARITY_BIND},}/${WORKDIR_MNT}:/${WORKDIR_MNT},/tmp:/tmp"
+echo "SINGULARITY_BIND ${SINGULARITY_BIND}"
 
-    echo "${outpqt}" \
-        | singularity exec "${PHYLOFRAME_CONTAINER}" \
-            python3 -m phyloframe.legacy._alifestd_collapse_unifurcations_polars \
-            "${outpqt}" --eager-write
-
-    echo "${outpqt}" \
-        | singularity exec "${PHYLOFRAME_CONTAINER}" \
-            python3 -m phyloframe.legacy._alifestd_assign_contiguous_ids_polars \
-            "${outpqt}" --eager-write
-
-    singularity exec "${PHYLOFRAME_CONTAINER}" \
-        python3 -m phyloframe.legacy._alifestd_as_newick_polars \
-            -i "${outpqt}" \
-            -o "${CONFIG_WORKDIR}/a=phylotree+${label}+ext=.nwk" \
-            | tee "${CONFIG_RESULTDIR}/_alifestd_as_newick_polars_${label}.log"
-
-    echo "${outpqt}" \
-        | singularity exec "${JOINEM_CONTAINER}" joinem \
-            "${CONFIG_WORKDIR}/a=phylometa+${label}+ext=.csv" \
-            --select "id" \
-            --select "original_id" \
-            --select "origin_time" \
-            --select "focal_trait_count" \
-            --select "nonfocal_trait_count" \
-            --select "layer" \
-            --select "row" \
-            --select "col" \
-            --select "subgrid" \
-            --select "subgrid_row" \
-            --select "subgrid_col" \
-            --select "^trait_byte\d+_bit\d+$" \
-            --select "^trait_num\d+$" \
-            | tee "${CONFIG_RESULTDIR}/joinem_${label}.log"
-
-    gzip -k "${CONFIG_WORKDIR}/a=phylotree+${label}+ext=.nwk"
-    gzip -k "${CONFIG_WORKDIR}/a=phylometa+${label}+ext=.csv"
-}
-
-# 04-build-phylo writes one file holding an independent tree per run, keyed
-# by `config`; split it out and export each run's tree separately
-PHYLO_SOURCE="${WORKDIR}/04-build-phylo/a=phylogeny+ext=.pqt"
-echo "PHYLO_SOURCE ${PHYLO_SOURCE}"
-for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
-    CONFIG_NAME="$(basename "${CONFIG_DIR}")"
+###############################################################################
+echo
+echo "compile configs --------------------------------------------------------"
+echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
+###############################################################################
+# sweep subgrid sizes (0 is full grid, i.e., no subgrids), one seed each;
+# transmission reduction is scaled by half, because at scale 1.0 MLS site 0
+# (gained within-host almost surely, and fully blocking transmission) drives
+# the pathogen extinct within ~60 generations
+genome_flavor=genome_mlsindiv_2026_10_18
+txscale=0.5
+seed=0
+for subgrid in 0 27 81 243; do
+    seed=$((seed + 1))
+    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+txscale=${txscale}+seed=${seed}"
     echo
-    echo "====== Exporting phylogeny for config: ${CONFIG_NAME} ======"
+    echo "====== Compiling config: ${CONFIG_NAME} ======"
 
     CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
     CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
     mkdir -p "${CONFIG_WORKDIR}"
     mkdir -p "${CONFIG_RESULTDIR}"
 
-    echo "PHYLOFRAME_CONTAINER ${PHYLOFRAME_CONTAINER}"
-
-    # workaround for pyarrow.lib.ArrowTypeError:
-    # Converting unsigned dictionary indices to pandas not yet supported, index type: uint32
-    echo "${PHYLO_SOURCE}" \
-        | singularity exec "${JOINEM_CONTAINER}" joinem \
-        --eager-read --eager-write \
-        --with-column 'pl.selectors.categorical().cast(pl.String)' \
-        --filter "pl.col(\"config\") == \"${CONFIG_NAME}\"" \
-        "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt"
-
-    # tree ids were reassigned across runs; make this run's contiguous
-    echo "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
-        | singularity exec "${PHYLOFRAME_CONTAINER}" \
-            python3 -m phyloframe.legacy._alifestd_assign_contiguous_ids_polars \
-            "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" --eager-write
-
-    singularity exec "${PHYLOFRAME_CONTAINER}" \
-        python3 -m phyloframe.legacy._alifestd_as_newick_polars \
-            -i "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
-            -o "${CONFIG_WORKDIR}/a=phylotree+ext=.nwk" \
-            | tee "${CONFIG_RESULTDIR}/_alifestd_as_newick_polars.log"
-
-    echo "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
-        | singularity exec "${JOINEM_CONTAINER}" joinem \
-            "${CONFIG_WORKDIR}/a=phylometa+ext=.csv" \
-            --select "id" \
-            --select "origin_time" \
-            --select "focal_trait_count" \
-            --select "nonfocal_trait_count" \
-            --select "layer" \
-            --select "row" \
-            --select "col" \
-            --select "subgrid" \
-            --select "subgrid_row" \
-            --select "subgrid_col" \
-            --select "^trait_byte\d+_bit\d+$" \
-            --select "^trait_num\d+$" \
-            | tee "${CONFIG_RESULTDIR}/joinem.log"
-
-    gzip -k "${CONFIG_WORKDIR}/a=phylotree+ext=.nwk"
-    gzip -k "${CONFIG_WORKDIR}/a=phylometa+ext=.csv"
-
-    ###############################################################################
+    ###########################################################################
     echo
-    echo "cladesample phylogeny --------------------------------------------------"
+    echo "config compile: ${CONFIG_NAME} ---------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
-    ###############################################################################
-    for csamp in 8192 32768 131072 262144; do
-        downsample_and_export "csamp=${csamp}" \
-            _alifestd_downsample_tips_clade_polars -n "${csamp}" --seed 1
-    done
+    ###########################################################################
+    cat > "${CONFIG_WORKDIR}/env.sh" << EOF
+#!/usr/bin/env bash
 
-    ###############################################################################
+export ASYNC_GA_ARCH_FLAG="wse3"
+export ASYNC_GA_GENOME_FLAVOR="${genome_flavor}"
+export ASYNC_GA_FABRIC_DIMS="762,1172"
+export ASYNC_GA_NWAV=5
+export ASYNC_GA_NCOL=755
+export ASYNC_GA_NCOL_SUBGRID=${subgrid}
+export ASYNC_GA_NONBLOCK=1
+export ASYNC_GA_NROW=1170
+export ASYNC_GA_NROW_SUBGRID=${subgrid}
+export ASYNC_GA_NTRAIT=10
+export ASYNC_GA_MSEC_AT_LEAST=0
+export ASYNC_GA_NCYCLE_AT_LEAST=4000
+export ASYNC_GA_POPSIZE=1133
+export ASYNC_GA_POPULATION_FLAVOR="population_tournamentsteadystate"
+export ASYNC_GA_TOURNSIZE_NUMERATOR=2
+export ASYNC_GA_TOURNSIZE_DENOMINATOR=1
+export ASYNC_GA_GLOBAL_SEED=${seed}
+export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="hybrid_0_steady_1_tilted_2_algo"
+export COMPCONFENV_CEREBRASLIB_HSTRAT_T_DILATION__u32=1
+export COMPCONFENV_CEREBRASLIB_MLS_HOST_CLEAR_P__f32="0.1"
+export COMPCONFENV_CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE__f32="${txscale}"
+export COMPCONFENV_CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS__f32="25.0"
+export COMPCONFENV_CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE__f32="-6.0"
+export COMPCONFENV_CEREBRASLIB_NONZERO_FIT_FUDGE__f32="0.0"
+export COMPCONFENV_CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY__f32="0.0"
+export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string="reservoir"
+
+echo "ASYNC_GA_ARCH_FLAG \${ASYNC_GA_ARCH_FLAG}"
+echo "ASYNC_GA_GENOME_FLAVOR \${ASYNC_GA_GENOME_FLAVOR}"
+echo "ASYNC_GA_FABRIC_DIMS \${ASYNC_GA_FABRIC_DIMS}"
+echo "ASYNC_GA_NWAV \${ASYNC_GA_NWAV}"
+echo "ASYNC_GA_NCOL \${ASYNC_GA_NCOL}"
+echo "ASYNC_GA_NCOL_SUBGRID \${ASYNC_GA_NCOL_SUBGRID}"
+echo "ASYNC_GA_NONBLOCK \${ASYNC_GA_NONBLOCK}"
+echo "ASYNC_GA_NROW \${ASYNC_GA_NROW}"
+echo "ASYNC_GA_NROW_SUBGRID \${ASYNC_GA_NROW_SUBGRID}"
+echo "ASYNC_GA_NTRAIT \${ASYNC_GA_NTRAIT}"
+echo "ASYNC_GA_MSEC_AT_LEAST \${ASYNC_GA_MSEC_AT_LEAST}"
+echo "ASYNC_GA_NCYCLE_AT_LEAST \${ASYNC_GA_NCYCLE_AT_LEAST}"
+echo "ASYNC_GA_POPSIZE \${ASYNC_GA_POPSIZE}"
+echo "ASYNC_GA_POPULATION_FLAVOR \${ASYNC_GA_POPULATION_FLAVOR}"
+echo "ASYNC_GA_TOURNSIZE_NUMERATOR \${ASYNC_GA_TOURNSIZE_NUMERATOR}"
+echo "ASYNC_GA_TOURNSIZE_DENOMINATOR \${ASYNC_GA_TOURNSIZE_DENOMINATOR}"
+echo "ASYNC_GA_GLOBAL_SEED \${ASYNC_GA_GLOBAL_SEED}"
+echo "COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string \${COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string}"
+echo "COMPCONFENV_CEREBRASLIB_HSTRAT_T_DILATION__u32 \${COMPCONFENV_CEREBRASLIB_HSTRAT_T_DILATION__u32}"
+echo "COMPCONFENV_CEREBRASLIB_MLS_HOST_CLEAR_P__f32 \${COMPCONFENV_CEREBRASLIB_MLS_HOST_CLEAR_P__f32}"
+echo "COMPCONFENV_CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE__f32 \${COMPCONFENV_CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE__f32}"
+echo "COMPCONFENV_CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS__f32 \${COMPCONFENV_CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS__f32}"
+echo "COMPCONFENV_CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE__f32 \${COMPCONFENV_CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE__f32}"
+echo "COMPCONFENV_CEREBRASLIB_NONZERO_FIT_FUDGE__f32 \${COMPCONFENV_CEREBRASLIB_NONZERO_FIT_FUDGE__f32}"
+echo "COMPCONFENV_CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY__f32 \${COMPCONFENV_CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY__f32}"
+echo "COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string \${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string}"
+EOF
+
+    chmod +x "${CONFIG_WORKDIR}/env.sh"
+    cp "${CONFIG_WORKDIR}/env.sh" "${CONFIG_RESULTDIR}/env.sh"
+    source "${CONFIG_WORKDIR}/env.sh"
+
+    ###########################################################################
     echo
-    echo "downsample phylogeny ---------------------------------------------------"
+    echo "do compile: ${CONFIG_NAME} -------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
-    ###############################################################################
-    for dsamp in 8192 32768 131072 262144; do
-        downsample_and_export "dsamp=${dsamp}" \
-            _alifestd_downsample_tips_polars -n "${dsamp}" --seed 1
-    done
+    ###########################################################################
+    "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${CONFIG_RESULTDIR}/compile.log"
+
+    # Copy compiled artifacts to config workdir for run step
+    cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" "${CONFIG_WORKDIR}/"
+    cp -rL "${WORKDIR}/src/kernel-async-ga/out" "${CONFIG_WORKDIR}/"
+    cp -L "${WORKDIR}/src/kernel-async-ga/client.py" "${CONFIG_WORKDIR}/"
+    cp -rL "${WORKDIR}/src/kernel-async-ga/wheelhouse" "${CONFIG_WORKDIR}/"
+    cp -L "${WORKDIR}/src/kernel-async-ga/compconf.json" "${CONFIG_WORKDIR}/"
+
+    echo "Config ${CONFIG_NAME} compile complete!"
 done
 
 ###############################################################################
@@ -278,11 +264,6 @@ echo
 echo "closeout ---------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-find "${WORKDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${WORKDIR_STEP}"/*
-
-cp -r "${WORKDIR_STEP}"/* "${RESULTDIR_STEP}"
-
 find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
 du -ah "${RESULTDIR_STEP}"/*
 
