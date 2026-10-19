@@ -20,7 +20,9 @@ fn test_from_string() void {
 
 fn test_from_string_alias() void {
     // multiple strings may map to the same enum value
-    const mapping = .{ .apple = fruit.apple, .crabapple = fruit.apple };
+    const mapping = comptime .{
+        .apple = fruit.apple, .crabapple = fruit.apple,
+    };
     const crabapple = comptime enum_.from_string(fruit, mapping, "crabapple");
     @comptime_assert(crabapple == fruit.apple);
     @assert(crabapple == fruit.apple);

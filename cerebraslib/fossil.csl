@@ -33,7 +33,7 @@ const samplingMode_ = comptime fossil_sampling_from_string(samplingMode);
 var bookendBuffer = @zeros([genome.gSize + 2]u32);  // w/ bookend validation
 var ptr_bookendBuffer : [*]u32 = &bookendBuffer;
 
-const reservoirSize = (
+const reservoirSize = comptime (
     if (samplingMode_ == FossilSamplingEnum.reservoir) genome.gSize else 1
 );  // minimal buffer if unused
 var reservoirGenome = @zeros([reservoirSize]u32);
