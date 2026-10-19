@@ -3,6 +3,7 @@ param genome: imported_module;
 param population: imported_module;
 param rng: imported_module;
 param samplingMode: comptime_string;
+param symbolName: comptime_string;
 
 // module imports =============================================================
 const enum_ = @import_module("cerebraslib/enum.csl");
@@ -29,6 +30,9 @@ fn fossil_sampling_from_string(
 const samplingMode_ = fossil_sampling_from_string(samplingMode);
 
 // global state ===============================================================
+var bookend = @zeros([genome.gSize + 2]u32);  // w/ bookend validation
+var ptr_bookend : [*]u32 = &bookend;  // for async memcpy
+
 var reservoirGenome = @zeros([genome.gSize]u32);
 var reservoirCount: u32 = 0;  // generations since last collection
 
@@ -65,7 +69,7 @@ fn update_sample() void {
 }
 
 /// Copy fossil genome into bookend buffer, w/ counter + tag bookends.
-fn pull_sample(bookend: [*]u32, tag: u32) void {
+fn pull_sample(tag: u32) void {
     const genomePtr = _take_fossil();
     bookend[genome.gSize + 1] += 1;
     bookend[genome.gSize + 1] &= 0x3FF;  // clear upper bits
@@ -76,4 +80,10 @@ fn pull_sample(bookend: [*]u32, tag: u32) void {
     bookend[0] += 1;
     bookend[0] &= 0x3FF;  // clear upper bits
     bookend[0] |= tag << 10;  // set tag
+}
+
+comptime {  // symbols let memcpy gather data from device to host
+    if (@strlen(symbolName) > 0) {
+        @export_symbol(ptr_bookend, symbolName);
+    }
 }
