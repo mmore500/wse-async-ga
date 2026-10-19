@@ -27,13 +27,16 @@ fn fossil_sampling_from_string(
     );
 }
 
-const samplingMode_ = fossil_sampling_from_string(samplingMode);
+const samplingMode_ = comptime fossil_sampling_from_string(samplingMode);
 
 // global state ===============================================================
 var bookendBuffer = @zeros([genome.gSize + 2]u32);  // w/ bookend validation
 var ptr_bookendBuffer : [*]u32 = &bookendBuffer;
 
-var reservoirGenome = @zeros([genome.gSize]u32);
+const reservoirSize = (
+    if (samplingMode_ == FossilSamplingEnum.reservoir) genome.gSize else 1
+);  // minimal buffer if unused
+var reservoirGenome = @zeros([reservoirSize]u32);
 var generationsSincePull: u32 = 0;
 
 // module functions ===========================================================

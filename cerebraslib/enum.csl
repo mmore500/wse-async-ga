@@ -1,5 +1,5 @@
 /// Look up enum value for comptime string, via struct of string->value fields,
-/// e.g., from_string(color, .{ .red = color.red }, "red") == color.red
+/// e.g., from_string(fruit, .{ .apple = fruit.apple }, "apple") == fruit.apple
 fn from_string(
     comptime enumType: type,
     comptime mapping: anytype,
