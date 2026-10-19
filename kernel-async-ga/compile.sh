@@ -75,10 +75,10 @@ echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DILATION__u32 ${COMPCONFENV_CEREBRASLI
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string="${COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string:-steady_algo}"
 echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string ${COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string}"
 
-# 0: fossil is 0th population member at collection time
-# 1: reservoir sample one genome per generation between fossil collections
-export COMPCONFENV_ASYNC_GA_FOSSIL_RESERVOIR__u32="${COMPCONFENV_ASYNC_GA_FOSSIL_RESERVOIR__u32:-0}"
-echo "COMPCONFENV_ASYNC_GA_FOSSIL_RESERVOIR__u32 ${COMPCONFENV_ASYNC_GA_FOSSIL_RESERVOIR__u32}"
+# snapshot: fossil is 0th population member at collection time
+# reservoir: reservoir sample one genome per generation between collections
+export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string="${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string:-snapshot}"
+echo "COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string ${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING__comptime_string}"
 
 echo "setup dependency wheelhouse ---------------------------------------------"
 CS_PYTHON="${CS_PYTHON:-cs_python}"

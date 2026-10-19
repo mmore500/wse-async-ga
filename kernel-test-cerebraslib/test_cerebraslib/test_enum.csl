@@ -1,0 +1,32 @@
+const enum_ = @import_module("cerebraslib/enum.csl");
+
+const color = enum(u16) { red, white = 4, blue };
+const colorMapping = .{
+    .red = color.red, .white = color.white, .blue = color.blue,
+};
+
+fn test_from_string() void {
+    const red = enum_.from_string(color, colorMapping, "red");
+    const white = enum_.from_string(color, colorMapping, "white");
+    const blue = enum_.from_string(color, colorMapping, "blue");
+    @comptime_assert(red == color.red);
+    @comptime_assert(white == color.white);
+    @comptime_assert(blue == color.blue);
+    @assert(red == color.red);
+    @assert(white == color.white);
+    @assert(blue == color.blue);
+    @assert(@as(u16, white) == 4);
+}
+
+fn test_from_string_alias() void {
+    // multiple strings may map to the same enum value
+    const mapping = .{ .red = color.red, .crimson = color.red };
+    const crimson = enum_.from_string(color, mapping, "crimson");
+    @comptime_assert(crimson == color.red);
+    @assert(crimson == color.red);
+}
+
+fn do_test() void {
+    test_from_string();
+    test_from_string_alias();
+}

@@ -62,13 +62,28 @@ const pExtinction = compconf.get_value_or(
     @as(f32, 0.0),
 );
 
-// fossil sampling mode, 0 = snapshot 0th population member at collection time,
-// 1 = reservoir sample, so that between consecutive fossil collections each
-// generation's sampled genome is equally likely to become the streamed fossil
-const fossilReservoir = compconf.get_value_or(
-    "ASYNC_GA_FOSSIL_RESERVOIR", @as(u32, 0)
+// fossil sampling mode
+//   snapshot: 0th population member at collection time
+//   reservoir: reservoir sample, so that between consecutive fossil collections
+//     each generation's sampled genome is equally likely to be streamed fossil
+const enum_ = @import_module("cerebraslib/enum.csl");
+const FossilSampling = enum(u8) { snapshot, reservoir };
+fn fossil_sampling_from_string(
+  comptime name: comptime_string,
+) FossilSampling {
+  return enum_.from_string(
+    FossilSampling,
+    .{
+      .snapshot = FossilSampling.snapshot,
+      .reservoir = FossilSampling.reservoir,
+    },
+    name,
+  );
+}
+const fossilSampling = fossil_sampling_from_string(
+  compconf.get_value_or("ASYNC_GA_FOSSIL_SAMPLING", "snapshot")
 );
-comptime { @comptime_assert(fossilReservoir == 0 or fossilReservoir == 1); }
+const fossilReservoir = fossilSampling == FossilSampling.reservoir;
 
 const population = @import_module(
   @strcat("cerebraslib/", compconf_raw.ASYNC_GA_POPULATION_FLAVOR, ".csl"),
@@ -642,7 +657,7 @@ task cycleTask() void {
 
   // reservoir sample one genome per generation for fossil streaming
   // --------------------------------------------------------------------------
-  if (fossilReservoir != 0) { fossilReservoirSample(); }
+  if (fossilReservoir) { fossilReservoirSample(); }
 
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
@@ -724,7 +739,7 @@ fn fossilReservoirSample() void {
 fn genomerefresh() void {
   // use reservoir sample if available, otherwise fall back to current genome
   const genome_ptr = (
-    if (fossilReservoir != 0 and fossilReservoirCount > 0)
+    if (fossilReservoir and fossilReservoirCount > 0)
       @ptrcast([*]u32, &fossilReservoirGenome)
     else population._get_ith_genome(0)
   );
