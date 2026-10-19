@@ -82,6 +82,14 @@ fn p_(s: [*]u32, probability: f32) bool {
     return f < probability;
 }
 
+/// Sample a coin flip with probability 1 / n, for integer n.
+/// Always true for n == 1; always false for n == 0 (consumes no randomness).
+/// Uses modulo reduction, so bias is at most n / 2^32.
+fn p_one_in_(s: [*]u32, n: u32) bool {
+    if (n == 0) return false;
+    return next_(s) % n == 0;
+}
+
 /// Jump the state forward by 2^32 steps (one jump epoch).
 fn jump_one_epoch_(s: [*]u32) void {
     const JUMP = [2]u32{ 0x77fcd1a0, 0x4cbf99bd };
@@ -173,6 +181,11 @@ fn next_bit() bool {
 // Sample a coin flip with probability p.
 fn p(probability: f32) bool {
     return p_(@ptrcast([*]u32, &_state), probability);
+}
+
+// Sample a coin flip with probability 1 / n, for integer n.
+fn p_one_in(n: u32) bool {
+    return p_one_in_(@ptrcast([*]u32, &_state), n);
 }
 
 /// Jump the global state forward by 2^32 steps (one epoch).

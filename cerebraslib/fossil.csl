@@ -43,7 +43,7 @@ var reservoirCount: u32 = 0;  // generations sampled since last collection
 // since last collection replaces reservoir with probability 1 / k
 fn _reservoir_sample() void {
     reservoirCount += 1;
-    if (rng.next() % reservoirCount == 0) {
+    if (rng.p_one_in(reservoirCount)) {
         const genomePtr = population._get_ith_genome(0);
         for (@range(u16, genome.gSize)) |i| {
             reservoirGenome[i] = genomePtr[i];

@@ -759,6 +759,93 @@ fn test_p_global_half() void {
     @assert(count < 140);
 }
 
+// === Test p_one_in ===========================================================
+
+fn test_p_one_in_zero_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    for (@range(u16, 100)) |i| {
+        @assert(rng.p_one_in_(sp, 0) == false);
+    }
+    // n == 0 consumes no randomness
+    @assert(s[0] == 0x12345678);
+    @assert(s[1] == 0x9ABCDEF0);
+}
+
+fn test_p_one_in_one_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x12345678, 0x9ABCDEF0);
+    for (@range(u16, 100)) |i| {
+        @assert(rng.p_one_in_(sp, 1) == true);
+    }
+}
+
+fn test_p_one_in_two_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0xABCD1234, 0x5678EF00);
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (rng.p_one_in_(sp, 2)) {
+            count += 1;
+        }
+    }
+    // expect ~100; loose bounds [60, 140]
+    @assert(count > 60);
+    @assert(count < 140);
+}
+
+fn test_p_one_in_four_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0xDEADBEEF, 0xCAFEBABE);
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (rng.p_one_in_(sp, 4)) {
+            count += 1;
+        }
+    }
+    // expect ~50; loose bounds [20, 80]
+    @assert(count > 20);
+    @assert(count < 80);
+}
+
+fn test_p_one_in_large_() void {
+    var s = [2]u32{ 0, 0 };
+    const sp = @ptrcast([*]u32, &s);
+    rng.seed_(sp, 0x00000001, 0x00000002);
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (rng.p_one_in_(sp, 1000000)) {
+            count += 1;
+        }
+    }
+    // expect ~0.0002
+    @assert(count < 3);
+}
+
+fn test_p_one_in_global() void {
+    rng.seed(0x12345678, 0x9ABCDEF0);
+    for (@range(u16, 100)) |i| {
+        @assert(rng.p_one_in(1) == true);
+        @assert(rng.p_one_in(0) == false);
+    }
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (rng.p_one_in(4)) {
+            count += 1;
+        }
+    }
+    @assert(count > 20);
+    @assert(count < 80);
+}
+
 // Global and local p should be independent.
 fn test_p_independence() void {
     var s = [2]u32{ 0, 0 };
@@ -839,4 +926,10 @@ fn do_test() void {
     test_p_global_one();
     test_p_global_half();
     test_p_independence();
+    test_p_one_in_zero_();
+    test_p_one_in_one_();
+    test_p_one_in_two_();
+    test_p_one_in_four_();
+    test_p_one_in_large_();
+    test_p_one_in_global();
 }
