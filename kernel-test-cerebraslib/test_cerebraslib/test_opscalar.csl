@@ -115,6 +115,29 @@ fn test_p() void {
     while (!opscalar.p(0.5)) {}
 }
 
+fn test_p_one_in() void {
+    random.set_global_prng_seed(1);
+    for (@range(u16, 20)) |i| { @assert(opscalar.p_one_in(1)); }
+    for (@range(u16, 20)) |i| { @assert(!opscalar.p_one_in(0)); }
+    while (!opscalar.p_one_in(2)) {}
+    while (opscalar.p_one_in(2)) {}
+
+    var count: u32 = 0;
+    for (@range(u16, 200)) |i| {
+        if (opscalar.p_one_in(4)) { count += 1; }
+    }
+    // expect ~50; loose bounds [20, 80]
+    @assert(count > 20);
+    @assert(count < 80);
+
+    count = 0;
+    for (@range(u16, 200)) |i| {
+        if (opscalar.p_one_in(1000000)) { count += 1; }
+    }
+    // expect ~0.0002
+    @assert(count < 3);
+}
+
 fn test_poisson32() void {
     random.set_global_prng_seed(1);
     @assert(opscalar.poisson32(0.0) == 0);
@@ -604,6 +627,7 @@ fn do_test() void {
     test_mul32();
     test_p();
     test_parity32();
+    test_p_one_in();
     test_poisson32();
     test_popcnt32();
     test_unif16();
