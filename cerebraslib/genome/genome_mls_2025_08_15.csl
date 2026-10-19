@@ -74,7 +74,9 @@ comptime { // access via get_value for logging...
     );
 } // ... raw string works around sdk v1.0.0 limitation
 const compconf_raw = @import_module("<compconf_raw>");
-const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const has_value = comptime compconf.has_value(
+    "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+);
 const dstream_algo_name = (if (has_value)
     compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
 else
@@ -137,16 +139,16 @@ inline fn _is_clear(genome: genomePtr_t) bool {
     return res;
 }
 
-const _pmut_log2: u8 = compconf.get_value_or( //nofmt
+const _pmut_log2: u8 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_LOG2_PMUT_BITWISE", // nofmt
     @as(u8, 18), // nofmt
 );
 
-const _fit_fudge: f32 = compconf.get_value_or( //nofmt
+const _fit_fudge: f32 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_NONZERO_FIT_FUDGE", @as(f32, 0.0) // nofmt
 );
 
-const _p_clobber: f32 = compconf.get_value_or( //nofmt
+const _p_clobber: f32 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_CLOBBER_IMMIGRANT_P", @as(f32, 0.9) // nofmt
 );
 

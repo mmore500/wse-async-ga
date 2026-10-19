@@ -57,7 +57,7 @@ const genome_ = @import_module(
   .{ .rng = rng },
 );
 const nTraitVals = genome_.nTraitVals;
-const pExtinction = compconf.get_value_or(
+const pExtinction = comptime compconf.get_value_or(
     "CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY",
     @as(f32, 0.0),
 );
