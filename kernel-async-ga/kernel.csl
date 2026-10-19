@@ -638,7 +638,7 @@ task cycleTask() void {
 
   // update fossil sample
   // --------------------------------------------------------------------------
-  fossil.sample_generation();
+  fossil.update_sample();
 
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
@@ -706,7 +706,7 @@ task cycleTask() void {
 fn desync() void { for (@range(u16, @random16() % 256)) |i| { @random16(); } }
 
 fn genomerefresh() void {
-  fossil.fill_bookend(@ptrcast([*]u32, &genomeBookend), whoami[0]);
+  fossil.pull_sample(@ptrcast([*]u32, &genomeBookend), whoami[0]);
 }
 
 fn dorefresh() void {  // launched by RPC (remote procedure call)

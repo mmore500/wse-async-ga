@@ -60,12 +60,12 @@ fn _take_fossil() [*]u32 {
 
 // public interface ===========================================================
 /// Call once per generation, after population.do_generation.
-fn sample_generation() void {
+fn update_sample() void {
     if (samplingMode_ == FossilSampling.reservoir) { _reservoir_sample(); }
 }
 
 /// Copy fossil genome into bookend buffer, w/ counter + tag bookends.
-fn fill_bookend(bookend: [*]u32, tag: u32) void {
+fn pull_sample(bookend: [*]u32, tag: u32) void {
     const genomePtr = _take_fossil();
     bookend[genome.gSize + 1] += 1;
     bookend[genome.gSize + 1] &= 0x3FF;  // clear upper bits

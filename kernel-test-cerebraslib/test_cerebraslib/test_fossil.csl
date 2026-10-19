@@ -49,16 +49,16 @@ fn test_snapshot() void {
     _clear_bookend();
     const bookendPtr = @ptrcast([*]u32, &bookend);
 
-    fossilSnapshot.sample_generation();  // no-op in snapshot mode
+    fossilSnapshot.update_sample();  // no-op in snapshot mode
     population.do_generation();
     _save_expected();
-    fossilSnapshot.fill_bookend(bookendPtr, 7);
+    fossilSnapshot.pull_sample(bookendPtr, 7);
     _check_bookend(1, 7);
 
     population.do_generation();
-    fossilSnapshot.sample_generation();
+    fossilSnapshot.update_sample();
     _save_expected();
-    fossilSnapshot.fill_bookend(bookendPtr, 7);
+    fossilSnapshot.pull_sample(bookendPtr, 7);
     _check_bookend(2, 7);
 }
 
@@ -67,9 +67,9 @@ fn test_reservoir_fallback() void {
     const bookendPtr = @ptrcast([*]u32, &bookend);
 
     // empty reservoir falls back to 0th genome
-    fossilReservoir.fill_bookend(bookendPtr, 3);  // reset window
+    fossilReservoir.pull_sample(bookendPtr, 3);  // reset window
     _save_expected();
-    fossilReservoir.fill_bookend(bookendPtr, 3);
+    fossilReservoir.pull_sample(bookendPtr, 3);
     _check_bookend(2, 3);
 }
 
@@ -77,13 +77,13 @@ fn test_reservoir_single() void {
     _clear_bookend();
     const bookendPtr = @ptrcast([*]u32, &bookend);
 
-    fossilReservoir.fill_bookend(bookendPtr, 5);  // reset window
+    fossilReservoir.pull_sample(bookendPtr, 5);  // reset window
     // first generation always kept
     population.do_generation();
-    fossilReservoir.sample_generation();
+    fossilReservoir.update_sample();
     _save_expected();
     population.do_generation();
-    fossilReservoir.fill_bookend(bookendPtr, 5);
+    fossilReservoir.pull_sample(bookendPtr, 5);
     _check_bookend(2, 5);
 }
 
@@ -91,12 +91,12 @@ fn test_reservoir_many() void {
     _clear_bookend();
     const bookendPtr = @ptrcast([*]u32, &bookend);
 
-    fossilReservoir.fill_bookend(bookendPtr, 1);  // reset window
+    fossilReservoir.pull_sample(bookendPtr, 1);  // reset window
     for (@range(u16, 10)) |i| {
         population.do_generation();
-        fossilReservoir.sample_generation();
+        fossilReservoir.update_sample();
     }
-    fossilReservoir.fill_bookend(bookendPtr, 1);
+    fossilReservoir.pull_sample(bookendPtr, 1);
     @assert(bookend[0] == (1 << 10) | 2);
     @assert(bookend[genome.gSize + 1] == (1 << 10) | 2);
 }
