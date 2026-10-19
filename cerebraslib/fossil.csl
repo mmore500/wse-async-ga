@@ -41,7 +41,6 @@ var generationsSincePull: u32 = 0;
 
 // reservoir sample (algorithm R), kth generation kept w/ probability 1 / k
 fn _reservoir_sample() void {
-    generationsSincePull += 1;
     if (rng.p_one_in(generationsSincePull)) {
         const genomePtr = population._get_ith_genome(0);
         for (@range(u16, genome.gSize)) |i| {
@@ -56,12 +55,10 @@ fn _take_fossil_snapshot() [*]u32 {
 
 // falls back to snapshot if reservoir empty
 fn _take_fossil_reservoir() [*]u32 {
-    const fossilPtr = if (generationsSincePull > 0)
+    return if (generationsSincePull > 0)
         @ptrcast([*]u32, &reservoirGenome)
     else
         _take_fossil_snapshot();
-    generationsSincePull = 0;
-    return fossilPtr;
 }
 
 fn _take_fossil() [*]u32 {
@@ -75,12 +72,14 @@ fn _take_fossil() [*]u32 {
 // public interface ===========================================================
 /// Call once per generation, after population.do_generation.
 fn update_sample() void {
+    generationsSincePull += 1;
     if (samplingMode_ == FossilSampling.reservoir) { _reservoir_sample(); }
 }
 
 /// Copy fossil genome into bookend buffer, w/ counter + tag bookends.
 fn pull_sample(tag: u32) void {
     const genomePtr = _take_fossil();
+    generationsSincePull = 0;
     bookendBuffer[genome.gSize + 1] += 1;
     bookendBuffer[genome.gSize + 1] &= 0x3FF;  // clear upper bits
     bookendBuffer[genome.gSize + 1] |= tag << 10;  // set tag
