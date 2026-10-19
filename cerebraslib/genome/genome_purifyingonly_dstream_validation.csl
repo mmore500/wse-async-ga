@@ -85,7 +85,9 @@ comptime { // access via get_value for logging...
     );
 } // ... raw string works around sdk v1.0.0 limitation
 const compconf_raw = @import_module("<compconf_raw>");
-const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const has_value = comptime compconf.has_value(
+    "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+);
 const dstream_algo_name = (if (has_value)
     compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
 else
@@ -93,15 +95,15 @@ else
 const dstream_algo = @import_module(
     @strcat("<downstream/dstream/", dstream_algo_name, ">"),
 );
-const S = compconf.get_value_or(
+const S = comptime compconf.get_value_or(
     "CEREBRASLIB_HSTRAT_DSTREAM_S",
     @as(u32, 64),
 );
-const dstream_expected_T = compconf.get_value_or(
+const dstream_expected_T = comptime compconf.get_value_or(
     "CEREBRASLIB_DSTREAM_EXPECTED_T",
     @as(u32, 64),
 );
-const validator = compconf.get_value_or(
+const validator = comptime compconf.get_value_or(
     "CEREBRASLIB_DSTREAM_VALIDATOR",
     "checkerboard",
 );

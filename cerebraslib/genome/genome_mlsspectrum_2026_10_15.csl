@@ -118,7 +118,9 @@ comptime { // access via get_value for logging...
     );
 } // ... raw string works around sdk v1.0.0 limitation
 const compconf_raw = @import_module("<compconf_raw>");
-const has_value = compconf.has_value("CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME");
+const has_value = comptime compconf.has_value(
+    "CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME",
+);
 const dstream_algo_name = (if (has_value)
     compconf_raw.CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME
 else
@@ -144,26 +146,26 @@ const hasNotifyExtinct: bool = true;
 const mlsMask: u32 = 0x000000FF;
 
 // compile-time configuration =================================================
-const _pmut_log2: u8 = compconf.get_value_or( //nofmt
+const _pmut_log2: u8 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_LOG2_PMUT_BITWISE", // nofmt
     @as(u8, 18), // nofmt
 );
 
-const _fit_fudge: f32 = compconf.get_value_or( //nofmt
+const _fit_fudge: f32 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_NONZERO_FIT_FUDGE", @as(f32, 0.0) // nofmt
 );
 
-const _p_clobber_scale: f32 = compconf.get_value_or( //nofmt
+const _p_clobber_scale: f32 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_CLOBBER_IMMIGRANT_P", @as(f32, 1.0) // nofmt
 );
 
 // actual population size, used to rescale within-population advantage
-const _popSize: u32 = compconf.get_value_or( //nofmt
+const _popSize: u32 = comptime compconf.get_value_or( //nofmt
     "ASYNC_GA_POPSIZE", @as(u32, 256) // nofmt
 );
 comptime { @comptime_assert(_popSize >= 1); }
 
-const _referenceDoublings: f32 = compconf.get_value_or( //nofmt
+const _referenceDoublings: f32 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_MLS_REFERENCE_DOUBLINGS", @as(f32, 25.0) // nofmt
 );
 comptime { @comptime_assert(_referenceDoublings > 0.0); }
