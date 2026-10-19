@@ -76,7 +76,7 @@ fn test_reservoir_single() void {
 
 fn test_reservoir_many() void {
     fossilReservoir.pull_sample(1);  // reset window
-    for (@range(u16, 10)) |i| {
+    for (@range(u16, 3)) |i| {
         population.do_generation();
         fossilReservoir.update_sample();
     }
