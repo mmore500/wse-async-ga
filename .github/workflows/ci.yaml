@@ -12,7 +12,7 @@ on:
 jobs:
   test-pylib:
     name: Test pylib
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -34,7 +34,7 @@ jobs:
 
   test-pylib_cs:
     name: Test pylib_cs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -60,7 +60,7 @@ jobs:
           python3 -m pylib_cs.cslc_wsclust_shim
 
   test-async-ga:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
@@ -184,9 +184,7 @@ jobs:
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
-          # sudo on current runners ignores -E, so forward needed env explicitly
-          mapfile -t SUDO_ENV < <(env | grep -E '^(ASYNC_GA_|COMPCONFENV_|APPTAINERENV_|CSLC=|CS_PYTHON=|LD_LIBRARY_PATH=|pythonLocation=|TMPDIR=)')
-          sudo env "PATH=$PATH" "${SUDO_ENV[@]}" \
+          sudo -E env PATH=$PATH \
             ./kernel-async-ga/compile.sh \
             # >/dev/null 2>&1
 
@@ -195,14 +193,12 @@ jobs:
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
-          # sudo on current runners ignores -E, so forward needed env explicitly
-          mapfile -t SUDO_ENV < <(env | grep -E '^(ASYNC_GA_|COMPCONFENV_|APPTAINERENV_|CSLC=|CS_PYTHON=|LD_LIBRARY_PATH=|pythonLocation=|TMPDIR=)')
-          sudo env "PATH=$PATH" "${SUDO_ENV[@]}" \
+          sudo -E env PATH=$PATH \
             ./kernel-async-ga/execute.sh
 
   test-sample-populations:
     name: Test make sample population
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
@@ -301,9 +297,7 @@ jobs:
       - name: Generate sample tagged populations
         run: |
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
-          # sudo on current runners ignores -E, so forward needed env explicitly
-          mapfile -t SUDO_ENV < <(env | grep -E '^(ASYNC_GA_|COMPCONFENV_|APPTAINERENV_|CSLC=|CS_PYTHON=|LD_LIBRARY_PATH=|pythonLocation=|TMPDIR=)')
-          sudo env "PATH=$PATH" "${SUDO_ENV[@]}" \
+          sudo -E env PATH=$PATH \
             ./kernel-async-ga/generate_sample_tagged_populations.sh \
             # >/dev/null 2>&1
 
@@ -314,7 +308,7 @@ jobs:
           path: ./kernel-async-ga/a=concatenated_genomes+flavor=genome_hsurftiltedsticky_tagged+ext=.csv
 
   test-hstrat:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
@@ -483,9 +477,7 @@ jobs:
           export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
           export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
           export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string="${{ matrix.fossil_sampling }}"
-          # sudo on current runners ignores -E, so forward needed env explicitly
-          mapfile -t SUDO_ENV < <(env | grep -E '^(ASYNC_GA_|COMPCONFENV_|APPTAINERENV_|CSLC=|CS_PYTHON=|LD_LIBRARY_PATH=|pythonLocation=|TMPDIR=)')
-          sudo env "PATH=$PATH" "${SUDO_ENV[@]}" \
+          sudo -E env PATH=$PATH \
             ./kernel-async-ga/compile.sh \
             # >/dev/null 2>&1
 
@@ -497,9 +489,7 @@ jobs:
           export COMPCONFENV_CEREBRASLIB_DSTREAM_VALIDATOR__comptime_string="${{ matrix.dstream_validator }}"
           export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
           export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
-          # sudo on current runners ignores -E, so forward needed env explicitly
-          mapfile -t SUDO_ENV < <(env | grep -E '^(ASYNC_GA_|COMPCONFENV_|APPTAINERENV_|CSLC=|CS_PYTHON=|LD_LIBRARY_PATH=|pythonLocation=|TMPDIR=)')
-          sudo env "PATH=$PATH" "${SUDO_ENV[@]}" \
+          sudo -E env PATH=$PATH \
             ./kernel-async-ga/execute.sh
 
       - name: Build tree from end-state genomes
@@ -565,7 +555,7 @@ jobs:
 
   test-cerebraslib:
     name: Test cerebraslib
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
