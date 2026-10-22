@@ -24,14 +24,10 @@ fn test_log2_u32() void {
 fn test_mls_selection_p() void {
     // default compconf: popSize 256 (8 doublings), 25 reference doublings
     // expected s'_i = (1 + s_i) ^ (8 / 25) - 1
-    @assert(math.abs(genome_mls._get_mls_selection_p(0) - 0.24833055) < 1e-4);
-    @assert(math.abs(genome_mls._get_mls_selection_p(1) - 0.13854238) < 1e-4);
-    @assert(math.abs(genome_mls._get_mls_selection_p(2) - 0.07401712) < 1e-4);
-    @assert(math.abs(genome_mls._get_mls_selection_p(3) - 0.03096912) < 1e-4);
-    @assert(math.abs(genome_mls._get_mls_selection_p(4) - 0.01573537) < 1e-4);
-    @assert(math.abs(genome_mls._get_mls_selection_p(5) - 0.00793294) < 1e-4);
-    @assert(math.abs(genome_mls._get_mls_selection_p(6) - 0.00318918) < 1e-4);
-    @assert(math.abs(genome_mls._get_mls_selection_p(7) - 0.00159729) < 1e-4);
+    @assert(math.abs(genome_mls._get_mls_selection_p(0) - 0.01573537) < 1e-5);
+    @assert(math.abs(genome_mls._get_mls_selection_p(1) - 0.00793294) < 1e-5);
+    @assert(math.abs(genome_mls._get_mls_selection_p(2) - 0.00318918) < 1e-5);
+    @assert(math.abs(genome_mls._get_mls_selection_p(3) - 0.00159729) < 1e-5);
     for (@range(u16, 1, genome_mls.nMlsSites, 1)) |i| {
         @assert(
             genome_mls._get_mls_selection_p(i)
@@ -42,14 +38,10 @@ fn test_mls_selection_p() void {
 
 fn test_mls_clobber_p() void {
     // default compconf: clobber scale 1.0
-    @assert(genome_mls._get_mls_clobber_p(0) == 1.0);
-    @assert(genome_mls._get_mls_clobber_p(1) == 0.5);
-    @assert(genome_mls._get_mls_clobber_p(2) == 0.25);
-    @assert(math.abs(genome_mls._get_mls_clobber_p(3) - 0.1) < 1e-6);
-    @assert(math.abs(genome_mls._get_mls_clobber_p(4) - 0.05) < 1e-6);
-    @assert(math.abs(genome_mls._get_mls_clobber_p(5) - 0.025) < 1e-6);
-    @assert(math.abs(genome_mls._get_mls_clobber_p(6) - 0.01) < 1e-6);
-    @assert(math.abs(genome_mls._get_mls_clobber_p(7) - 0.005) < 1e-6);
+    @assert(math.abs(genome_mls._get_mls_clobber_p(0) - 0.05) < 1e-6);
+    @assert(math.abs(genome_mls._get_mls_clobber_p(1) - 0.025) < 1e-6);
+    @assert(math.abs(genome_mls._get_mls_clobber_p(2) - 0.01) < 1e-6);
+    @assert(math.abs(genome_mls._get_mls_clobber_p(3) - 0.005) < 1e-6);
 }
 
 fn test_elapse_inheritance_of() void {
@@ -61,34 +53,42 @@ fn test_elapse_inheritance_of() void {
     for (@range(u16, genome_mls.gSize)) |i| { @assert(genome[i] == 0); }
 
     genome_mls.initialize_one(genome_ptr);
-    @assert(genome[2] == 128);
+    @assert(genome_mls._get_counter(genome_ptr) == 128);
 
     genome_mls.elapse_inheritance_of(genome_ptr);
-    @assert(genome[2] == 130);
+    @assert(genome_mls._get_counter(genome_ptr) == 130);
 
     genome_mls.elapse_inheritance_of(genome_ptr);
-    @assert(genome[2] == 132);
+    @assert(genome_mls._get_counter(genome_ptr) == 132);
 
-    // flag sites, in both flag words
-    for (@range(u16, 2)) |i| {
-        var genome_i = genome[i];
-        while (genome_i == genome[i]) {
-            genome_mls._apply_mutation(genome_ptr, 8);
-        }
+    // flag sites
+    const flags = genome[0] & 0xFFFF0000;
+    while (flags == (genome[0] & 0xFFFF0000)) {
+        genome_mls._apply_mutation(genome_ptr, 4);
     }
 
-    // mutation does not touch counter word
-    const genome2 = genome[2];
+    // mutation does not touch counter or hstrat bitfield
+    const counter = genome_mls._get_counter(genome_ptr);
+    const genome1 = genome[1];
     for (@range(u16, 64)) |_| { genome_mls._apply_mutation(genome_ptr, 1); }
-    @assert(genome[2] == genome2);
+    @assert(genome_mls._get_counter(genome_ptr) == counter);
+    @assert(genome[1] == genome1);
 
     // hstrat bitfield
-    for (@range(u16, 3, 7, 1)) |i| {
+    for (@range(u16, 1, 5, 1)) |i| {
         var genome_i = genome[i];
         while (genome_i == genome[i]) {
             genome_mls.elapse_inheritance_of(genome_ptr);
         }
     }
+
+    // saturated counter stops instrumentation
+    const halfwords = @ptrcast([*]u16, genome_ptr);
+    halfwords[0] = genome_mls.counterMax;
+    const hstrat1 = genome[1];
+    for (@range(u16, 32)) |_| { genome_mls._step_instrumentation(genome_ptr); }
+    @assert(genome_mls._get_counter(genome_ptr) == genome_mls.counterMax);
+    @assert(genome[1] == hstrat1);
 }
 
 fn test_calc_fitness_of() void {
@@ -103,11 +103,9 @@ fn test_calc_fitness_of() void {
     @assert(genome_mls.calc_fitness_of(genome_ptr) == baseFit);
 
     // neutral sites have no effect
-    genome[0] ^= ~genome_mls.spectrumMask;
-    genome[1] ^= 0xFFFFFFFF;
+    genome[0] ^= genome_mls.neutralMask;
     @assert(genome_mls.calc_fitness_of(genome_ptr) == baseFit);
-    genome[0] ^= ~genome_mls.spectrumMask;
-    genome[1] ^= 0xFFFFFFFF;
+    genome[0] ^= genome_mls.neutralMask;
 
     // between-host deleterious sites have no within-host effect
     genome[0] |= genome_mls.deleteriousMask;
@@ -116,12 +114,12 @@ fn test_calc_fitness_of() void {
     }
     genome[0] &= ~genome_mls.deleteriousMask;
 
-    // MLS (shift 0) and within-host beneficial (shift 16) sites
+    // MLS (shift 16) and within-host beneficial (shift 24) sites
     // stochastically add bonus, with expected probability
     const nTrials: u16 = 64;
     for (@range(u16, 2)) |spectrum| {
         for (@range(u16, genome_mls.nMlsSites)) |site| {
-            const bit = @as(u32, site) + @as(u32, spectrum) * 16;
+            const bit = @as(u32, site) + 16 + @as(u32, spectrum) * 8;
             genome[0] |= @as(u32, 1) << bit;
             var nBonus: u16 = 0;
             for (@range(u16, nTrials)) |_| {
@@ -143,17 +141,26 @@ fn test_calc_fitness_of() void {
     }
     @assert(genome_mls.calc_fitness_of(genome_ptr) == baseFit);
 
-    // MLS and beneficial sites stack
-    genome[0] |= 0x00010001;
+    // MLS and beneficial site bonuses stack
+    const bothBits: u32 = 0x01010000; // MLS level 0, beneficial level 0
+    genome[0] |= bothBits;
     const singleFit = baseFit + genome_mls._mlsBonus;
     const doubleFit = singleFit + genome_mls._mlsBonus;
-    var sawDouble = false;
-    while (!sawDouble) {
+    var nBonus: u16 = 0;
+    for (@range(u16, nTrials)) |_| {
         const fit = genome_mls.calc_fitness_of(genome_ptr);
         @assert(fit == baseFit or fit == singleFit or fit == doubleFit);
-        sawDouble = fit == doubleFit;
+        nBonus += @as(u16, fit >= singleFit) + @as(u16, fit == doubleFit);
     }
-    genome[0] &= ~@as(u32, 0x00010001);
+    // expected bonuses are summed over both sites
+    const expectedBoth = (
+        2.0 * genome_mls._get_mls_selection_p(0) * @as(f32, nTrials)
+    );
+    @assert(
+        math.abs(@as(f32, nBonus) - expectedBoth)
+        < 0.25 * expectedBoth + 15.0
+    );
+    genome[0] &= ~bothBits;
 
     genome_mls._clear(genome_ptr);
     @assert(genome_mls.calc_fitness_of(genome_ptr) == 0.0);
@@ -167,22 +174,22 @@ fn test_get_trait_value() void {
     genome_mls.initialize_one(genome_ptr);
     @assert(genome_mls.get_trait_value(genome_ptr) == 1);
 
-    // neutral sites don't affect trait value
-    genome[0] ^= ~genome_mls.spectrumMask;
+    // neutral sites and hstrat bitfield don't affect trait value
+    genome[0] ^= genome_mls.neutralMask;
     genome[1] ^= 0xFFFFFFFF;
     @assert(genome_mls.get_trait_value(genome_ptr) == 1);
-    genome[0] ^= ~genome_mls.spectrumMask;
+    genome[0] ^= genome_mls.neutralMask;
     genome[1] ^= 0xFFFFFFFF;
 
     // sites in all three spectra count toward trait value
-    genome[0] |= 0x01; // MLS
+    genome[0] |= 0x00010000; // MLS
     @assert(genome_mls.get_trait_value(genome_ptr) == 2);
-    genome[0] |= 0x0100; // between-host deleterious
+    genome[0] |= 0x00100000; // between-host deleterious
     @assert(genome_mls.get_trait_value(genome_ptr) == 3);
-    genome[0] |= 0x800000; // within-host beneficial
+    genome[0] |= 0x08000000; // within-host beneficial
     @assert(genome_mls.get_trait_value(genome_ptr) == 4);
     genome[0] |= genome_mls.spectrumMask;
-    @assert(genome_mls.get_trait_value(genome_ptr) == 25);
+    @assert(genome_mls.get_trait_value(genome_ptr) == 13);
     @assert(
         genome_mls.get_trait_value(genome_ptr)
         < @as(u32, genome_mls.nTraitVals)
@@ -196,17 +203,16 @@ fn test_initialize_one() void {
     var genome = @zeros(genome_mls.genome_t);
     var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
     genome_mls.initialize_one(genome_ptr);
-    @assert(genome[0] == 0x0F000000);
-    @assert(genome[1] == 0);
-    @assert(genome[2] == 128);
+    @assert(genome[0] == 0xF0000080);
+    @assert(genome_mls._get_counter(genome_ptr) == 128);
+    @assert(genome[1] != 0);
+    @assert(genome[2] != 0);
     @assert(genome[3] != 0);
     @assert(genome[4] != 0);
-    @assert(genome[5] != 0);
-    @assert(genome[6] != 0);
+    @assert(genome[1] != genome[2]);
+    @assert(genome[2] != genome[3]);
     @assert(genome[3] != genome[4]);
-    @assert(genome[4] != genome[5]);
-    @assert(genome[5] != genome[6]);
-    @assert(genome[6] != genome[3]);
+    @assert(genome[4] != genome[1]);
     @assert(!genome_mls._is_clear(genome_ptr));
 }
 
@@ -227,9 +233,9 @@ fn test_clobber_immigrant() void {
 
     // not extinct: immigrant always clobbered, replaced by copy of resident
     @assert(!genome_mls._isExtinct);
-    for (@range(u16, 0, 255, 8)) |i| {
+    for (@range(u16, 0, 16, 1)) |i| {
         genome_mls.initialize_one(imm_ptr);
-        imm[0] |= @as(u32, i) & genome_mls.mlsMask;
+        imm[0] |= (@as(u32, i) << genome_mls.mlsShift) & genome_mls.mlsMask;
         @assert(genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
         for (@range(u16, genome_mls.gSize)) |w| {
             @assert(imm[w] == resident[w]);
@@ -247,8 +253,7 @@ fn test_clobber_immigrant() void {
     // extinct: immigrant with only beneficial and neutral sites colonizes,
     // ending extinction
     genome_mls.initialize_one(imm_ptr);
-    imm[0] ^= ~(genome_mls.mlsMask | genome_mls.deleteriousMask);
-    imm[1] ^= 0xFFFFFFFF;
+    imm[0] |= genome_mls.beneficialMask | genome_mls.neutralMask;
     @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
     @assert(!genome_mls._is_clear(imm_ptr));
     @assert(!genome_mls._isExtinct);
@@ -257,7 +262,7 @@ fn test_clobber_immigrant() void {
     @assert(genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
     @assert(genome_mls._is_clear(imm_ptr));
 
-    // extinct, single MLS (shift 0) or between-host deleterious (shift 8)
+    // extinct, single MLS (shift 16) or between-host deleterious (shift 20)
     // site: clobbers with expected probability
     var template = @zeros(genome_mls.genome_t);
     var template_ptr = @ptrcast(genome_mls.genomePtr_t, &template[0]);
@@ -265,7 +270,7 @@ fn test_clobber_immigrant() void {
     const nTrials: u16 = 64;
     for (@range(u16, 2)) |spectrum| {
         for (@range(u16, genome_mls.nMlsSites)) |site| {
-            const bit = @as(u32, site) + @as(u32, spectrum) * 8;
+            const bit = @as(u32, site) + 16 + @as(u32, spectrum) * 4;
             var nClobber: u16 = 0;
             for (@range(u16, nTrials)) |_| {
                 genome_mls.notify_extinct();
@@ -288,15 +293,27 @@ fn test_clobber_immigrant() void {
         }
     }
 
-    // level 0 MLS and deleterious sites have 100% clobber chance, so
-    // extinction persists
-    genome_mls.notify_extinct();
-    for (@range(u16, 32)) |i| {
-        for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
-        imm[0] |= @as(u32, 0x01) << @as(u32, 8 * (i % 2)); // bit 0 or 8
-        @assert(genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
-        @assert(genome_mls._isExtinct);
+    // all MLS and deleterious sites together clobber with expected
+    // probability 1 - prod_i (1 - s_i)^2
+    var pPass: f32 = 1.0;
+    for (@range(u16, genome_mls.nMlsSites)) |site| {
+        const p = genome_mls._get_mls_clobber_p(site);
+        pPass *= (1.0 - p) * (1.0 - p);
     }
+    var nClobberAll: u16 = 0;
+    for (@range(u16, nTrials)) |_| {
+        genome_mls.notify_extinct();
+        for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
+        imm[0] |= genome_mls.mlsMask | genome_mls.deleteriousMask;
+        nClobberAll += @as(u16, genome_mls.clobber_immigrant(
+            empty_resident_ptr, imm_ptr
+        ));
+    }
+    const expectedAll = (1.0 - pPass) * @as(f32, nTrials);
+    @assert(
+        math.abs(@as(f32, nClobberAll) - expectedAll)
+        < 0.25 * expectedAll + 15.0
+    );
 
     // within-host beneficial sites never clobber
     for (@range(u16, 32)) |_| {

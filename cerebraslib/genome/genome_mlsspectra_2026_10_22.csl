@@ -1,17 +1,20 @@
 // memory layout ===============================================================
-// byte 0 FLAG SITES (8 bytes)
-// byte 1   word 0 bits 0-7: MLS sites (bit i -> effect size level i)
-// byte 2   word 0 bits 8-15: between-host deleterious sites (level i at 8+i)
-// byte 3   word 0 bits 16-23: within-host beneficial sites (level i at 16+i)
-// byte 4   all other bits: neutral sites (word 0 bits 24-27 start as 1's)
+// byte 0 COUNTER (u16, 2 bytes)
+// byte 1
+// byte 2 FLAG SITES (2 bytes)
+// byte 3   byte 2 bits 0-3: MLS sites (bit i -> effect size level i)
+//          byte 2 bits 4-7: between-host deleterious sites (level i at 4+i)
+//          byte 3 bits 0-3: within-host beneficial sites (level i at i)
+//          byte 3 bits 4-7: neutral sites (start as 1's)
+// byte 4 BITFIELD (16 bytes)
 // byte 5
 // byte 6
 // byte 7
-// byte 8 COUNTER (u32, 4 bytes)
+// byte 8
 // byte 9
 // byte 10
 // byte 11
-// byte 12 BITFIELD (16 bytes)
+// byte 12
 // byte 13
 // byte 14
 // byte 15
@@ -19,19 +22,16 @@
 // byte 17
 // byte 18
 // byte 19
-// byte 20
-// byte 21
-// byte 22
-// byte 23
-// byte 24
-// byte 25
-// byte 26
-// byte 27
-// TOTAL: 7 words -> 28 bytes
+// TOTAL: 5 words -> 20 bytes
+//
+// Bytes are as stored on device (little-endian); in data_hex (big-endian
+// words), word 0 reads as flag sites (beneficial/neutral byte, then
+// MLS/deleterious byte), then counter. The counter saturates at 0xFFFF (~32k
+// generations), after which instrumentation stops advancing.
 //
 // Site spectra ===============================================================
-// Three spectra of 8 sites each, all with effect sizes by level i
-//     s_i in [1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005]:
+// Three spectra of 4 sites each, all with effect sizes by level i
+//     s_i in [0.05, 0.025, 0.01, 0.005]:
 //   * MLS sites: within-host beneficial AND between-host deleterious,
 //   * between-host deleterious sites: clobber chance only,
 //   * within-host beneficial sites: selective advantage only.
@@ -54,10 +54,10 @@
 // otherwise-equal genome with probability 1/2 + s'_i / 2, i.e., has relative
 // fitness 1 + s'_i.
 //
-// In data_hex (big-endian words), level-i sites are flag byte 3 bit i (MLS),
-// flag byte 2 bit i (between-host deleterious), and flag byte 1 bit i
-// (within-host beneficial); the metadata below gives each site's clobber and
-// selection probabilities (0 where a site has no such effect).
+// In data_hex, level-i sites are flag byte 1 bit i (MLS), flag byte 1 bit
+// 4+i (between-host deleterious), and flag byte 0 bit i (within-host
+// beneficial); the metadata below gives each site's clobber and selection
+// probabilities (0 where a site has no such effect).
 
 //! {
 //!     "dstream_algo": (
@@ -66,42 +66,28 @@
 //!         ),
 //!         pl.Categorical,
 //!     ),
-//!     "dstream_storage_bitoffset": (96, pl.UInt8),
+//!     "dstream_storage_bitoffset": (32, pl.UInt8),
 //!     "dstream_storage_bitwidth": (128, pl.UInt8),
-//!     "dstream_T_bitoffset": (64, pl.UInt8),
-//!     "dstream_T_bitwidth": (32, pl.UInt8),
+//!     "dstream_T_bitoffset": (16, pl.UInt8),
+//!     "dstream_T_bitwidth": (16, pl.UInt8),
 //!     "dstream_S": (128, pl.UInt8),
 //!     "flag_site_bitwidth": (1, pl.UInt8),
 //!     "flag_sites_bitoffset": (0, pl.UInt8),
-//!     "flag_sites_bitwidth": (64, pl.UInt8),
-//!     "flag_is_focal_mask_byte0": (0x00, pl.UInt8),
+//!     "flag_sites_bitwidth": (16, pl.UInt8),
+//!     "flag_is_focal_mask_byte0": (0x0F, pl.UInt8),
 //!     "flag_is_focal_mask_byte1": (0xFF, pl.UInt8),
-//!     "flag_is_focal_mask_byte2": (0xFF, pl.UInt8),
-//!     "flag_is_focal_mask_byte3": (0xFF, pl.UInt8),
-//!     "flag_is_focal_mask_byte4": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte5": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte6": (0x00, pl.UInt8),
-//!     "flag_is_focal_mask_byte7": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte0": (0x0F, pl.UInt8),
+//!     "flag_nand_mask_byte0": (0xF0, pl.UInt8),
 //!     "flag_nand_mask_byte1": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte2": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte3": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte4": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte5": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte6": (0x00, pl.UInt8),
-//!     "flag_nand_mask_byte7": (0x00, pl.UInt8),
 //!     **{
-//!         f"{kind}_{what}_p_byte{byte}_bit{bit}": (
+//!         f"{kind}_{what}_p_byte{byte}_bit{bitoffset + bit}": (
 //!             p * (what in effects), pl.Float32,
 //!         )
-//!         for kind, byte, effects in (
-//!             ("mls", 3, ("clobber", "selection")),
-//!             ("deleterious", 2, ("clobber",)),
-//!             ("beneficial", 1, ("selection",)),
+//!         for kind, byte, bitoffset, effects in (
+//!             ("mls", 1, 0, ("clobber", "selection")),
+//!             ("deleterious", 1, 4, ("clobber",)),
+//!             ("beneficial", 0, 0, ("selection",)),
 //!         )
-//!         for bit, s in enumerate(
-//!             (1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005),
-//!         )
+//!         for bit, s in enumerate((0.05, 0.025, 0.01, 0.005))
 //!         for what, p in (
 //!             ("clobber", s * float(compconf_data.get(
 //!                 "CEREBRASLIB_CLOBBER_IMMIGRANT_P:f32", 1.0,
@@ -115,7 +101,7 @@
 //!             ) - 1.0),
 //!         )
 //!     },
-//!     "nWav": (7, pl.UInt8),
+//!     "nWav": (5, pl.UInt8),
 //! }
 
 // module imports =============================================================
@@ -147,22 +133,25 @@ const opscalar = @import_module("cerebraslib/opscalar.csl");
 const S = 128;
 
 // module config specs ========================================================
-const gSize: u16 = 7;
+const gSize: u16 = 5;
 const genome_t = [gSize]u32;
 const genomePtr_t = [*]u32;
-const nMlsSites: u16 = 8; // sites per spectrum, i.e., effect size levels
+const nMlsSites: u16 = 4; // sites per spectrum, i.e., effect size levels
 const nSpectrumSites: u16 = 3 * nMlsSites;
 // clear, or 1 + number of spectrum sites (MLS, deleterious, beneficial) set
 const nTraitVals: u16 = nSpectrumSites + 2;
 const hasImmClobber: bool = true;
 const hasNotifyExtinct: bool = true;
 
-const mlsMask: u32 = 0x000000FF;
-const deleteriousMask: u32 = 0x0000FF00;
-const beneficialMask: u32 = 0x00FF0000;
+const mlsMask: u32 = 0x000F0000;
+const deleteriousMask: u32 = 0x00F00000;
+const beneficialMask: u32 = 0x0F000000;
+const neutralMask: u32 = 0xF0000000;
 const spectrumMask: u32 = mlsMask | deleteriousMask | beneficialMask;
-const deleteriousShift: u32 = 8;
-const beneficialShift: u32 = 16;
+const mlsShift: u32 = 16;
+const deleteriousShift: u32 = 20;
+const beneficialShift: u32 = 24;
+const counterMax: u16 = 0xFFFF;
 
 // compile-time configuration =================================================
 const _pmut_log2: u8 = comptime compconf.get_value_or( //nofmt
@@ -192,14 +181,10 @@ comptime { @comptime_assert(_referenceDoublings > 0.0); }
 // MLS effect sizes ============================================================
 // clobber chance per MLS site, i.e., base effect size s_i
 var _mlsEffectSizes = [nMlsSites]f32{
-    1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.005,
+    0.05, 0.025, 0.01, 0.005,
 };
 // natural log of (1 + s_i), hardcoded to avoid runtime transcendentals
 var _mlsLog1pEffectSizes = [nMlsSites]f32{
-    0.6931471805599453,
-    0.4054651081081644,
-    0.22314355131420976,
-    0.09531017980432487,
     0.04879016416943201,
     0.0246926125903715,
     0.009950330853168083,
@@ -256,8 +241,8 @@ fn _get_mls_clobber_p(site: u16) f32 {
     return _mlsEffectSizes[site] * _p_clobber_scale;
 }
 
-/// Total fitness bonus expressed by within-host beneficial sites, given an
-/// 8-bit field of sites present, indexed by effect size level.
+/// Total fitness bonus expressed by within-host beneficial sites, given a
+/// 4-bit field of sites present, indexed by effect size level.
 fn _calc_selection_bonus(levelBits: u32) f32 {
     var bonus: f32 = 0.0;
     if (levelBits != 0) {
@@ -271,8 +256,8 @@ fn _calc_selection_bonus(levelBits: u32) f32 {
     return bonus;
 }
 
-/// Does any between-host deleterious site clobber its carrier, given an
-/// 8-bit field of sites present, indexed by effect size level?
+/// Does any between-host deleterious site clobber its carrier, given a
+/// 4-bit field of sites present, indexed by effect size level?
 fn _sample_clobber(levelBits: u32) bool {
     if (levelBits != 0) {
         for (@range(u16, nMlsSites)) |i| {
@@ -283,17 +268,28 @@ fn _sample_clobber(levelBits: u32) bool {
     return false;
 }
 
+fn _get_counter(genome: genomePtr_t) u16 {
+    const genome_halfwords = @ptrcast([*]u16, genome);
+    return genome_halfwords[0];
+}
+
 fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
-    bitmanip.mutate_log2p(@ptrcast([*]u16, genome), 4, log2p);
+    // flip each flag site (upper half of word 0) with probability 2^-log2p
+    var mask: u32 = 0xFFFF;
+    for (@range(u8, log2p)) |_| { mask &= @as(u32, @random16()); }
+    genome[0] ^= mask << 16;
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
+    // saturated counter stops instrumentation, rather than wrapping to clear
+    if (_get_counter(genome) == counterMax) return;
+
     // elapse generation in bitfield
     if (opscalar.unifbool()) {
-        const T = @ptrcast([*]u32, genome)[2];
+        const T = @as(u32, _get_counter(genome));
         const site = dstream_algo.assign_storage_site(S, T);
 
-        const offset_bits: u16 = (8 + 4) * 8;
+        const offset_bits: u16 = 4 * 8;
         const target_bit = @as(u16, site) + offset_bits;
 
         const genome_bytes = @ptrcast([*]u8, genome);
@@ -305,7 +301,8 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     }
 
     // elapse generation in counter
-    @ptrcast([*]u32, genome)[2] += 1;
+    const genome_halfwords = @ptrcast([*]u16, genome);
+    genome_halfwords[0] += 1;
 }
 
 inline fn _clear(genome: genomePtr_t) void {
@@ -314,12 +311,10 @@ inline fn _clear(genome: genomePtr_t) void {
     genome[2] = 0;
     genome[3] = 0;
     genome[4] = 0;
-    genome[5] = 0;
-    genome[6] = 0;
 }
 
 inline fn _is_clear(genome: genomePtr_t) bool {
-    const res: bool = genome[2] == 0;
+    const res: bool = _get_counter(genome) == 0;
     return res;
 }
 
@@ -337,7 +332,7 @@ fn calc_fitness_of(genome: genomePtr_t) f32 {
     if (_is_clear(genome)) return 0.0;
 
     var fitness: f32 = 1.0;
-    fitness += _calc_selection_bonus(genome[0] & mlsMask);
+    fitness += _calc_selection_bonus((genome[0] & mlsMask) >> mlsShift);
     fitness += _calc_selection_bonus(
         (genome[0] & beneficialMask) >> beneficialShift
     );
@@ -354,11 +349,11 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 
 fn initialize_one(genome: genomePtr_t) void {
     _clear(genome);
-    genome[0] |= 0x0F000000; // initialize 4 neutral sites as 1's
+    genome[0] |= neutralMask; // initialize 4 neutral sites as 1's
     // (to hint for testing endianness when decoding)
-    genome[2] = S; // initialize counter to S
+    genome[0] |= S; // initialize counter to S
     // randomize hstrat bitfield
-    bitmanip.randomize(@ptrcast([*]u16, &genome[3]), 8);
+    bitmanip.randomize(@ptrcast([*]u16, &genome[1]), 8);
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
@@ -369,7 +364,7 @@ fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
         return true;
     }
 
-    const mlsBits = immigrant[0] & mlsMask;
+    const mlsBits = (immigrant[0] & mlsMask) >> mlsShift;
     const deleteriousBits = (
         (immigrant[0] & deleteriousMask) >> deleteriousShift
     );

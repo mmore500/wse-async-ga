@@ -36,11 +36,8 @@ resultdir/03-postprocess: 03-postprocess.sh resultdir/02-run
 resultdir/04-build-phylo: 04-build-phylo.sh resultdir/03-postprocess
 	./04-build-phylo.sh
 
-resultdir/05-export-phylo: 05-export-phylo.sh resultdir/04-build-phylo
-	./05-export-phylo.sh
+resultdir/05-minify-phylo: 05-minify-phylo.sh resultdir/04-build-phylo
+	./05-minify-phylo.sh
 
-resultdir/06-minify-phylo: 06-minify-phylo.sh resultdir/05-export-phylo
-	./06-minify-phylo.sh
-
-resultdir/99-tarball: 99-tarball.sh resultdir/06-minify-phylo
+resultdir/99-tarball: 99-tarball.sh resultdir/05-minify-phylo
 	./99-tarball.sh
