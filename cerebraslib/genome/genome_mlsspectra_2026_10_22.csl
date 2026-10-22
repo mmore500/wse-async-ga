@@ -139,7 +139,7 @@ const genomePtr_t = [*]u32;
 const nMlsSites: u16 = 4; // sites per spectrum, i.e., effect size levels
 const nSpectrumSites: u16 = 3 * nMlsSites;
 // clear, or 1 + number of spectrum sites (MLS, deleterious, beneficial) set
-const nTraitVals: u16 = nSpectrumSites + 2;
+const nTraitVals: u16 = 2; // wildtype (or clear), or mutant
 const hasImmClobber: bool = true;
 const hasNotifyExtinct: bool = true;
 
@@ -148,6 +148,8 @@ const deleteriousMask: u32 = 0x00F00000;
 const beneficialMask: u32 = 0x0F000000;
 const neutralMask: u32 = 0xF0000000;
 const spectrumMask: u32 = mlsMask | deleteriousMask | beneficialMask;
+const flagMask: u32 = spectrumMask | neutralMask;
+const wildtypeFlags: u32 = neutralMask; // neutral sites start as 1's
 const mlsShift: u32 = 16;
 const deleteriousShift: u32 = 20;
 const beneficialShift: u32 = 24;
@@ -341,10 +343,11 @@ fn calc_fitness_of(genome: genomePtr_t) f32 {
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 {
-    // 0: is_clear
-    // 1 + n: not clear, has n spectrum sites set (MLS, deleterious, beneficial)
+    // 0: is_clear, or all flag sites (spectrum and neutral) are wildtype
+    // 1: not clear, and any flag site is mutated from its initial state
     if (_is_clear(genome)) return 0;
-    return 1 + opscalar.popcnt32(genome[0] & spectrumMask);
+    if ((genome[0] & flagMask) == wildtypeFlags) return 0;
+    return 1;
 }
 
 fn initialize_one(genome: genomePtr_t) void {

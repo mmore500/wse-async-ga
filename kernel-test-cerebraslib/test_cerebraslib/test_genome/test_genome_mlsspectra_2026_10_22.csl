@@ -171,29 +171,31 @@ fn test_get_trait_value() void {
     var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
     @assert(genome_mls.get_trait_value(genome_ptr) == 0);
 
+    // freshly initialized genome is wildtype
     genome_mls.initialize_one(genome_ptr);
-    @assert(genome_mls.get_trait_value(genome_ptr) == 1);
+    @assert(genome_mls.get_trait_value(genome_ptr) == 0);
 
-    // neutral sites and hstrat bitfield don't affect trait value
-    genome[0] ^= genome_mls.neutralMask;
+    // counter and hstrat bitfield don't affect trait value
+    genome_mls.elapse_inheritance_of(genome_ptr);
+    genome[0] = (genome[0] & 0x0000FFFF) | genome_mls.neutralMask;
     genome[1] ^= 0xFFFFFFFF;
-    @assert(genome_mls.get_trait_value(genome_ptr) == 1);
-    genome[0] ^= genome_mls.neutralMask;
-    genome[1] ^= 0xFFFFFFFF;
+    @assert(genome_mls.get_trait_value(genome_ptr) == 0);
 
-    // sites in all three spectra count toward trait value
-    genome[0] |= 0x00010000; // MLS
-    @assert(genome_mls.get_trait_value(genome_ptr) == 2);
-    genome[0] |= 0x00100000; // between-host deleterious
-    @assert(genome_mls.get_trait_value(genome_ptr) == 3);
-    genome[0] |= 0x08000000; // within-host beneficial
-    @assert(genome_mls.get_trait_value(genome_ptr) == 4);
-    genome[0] |= genome_mls.spectrumMask;
-    @assert(genome_mls.get_trait_value(genome_ptr) == 13);
-    @assert(
-        genome_mls.get_trait_value(genome_ptr)
-        < @as(u32, genome_mls.nTraitVals)
-    );
+    // any single flag site mutation, spectrum or neutral, is mutant
+    for (@range(u32, 16, 32, 1)) |bit| {
+        genome[0] ^= @as(u32, 1) << bit;
+        @assert(genome_mls.get_trait_value(genome_ptr) == 1);
+        @assert(
+            genome_mls.get_trait_value(genome_ptr)
+            < @as(u32, genome_mls.nTraitVals)
+        );
+        genome[0] ^= @as(u32, 1) << bit;
+        @assert(genome_mls.get_trait_value(genome_ptr) == 0);
+    }
+
+    // multiple mutations are still just mutant
+    genome[0] ^= genome_mls.spectrumMask | genome_mls.neutralMask;
+    @assert(genome_mls.get_trait_value(genome_ptr) == 1);
 
     genome_mls._clear(genome_ptr);
     @assert(genome_mls.get_trait_value(genome_ptr) == 0);
