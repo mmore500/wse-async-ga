@@ -12,7 +12,7 @@ on:
 jobs:
   test-pylib:
     name: Test pylib
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -34,7 +34,7 @@ jobs:
 
   test-pylib_cs:
     name: Test pylib_cs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -60,7 +60,7 @@ jobs:
           python3 -m pylib_cs.cslc_wsclust_shim
 
   test-async-ga:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
@@ -88,6 +88,7 @@ jobs:
           - genome_hypermutator
           - genome_mls_2025_08_15
           - genome_mlsspectrum_2026_10_15
+          - genome_mlsspectra_2026_10_22
           - genome_mlsindiv_2026_10_18
     env:
       CSLC: cslc
@@ -197,7 +198,7 @@ jobs:
 
   test-sample-populations:
     name: Test make sample population
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
@@ -307,7 +308,7 @@ jobs:
           path: ./kernel-async-ga/a=concatenated_genomes+flavor=genome_hsurftiltedsticky_tagged+ext=.csv
 
   test-hstrat:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
@@ -554,7 +555,7 @@ jobs:
 
   test-cerebraslib:
     name: Test cerebraslib
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60  # simulator hangs otherwise hold runners for hours
     strategy:
       fail-fast: false
