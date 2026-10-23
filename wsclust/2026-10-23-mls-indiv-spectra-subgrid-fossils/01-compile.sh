@@ -159,10 +159,11 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # sweep subgrid sizes (0 is full grid, i.e., no subgrids), one seed each
 genome_flavor=genome_mlsindivspectra_2026_10_23
+txscale=0.5
 seed=0
 for subgrid in 0 27 81 243; do
     seed=$((seed + 1))
-    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+seed=${seed}"
+    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+txscale=${txscale}+seed=${seed}"
     echo
     echo "====== Compiling config: ${CONFIG_NAME} ======"
 
@@ -201,7 +202,7 @@ export COMPCONFENV_CEREBRASLIB_HSTRAT_T_DILATION__u32=1
 export COMPCONFENV_CEREBRASLIB_NONZERO_FIT_FUDGE__f32="0.0"
 export COMPCONFENV_CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY__f32="0.0"
 export COMPCONFENV_CEREBRASLIB_MLS_HOST_CLEAR_P__f32="0.1"
-export COMPCONFENV_CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE__f32="1.0"
+export COMPCONFENV_CEREBRASLIB_MLS_TRANSMISSION_REDUCTION_SCALE__f32="${txscale}"
 export COMPCONFENV_CEREBRASLIB_MLS_WITHINHOST_DOUBLINGS__f32="25.0"
 export COMPCONFENV_CEREBRASLIB_MLS_LOG10_NEUTRAL_MUTATION_RATE__f32="-6.0"
 export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string="reservoir"
