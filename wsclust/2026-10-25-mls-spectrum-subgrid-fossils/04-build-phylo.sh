@@ -150,7 +150,10 @@ echo "SINGULARITYENV_POLARS_MAX_THREADS=${SINGULARITYENV_POLARS_MAX_THREADS}"
 echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 
 # Reconstruct one independent tree per run (config), from fossils only
-# (a=fossils+..., not end-state a=genomes+...), partitioning on `config`.
+# (a=fossils+..., not end-state a=genomes+...), with a separate
+# surface_build_tree_over invocation per run writing to its own config subdir.
+# Within each run, partition on `subgrid` so each subgrid gets its own
+# independent tree (genomes from different subgrids never share a tree).
 # Within each run, sample non-empty fossil genomes uniformly within each
 # (layer, subgrid) stratum, taking an equal share of SAMPLE_BUDGET per stratum
 # (at least one). Requires hstrat >=v1.26.1 (surface_build_tree_over, bundling
@@ -162,69 +165,82 @@ echo "SAMPLE_BUDGET ${SAMPLE_BUDGET}"
 NONEMPTY='~pl.col("data_hex").str.contains(r"^0+$")'
 echo "NONEMPTY ${NONEMPTY}"
 
-find "${WORKDIR}/03-postprocess" -mindepth 2 -maxdepth 2 -type f \
-    -name 'a=fossils+*.pqt' \
-    | tee "${RESULTDIR_STEP}/fossil-files.txt" \
-    | singularity exec "${HSTRAT_CONTAINER}" \
-    python3 -O -m hstrat.dataframe.surface_build_tree_over \
-        "${WORKDIR_STEP}/a=phylogeny+ext=.pqt" \
-        --partition-by config \
-        --trie-postprocessor \
-            'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
-        --shuffle-over-same-T-seed 1 \
-        --mp-pool-size 8 \
-        --no-drop-dstream-metadata \
-        --collapse-unif-freq 50 \
-        --exploded-slice-size 100000 \
-        --shrink-dtypes \
-        --write-kwarg 'compression="lz4"' \
-        --with-column 'pl.lit(filepath.split("/")[-2]).alias("config")' \
-        --with-column "(
-            pl.lit(${SAMPLE_BUDGET})
-            // pl.struct(\"layer\", \"subgrid\").filter(${NONEMPTY}).n_unique()
-        ).clip(lower_bound=1).alias(\"sample_per_stratum\")" \
-        --filter '~pl.col("is_extant")' \
-        --filter "${NONEMPTY}" \
-        --sample 'pl.len().clip(upper_bound=pl.col("sample_per_stratum").first())' \
-        --sample-stratify config \
-        --sample-stratify layer \
-        --sample-stratify subgrid \
-        --seed 1 \
-        --how "diagonal_relaxed" \
-        --eager-read --eager-write --string-cache \
-        --with-column 'pl.lit(filepath).cast(pl.Categorical).alias("file")' \
-        --with-column 'pl.sum_horizontal(
-            ((pl.col("data_hex").str.slice(2*b, 2).str.to_integer(base=16)
-            ^ pl.col(f"flag_nand_mask_byte{b}"))
-            & pl.col(f"flag_is_focal_mask_byte{b}")).bitwise_count_ones()
-            for b in range(2)
-        ).alias("focal_trait_count")' \
-        --with-column 'pl.sum_horizontal(
-            ((pl.col("data_hex").str.slice(2*b, 2).str.to_integer(base=16)
-            ^ pl.col(f"flag_nand_mask_byte{b}"))
-            & (~pl.col(f"flag_is_focal_mask_byte{b}"))).bitwise_count_ones()
-            for b in range(2)
-        ).cast(pl.UInt8).alias("nonfocal_trait_count")' \
-        --with-column '*(
-            (
+for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
+    CONFIG_NAME="$(basename "${CONFIG_DIR}")"
+    echo
+    echo "====== Building phylogeny for config: ${CONFIG_NAME} ======"
+    echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 
-                (((
-                    pl.col("data_hex")
-                    .str.slice(B * 2, 2)
-                    .str.to_integer(base=16)
-                    ^ pl.col(f"flag_nand_mask_byte{B}")
-                ) & pl.lit(1 << b)) // pl.lit(1 << b))
-                * pl.when(
-                    pl.col(f"flag_is_focal_mask_byte{B}")
-                    & pl.lit(1 << b)
-                    != 0
-                ).then(2).otherwise(1)
-            ).cast(pl.UInt8).alias(alias)
-            for B in range(2)
-            for b in range(8)
-            for alias in (f"trait_byte{B}_bit{b}", f"trait_num{B * 8 + b}")
-        )' \
-        | tee "${RESULTDIR_STEP}/surface_build_tree_over.log"
+    CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
+    CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
+    mkdir -p "${CONFIG_WORKDIR}"
+    mkdir -p "${CONFIG_RESULTDIR}"
+
+    find "${CONFIG_DIR}" -mindepth 1 -maxdepth 1 -type f \
+        -name 'a=fossils+*.pqt' \
+        | tee "${CONFIG_RESULTDIR}/fossil-files.txt" \
+        | singularity exec "${HSTRAT_CONTAINER}" \
+        python3 -O -m hstrat.dataframe.surface_build_tree_over \
+            "${CONFIG_WORKDIR}/a=phylogeny+ext=.pqt" \
+            --partition-by config \
+            --partition-by subgrid \
+            --trie-postprocessor \
+                'hstrat.AssignOriginTimeNodeRankTriePostprocessor(t0="dstream_S")' \
+            --shuffle-over-same-T-seed 1 \
+            --mp-pool-size 8 \
+            --no-drop-dstream-metadata \
+            --collapse-unif-freq 50 \
+            --exploded-slice-size 100000 \
+            --shrink-dtypes \
+            --write-kwarg 'compression="lz4"' \
+            --with-column 'pl.lit(filepath.split("/")[-2]).alias("config")' \
+            --with-column "(
+                pl.lit(${SAMPLE_BUDGET})
+                // pl.struct(\"layer\", \"subgrid\").filter(${NONEMPTY}).n_unique()
+            ).clip(lower_bound=1).alias(\"sample_per_stratum\")" \
+            --filter '~pl.col("is_extant")' \
+            --filter "${NONEMPTY}" \
+            --sample 'pl.len().clip(upper_bound=pl.col("sample_per_stratum").first())' \
+            --sample-stratify config \
+            --sample-stratify layer \
+            --sample-stratify subgrid \
+            --seed 1 \
+            --how "diagonal_relaxed" \
+            --eager-read --eager-write --string-cache \
+            --with-column 'pl.lit(filepath).cast(pl.Categorical).alias("file")' \
+            --with-column 'pl.sum_horizontal(
+                ((pl.col("data_hex").str.slice(2*b, 2).str.to_integer(base=16)
+                ^ pl.col(f"flag_nand_mask_byte{b}"))
+                & pl.col(f"flag_is_focal_mask_byte{b}")).bitwise_count_ones()
+                for b in range(2)
+            ).alias("focal_trait_count")' \
+            --with-column 'pl.sum_horizontal(
+                ((pl.col("data_hex").str.slice(2*b, 2).str.to_integer(base=16)
+                ^ pl.col(f"flag_nand_mask_byte{b}"))
+                & (~pl.col(f"flag_is_focal_mask_byte{b}"))).bitwise_count_ones()
+                for b in range(2)
+            ).cast(pl.UInt8).alias("nonfocal_trait_count")' \
+            --with-column '*(
+                (
+
+                    (((
+                        pl.col("data_hex")
+                        .str.slice(B * 2, 2)
+                        .str.to_integer(base=16)
+                        ^ pl.col(f"flag_nand_mask_byte{B}")
+                    ) & pl.lit(1 << b)) // pl.lit(1 << b))
+                    * pl.when(
+                        pl.col(f"flag_is_focal_mask_byte{B}")
+                        & pl.lit(1 << b)
+                        != 0
+                    ).then(2).otherwise(1)
+                ).cast(pl.UInt8).alias(alias)
+                for B in range(2)
+                for b in range(8)
+                for alias in (f"trait_byte{B}_bit{b}", f"trait_num{B * 8 + b}")
+            )' \
+            | tee "${CONFIG_RESULTDIR}/surface_build_tree_over.log"
+done
 
 ###############################################################################
 echo
