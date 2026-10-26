@@ -164,7 +164,7 @@ fn test_immigrate_genomes_clobber_count() void {
     // living residents clobber (zero out) every incoming immigrant
     populationClobber.init_module();
     var imm = @zeros([2 * genomeClobber.gSize]u32);
-    for (@range(u16, 2 * genomeClobber.gSize)) |w| { imm[w] = 0x5A5A0000 + w; }
+    for (@range(u16, 2 * genomeClobber.gSize)) |w| { imm[w] = 0x5A5A0000 + @as(u32, w); }
     const nClobbers = populationClobber.immigrate_genomes(
         @ptrcast([*]u32, &imm), 2
     );
