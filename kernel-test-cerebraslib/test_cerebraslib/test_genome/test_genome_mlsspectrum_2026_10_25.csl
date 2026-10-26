@@ -339,6 +339,36 @@ fn test_trample_resident() void {
         @assert(resident[i] == spawn[i]);
         @assert(spawn[i] == 0x01234567 ^ (@as(u32, i) << 8));
     }
+
+    // empty spawn never displaces a living resident
+    var living = @zeros(genome_mls.genome_t);
+    var living_ptr = @ptrcast(genome_mls.genomePtr_t, &living[0]);
+    genome_mls.initialize_one(living_ptr);
+    for (@range(u16, genome_mls.gSize)) |i| { resident[i] = living[i]; }
+    var empty = @zeros(genome_mls.genome_t);
+    var empty_ptr = @ptrcast(genome_mls.genomePtr_t, &empty[0]);
+    genome_mls.trample_resident(@ptrcast([*]u32, &resident), empty_ptr);
+    for (@range(u16, genome_mls.gSize)) |i| {
+        @assert(resident[i] == living[i]);
+        @assert(empty[i] == 0);
+    }
+
+    // empty spawn over empty resident leaves it empty
+    var empty_resident = @zeros(genome_mls.genome_t);
+    genome_mls.trample_resident(
+        @ptrcast([*]u32, &empty_resident), empty_ptr
+    );
+    for (@range(u16, genome_mls.gSize)) |i| {
+        @assert(empty_resident[i] == 0);
+    }
+
+    // living spawn fills an empty resident
+    genome_mls.trample_resident(
+        @ptrcast([*]u32, &empty_resident), living_ptr
+    );
+    for (@range(u16, genome_mls.gSize)) |i| {
+        @assert(empty_resident[i] == living[i]);
+    }
 }
 
 fn do_test() void {

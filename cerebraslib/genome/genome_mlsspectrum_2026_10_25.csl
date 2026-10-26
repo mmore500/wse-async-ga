@@ -386,6 +386,9 @@ fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
 }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    // an empty tournament winner never displaces a living resident, so a
+    // lone founder can't be lost while its refounded tile fills in
+    if (_is_clear(spawn) and !_is_clear(resident)) return;
     for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
 }
 
