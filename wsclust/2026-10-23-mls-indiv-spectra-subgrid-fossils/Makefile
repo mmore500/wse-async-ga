@@ -39,5 +39,8 @@ resultdir/04-build-phylo: 04-build-phylo.sh resultdir/03-postprocess
 resultdir/05-minify-phylo: 05-minify-phylo.sh resultdir/04-build-phylo
 	./05-minify-phylo.sh
 
-resultdir/99-tarball: 99-tarball.sh resultdir/05-minify-phylo
+resultdir/06-minify-nocollapse-phylo: 06-minify-nocollapse-phylo.sh resultdir/05-minify-phylo
+	./06-minify-nocollapse-phylo.sh
+
+resultdir/99-tarball: 99-tarball.sh resultdir/06-minify-nocollapse-phylo
 	./99-tarball.sh
