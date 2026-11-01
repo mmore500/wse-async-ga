@@ -159,10 +159,12 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # single run on full grid (subgrid 0, i.e., no subgrids) with a fresh seed,
 # distinct from seeds used by 2026-10-23-mls-indiv-spectra-subgrid-fossils
+# note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
+# as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_mlsindivspectra_2026_10_23
 txscale=0.5
 for subgrid in 0; do
-    seed=20261101
+    seed=1101
     CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+txscale=${txscale}+seed=${seed}"
     echo
     echo "====== Compiling config: ${CONFIG_NAME} ======"
