@@ -117,32 +117,20 @@ fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
     @mov32(toDsd, bufferDsd_);
 }
 
-/// Immigrate nGenomes genomes from fromBuf. Each of the nGenomes copied-to
-/// slots is first swapped with a uniformly random population member, which
-/// relocates (rather than discards) whatever currently occupies that slot
-/// before the immigrant overwrites it --- so immigrants effectively replace
-/// a random population member instead of always clobbering the same fixed
-/// slots (and colliding with concurrent immigrations from other neighbors).
+/// Immigrate nGenomes genomes from fromBuf. Each immigrant overwrites a
+/// uniformly random population member (sampled with replacement, so a later
+/// immigrant may land on an earlier one's slot), after the genome's
+/// clobber_immigrant hook gets a chance to veto or rewrite it.
 fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
-    for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
-
     var nClobbers: u32 = 0;
-    if (genome.hasImmClobber) {
-        for (@range(u16, nGenomes)) |i| {
-            nClobbers += @as(u32, genome.clobber_immigrant(
-                @ptrcast([*]u32, &buffer[i * genome.gSize]),
-                @ptrcast([*]u32, &fromBuf[i * genome.gSize]),
-            ));
+    for (@range(u16, nGenomes)) |i| {
+        const resident = _get_ith_genome(opscalar.unif16(popSize));
+        const immigrant = @ptrcast([*]u32, &fromBuf[i * genome.gSize]);
+        if (genome.hasImmClobber) {
+            nClobbers += @as(u32, genome.clobber_immigrant(resident, immigrant));
         }
+        for (@range(u16, genome.gSize)) |w| { resident[w] = immigrant[w]; }
     }
-
-    const fromDsd = @get_dsd(mem1d_dsd, .{
-        .base_address = fromBuf,
-        .extent = nGenomes * genome.gSize,
-    });
-    const nWords = nGenomes * genome.gSize;
-    const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
-    @mov32(bufferDsd_, fromDsd);
     return nClobbers;
 }
 

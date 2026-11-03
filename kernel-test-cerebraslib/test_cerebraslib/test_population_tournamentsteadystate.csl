@@ -96,6 +96,82 @@ fn test_immigrate_genomes_clobber() void {
     populationClobber.immigrate_genomes(@ptrcast([*]u32, &populationClobber.buffer), 2);
 }
 
+fn _count_matching_slots(
+    imm: [*]u32, buf: [*]u32, nSlots: u16, gSize: u16,
+) u16 {
+    var n: u16 = 0;
+    for (@range(u16, nSlots)) |s| {
+        var isMatch = true;
+        for (@range(u16, gSize)) |w| {
+            if (buf[s * gSize + w] != imm[w]) isMatch = false;
+        }
+        n += @as(u16, isMatch);
+    }
+    return n;
+}
+
+fn test_immigrate_genomes_overwrites_random_members() void {
+    const gSize = genome.gSize;
+    const popSize: u16 = 100;
+    const nImm: u16 = 4;
+
+    // snapshot population, and build distinct marker immigrants
+    var before = @zeros([popSize * gSize]u32);
+    for (@range(u16, popSize * gSize)) |w| { before[w] = population.buffer[w]; }
+    var imm = @zeros([nImm * gSize]u32);
+    for (@range(u16, nImm)) |i| {
+        for (@range(u16, gSize)) |w| {
+            imm[i * gSize + w] = 0xABC00000 + @as(u32, i) * 16 + @as(u32, w);
+        }
+    }
+
+    const nClobbers = population.immigrate_genomes(@ptrcast([*]u32, &imm), nImm);
+    @assert(nClobbers == 0);  // genome_bitdrift has no clobber hook
+
+    // every slot either is unchanged or holds exactly one immigrant
+    var nChanged: u16 = 0;
+    var nImmSlots: u16 = 0;
+    for (@range(u16, popSize)) |s| {
+        var isSame = true;
+        for (@range(u16, gSize)) |w| {
+            if (population.buffer[s * gSize + w] != before[s * gSize + w]) {
+                isSame = false;
+            }
+        }
+        nChanged += @as(u16, !isSame);
+    }
+    for (@range(u16, nImm)) |i| {
+        nImmSlots += _count_matching_slots(
+            @ptrcast([*]u32, &imm[i * gSize]),
+            @ptrcast([*]u32, &population.buffer),
+            popSize,
+            gSize,
+        );
+    }
+    @assert(1 <= nChanged and nChanged <= nImm);
+    @assert(nImmSlots == nChanged);
+
+    // the last immigrant can't be overwritten by a later one
+    @assert(_count_matching_slots(
+        @ptrcast([*]u32, &imm[(nImm - 1) * gSize]),
+        @ptrcast([*]u32, &population.buffer),
+        popSize,
+        gSize,
+    ) == 1);
+}
+
+fn test_immigrate_genomes_clobber_count() void {
+    // living residents clobber (zero out) every incoming immigrant
+    populationClobber.init_module();
+    var imm = @zeros([2 * genomeClobber.gSize]u32);
+    for (@range(u16, 2 * genomeClobber.gSize)) |w| { imm[w] = 0x5A5A0000 + @as(u32, w); }
+    const nClobbers = populationClobber.immigrate_genomes(
+        @ptrcast([*]u32, &imm), 2
+    );
+    @assert(nClobbers == 2);
+    for (@range(u16, 2 * genomeClobber.gSize)) |w| { @assert(imm[w] == 0); }
+}
+
 fn test_do_generation() void {
     population.do_generation();
 }
@@ -115,5 +191,7 @@ fn do_test() void {
     test_emigrate_genomes();
     test_immigrate_genomes();
     test_immigrate_genomes_clobber();
+    test_immigrate_genomes_overwrites_random_members();
+    test_immigrate_genomes_clobber_count();
     test_do_generation();
 }

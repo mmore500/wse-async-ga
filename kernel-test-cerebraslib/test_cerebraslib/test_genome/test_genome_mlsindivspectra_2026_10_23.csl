@@ -1,0 +1,393 @@
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const genome_mls = @import_module("cerebraslib/genome/genome_mlsindivspectra_2026_10_23.csl");
+
+
+fn test_builtin_random_seeding() void {
+    random.set_global_prng_seed(1);
+    const first = @random16();
+    @assert(first != @random16());
+    random.set_global_prng_seed(1);
+    @assert(first == @random16());
+}
+
+fn _is_close(actual: f32, expected: f32) bool {
+    return math.abs(actual - expected) < 1e-3 * expected;
+}
+
+fn _copy(dst: genome_mls.genomePtr_t, src: genome_mls.genomePtr_t) void {
+    for (@range(u16, genome_mls.gSize)) |w| { dst[w] = src[w]; }
+}
+
+fn test_masks() void {
+    @assert(
+        (genome_mls.mlsMask | genome_mls.deleteriousMask
+        | genome_mls.beneficialMask | genome_mls.neutralMask)
+        == 0xFFFF0000
+    );
+    @assert((genome_mls.mlsMask & genome_mls.deleteriousMask) == 0);
+    @assert((genome_mls.beneficialMask & genome_mls.neutralMask) == 0);
+    @assert(genome_mls.mlsMask == (@as(u32, 0xF) << genome_mls.mlsShift));
+    @assert(genome_mls.deleteriousMask == (@as(u32, 0xF) << genome_mls.deleteriousShift));
+    @assert(genome_mls.beneficialMask == (@as(u32, 0xF) << genome_mls.beneficialShift));
+    @assert(genome_mls.neutralMask == (@as(u32, 0xF) << genome_mls.neutralShift));
+}
+
+fn test_mls_withinhost_p() void {
+    // default compconf: neutral mutation rate mu = 1e-6, 25 within-host
+    // doublings, so per-doubling mutation rate m = mu / T = 4e-8
+    // expected f = r / (1 + r), r = m / (b - 1) * (exp((b - 1) * T) - 1)
+    // with b = 1 + s_i for gain and b = 1 / (1 + s_i) for loss
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(0), 1.9922704e-06));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(1), 1.3891916e-06));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(2), 1.1361004e-06));
+    @assert(_is_close(genome_mls._get_mls_withinhost_gain_p(3), 1.0651865e-06));
+
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(0), 5.8457546e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(1), 7.4868665e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(2), 8.858464e-07));
+    @assert(_is_close(genome_mls._get_mls_withinhost_loss_p(3), 9.4031016e-07));
+
+    // neutral sites: b -> 1 limit, r = m * T = mu
+    @assert(_is_close(genome_mls._get_mls_withinhost_neutral_p(), 1e-6));
+
+    // weak sites converge toward the neutral rate, from above for gain and
+    // from below for loss
+    for (@range(u16, genome_mls.nMlsSites)) |i| {
+        @assert(
+            genome_mls._get_mls_withinhost_gain_p(i)
+            > genome_mls._get_mls_withinhost_neutral_p()
+        );
+        @assert(
+            genome_mls._get_mls_withinhost_loss_p(i)
+            < genome_mls._get_mls_withinhost_neutral_p()
+        );
+    }
+    for (@range(u16, 1, genome_mls.nMlsSites, 1)) |i| {
+        @assert(
+            genome_mls._get_mls_withinhost_gain_p(i)
+            < genome_mls._get_mls_withinhost_gain_p(i - 1)
+        );
+        @assert(
+            genome_mls._get_mls_withinhost_loss_p(i)
+            > genome_mls._get_mls_withinhost_loss_p(i - 1)
+        );
+    }
+}
+
+fn test_mls_transmission_reduction_p() void {
+    // default compconf: transmission reduction scale 1.0
+    @assert(
+        math.abs(genome_mls._get_mls_transmission_reduction_p(0) - 0.05) < 1e-6
+    );
+    @assert(
+        math.abs(genome_mls._get_mls_transmission_reduction_p(1) - 0.025)
+        < 1e-6
+    );
+    @assert(
+        math.abs(genome_mls._get_mls_transmission_reduction_p(2) - 0.01) < 1e-6
+    );
+    @assert(
+        math.abs(genome_mls._get_mls_transmission_reduction_p(3) - 0.005)
+        < 1e-6
+    );
+}
+
+fn test_elapse_inheritance_of() void {
+    random.set_global_prng_seed(1);
+
+    var genome = @zeros(genome_mls.genome_t);
+    var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
+
+    // clear genomes are unaffected
+    genome_mls.elapse_inheritance_of(genome_ptr);
+    for (@range(u16, genome_mls.gSize)) |i| { @assert(genome[i] == 0); }
+
+    genome_mls.initialize_one(genome_ptr);
+    @assert(genome_mls._get_counter(genome_ptr) == 128);
+
+    genome_mls.elapse_inheritance_of(genome_ptr);
+    @assert(genome_mls._get_counter(genome_ptr) == 130);
+
+    genome_mls.elapse_inheritance_of(genome_ptr);
+    @assert(genome_mls._get_counter(genome_ptr) == 132);
+
+    // mutation with p = 1 flips exactly the between-host deleterious and
+    // neutral sites, and not MLS or beneficial sites, counter, or bitfield
+    var snapshot = @zeros(genome_mls.genome_t);
+    var snapshot_ptr = @ptrcast(genome_mls.genomePtr_t, &snapshot[0]);
+    _copy(snapshot_ptr, genome_ptr);
+    genome_mls._apply_mutation(genome_ptr, 1.0);
+    @assert(
+        (genome[0] ^ snapshot[0])
+        == (genome_mls.deleteriousMask | genome_mls.neutralMask)
+    );
+    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
+        @assert(genome[i] == snapshot[i]);
+    }
+
+    // within-host selection only touches MLS and beneficial sites
+    const selectedMask = genome_mls.mlsMask | genome_mls.beneficialMask;
+    _copy(snapshot_ptr, genome_ptr);
+    for (@range(u16, 64)) |_| {
+        genome_mls._apply_withinhost_selection(genome_ptr);
+    }
+    @assert((genome[0] & ~selectedMask) == (snapshot[0] & ~selectedMask));
+    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
+        @assert(genome[i] == snapshot[i]);
+    }
+
+    // hstrat bitfield
+    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
+        var genome_i = genome[i];
+        while (genome_i == genome[i]) {
+            genome_mls.elapse_inheritance_of(genome_ptr);
+        }
+    }
+}
+
+fn test_calc_fitness_of() void {
+    var genome = @zeros(genome_mls.genome_t);
+    var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
+    @assert(genome_mls.calc_fitness_of(genome_ptr) == 0.0);
+
+    genome_mls.initialize_one(genome_ptr);
+    @assert(genome_mls.calc_fitness_of(genome_ptr) == 1.0);
+
+    // no flag sites affect fitness
+    for (@range(u16, 32)) |_| {
+        genome[0] ^= 0xFFFF0000;
+        @assert(genome_mls.calc_fitness_of(genome_ptr) == 1.0);
+    }
+
+    genome_mls._clear(genome_ptr);
+    @assert(genome_mls.calc_fitness_of(genome_ptr) == 0.0);
+}
+
+fn test_get_trait_value() void {
+    var genome = @zeros(genome_mls.genome_t);
+    var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
+    @assert(genome_mls.get_trait_value(genome_ptr) == 0);
+
+    genome_mls.initialize_one(genome_ptr);
+    @assert(genome_mls.get_trait_value(genome_ptr) == 0);
+
+    // counter and bitfield don't affect trait value
+    genome[1] ^= 0xFFFFFFFF;
+    genome[0] += 1;
+    @assert(genome_mls.get_trait_value(genome_ptr) == 0);
+
+    // any mutated flag site makes trait value 1
+    for (@range(u32, 16, 32, 1)) |shift| {
+        genome[0] ^= @as(u32, 1) << shift;
+        @assert(genome_mls.get_trait_value(genome_ptr) == 1);
+        genome[0] ^= @as(u32, 1) << shift;
+        @assert(genome_mls.get_trait_value(genome_ptr) == 0);
+    }
+    genome[0] ^= 0xFFFF0000;
+    @assert(genome_mls.get_trait_value(genome_ptr) == 1);
+    @assert(
+        genome_mls.get_trait_value(genome_ptr)
+        < @as(u32, genome_mls.nTraitVals)
+    );
+
+    genome_mls._clear(genome_ptr);
+    @assert(genome_mls.get_trait_value(genome_ptr) == 0);
+}
+
+fn test_initialize_one() void {
+    var genome = @zeros(genome_mls.genome_t);
+    var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
+    genome_mls.initialize_one(genome_ptr);
+    @assert(genome[0] == 0xF0000080);
+    @assert(genome_mls._get_counter(genome_ptr) == 128);
+    @assert(genome[1] != 0);
+    @assert(genome[2] != 0);
+    @assert(genome[3] != 0);
+    @assert(genome[4] != 0);
+    @assert(genome[1] != genome[2]);
+    @assert(genome[2] != genome[3]);
+    @assert(genome[3] != genome[4]);
+    @assert(genome[4] != genome[1]);
+    @assert(!genome_mls._is_clear(genome_ptr));
+}
+
+fn test_clobber_immigrant() void {
+    random.set_global_prng_seed(1);
+
+    var imm = @zeros(genome_mls.genome_t);
+    var imm_ptr = @ptrcast(genome_mls.genomePtr_t, &imm[0]);
+
+    var resident = @zeros(genome_mls.genome_t);
+    var resident_ptr = @ptrcast(genome_mls.genomePtr_t, &resident[0]);
+    genome_mls.initialize_one(resident_ptr);
+
+    var empty_resident = @zeros(genome_mls.genome_t);
+    var empty_resident_ptr = @ptrcast(
+        genome_mls.genomePtr_t, &empty_resident[0]
+    );
+
+    // infected resident: immigrant always clobbered, replaced by resident
+    for (@range(u32, 0, 0x10000, 0x0F0F)) |i| {
+        genome_mls.initialize_one(imm_ptr);
+        imm[0] ^= i << 16;
+        @assert(genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
+        for (@range(u16, genome_mls.gSize)) |w| {
+            @assert(imm[w] == resident[w]);
+        }
+    }
+
+    // empty immigrant is not clobbered, but does not clear resident
+    genome_mls._clear(imm_ptr);
+    @assert(!genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
+    for (@range(u16, genome_mls.gSize)) |w| { @assert(imm[w] == resident[w]); }
+    genome_mls._clear(imm_ptr);
+    @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
+    @assert(genome_mls._is_clear(imm_ptr));
+
+    // uninfected resident: immigrant with only beneficial and neutral sites
+    // always infects
+    for (@range(u16, 32)) |_| {
+        genome_mls.initialize_one(imm_ptr);
+        imm[0] ^= genome_mls.beneficialMask | genome_mls.neutralMask;
+        imm[1] ^= 0xFFFFFFFF;
+        @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
+        @assert(!genome_mls._is_clear(imm_ptr));
+    }
+
+    // uninfected resident, single MLS or between-host deleterious site:
+    // clobbers with expected probability
+    _check_clobber_rate(genome_mls.mlsShift);
+    _check_clobber_rate(genome_mls.deleteriousShift);
+}
+
+/// Check that immigrants carrying a single site of the spectrum at shift are
+/// clobbered by uninfected residents at that site's transmission reduction
+/// rate.
+fn _check_clobber_rate(shift: u32) void {
+    var imm = @zeros(genome_mls.genome_t);
+    var imm_ptr = @ptrcast(genome_mls.genomePtr_t, &imm[0]);
+    var empty_resident = @zeros(genome_mls.genome_t);
+    var empty_resident_ptr = @ptrcast(
+        genome_mls.genomePtr_t, &empty_resident[0]
+    );
+    var template = @zeros(genome_mls.genome_t);
+    var template_ptr = @ptrcast(genome_mls.genomePtr_t, &template[0]);
+    genome_mls.initialize_one(template_ptr);
+    const nTrials: u16 = 400;
+    for (@range(u16, genome_mls.nMlsSites)) |site| {
+        var nClobber: u16 = 0;
+        for (@range(u16, nTrials)) |_| {
+            _copy(imm_ptr, template_ptr);
+            imm[0] |= @as(u32, 1) << (shift + @as(u32, site));
+            const clobbered = genome_mls.clobber_immigrant(
+                empty_resident_ptr, imm_ptr
+            );
+            @assert(clobbered == genome_mls._is_clear(imm_ptr));
+            nClobber += @as(u16, clobbered);
+        }
+        const expected = (
+            genome_mls._get_mls_transmission_reduction_p(site)
+            * @as(f32, nTrials)
+        );
+        // generous tolerance, at least ~5 standard deviations
+        const tol = 0.25 * expected + 15.0;
+        @assert(math.abs(@as(f32, nClobber) - expected) < tol);
+    }
+}
+
+fn test_trample_resident() void {
+    random.set_global_prng_seed(1);
+
+    var resident = @zeros(genome_mls.genome_t);
+    var resident_ptr = @ptrcast(genome_mls.genomePtr_t, &resident[0]);
+    var spawn = @zeros(genome_mls.genome_t);
+    var spawn_ptr = @ptrcast(genome_mls.genomePtr_t, &spawn[0]);
+
+    // uninfected spawn never infects, and leaves uninfected resident clear
+    for (@range(u16, 32)) |_| {
+        genome_mls.trample_resident(resident_ptr, spawn_ptr);
+        @assert(genome_mls._is_clear(resident_ptr));
+    }
+
+    // infected spawn without MLS or deleterious sites always infects
+    // uninfected resident
+    genome_mls.initialize_one(spawn_ptr);
+    spawn[0] ^= genome_mls.beneficialMask | genome_mls.neutralMask;
+    for (@range(u16, 32)) |_| {
+        genome_mls._clear(resident_ptr);
+        genome_mls.trample_resident(resident_ptr, spawn_ptr);
+        for (@range(u16, genome_mls.gSize)) |i| {
+            @assert(resident[i] == spawn[i]);
+        }
+    }
+
+    // infected spawn with all MLS and deleterious sites infects at expected
+    // rate, prod_i (1 - s_i)^2
+    var spawnSnapshot = @zeros(genome_mls.genome_t);
+    var spawnSnapshot_ptr = @ptrcast(
+        genome_mls.genomePtr_t, &spawnSnapshot[0]
+    );
+    spawn[0] |= genome_mls.mlsMask | genome_mls.deleteriousMask;
+    _copy(spawnSnapshot_ptr, spawn_ptr);
+    var pInfect: f32 = 1.0;
+    for (@range(u16, genome_mls.nMlsSites)) |i| {
+        const q = 1.0 - genome_mls._get_mls_transmission_reduction_p(i);
+        pInfect *= q * q;
+    }
+    const nInfectTrials: u16 = 400;
+    var nInfect: u16 = 0;
+    for (@range(u16, nInfectTrials)) |_| {
+        genome_mls._clear(resident_ptr);
+        genome_mls.trample_resident(resident_ptr, spawn_ptr);
+        nInfect += @as(u16, !genome_mls._is_clear(resident_ptr));
+    }
+    const expectedInfect = pInfect * @as(f32, nInfectTrials);
+    @assert(
+        math.abs(@as(f32, nInfect) - expectedInfect)
+        < 0.25 * expectedInfect + 15.0
+    );
+
+    // infected resident is never overwritten, but is cleared with expected
+    // probability
+    var template = @zeros(genome_mls.genome_t);
+    var template_ptr = @ptrcast(genome_mls.genomePtr_t, &template[0]);
+    genome_mls.initialize_one(template_ptr);
+    template[0] |= 0x00800000;
+    const nTrials: u16 = 200;
+    var nClear: u16 = 0;
+    for (@range(u16, nTrials)) |_| {
+        _copy(resident_ptr, template_ptr);
+        genome_mls.trample_resident(resident_ptr, spawn_ptr);
+        if (genome_mls._is_clear(resident_ptr)) {
+            for (@range(u16, genome_mls.gSize)) |w| { @assert(resident[w] == 0); }
+            nClear += 1;
+        } else {
+            for (@range(u16, genome_mls.gSize)) |w| {
+                @assert(resident[w] == template[w]);
+            }
+        }
+    }
+    const expected = genome_mls._p_host_clear * @as(f32, nTrials);
+    const tol = 0.25 * expected + 15.0;
+    @assert(math.abs(@as(f32, nClear) - expected) < tol);
+
+    // spawn is never modified
+    for (@range(u16, genome_mls.gSize)) |i| {
+        @assert(spawn[i] == spawnSnapshot[i]);
+    }
+}
+
+fn do_test() void {
+    test_builtin_random_seeding();
+    test_masks();
+    test_mls_withinhost_p();
+    test_mls_transmission_reduction_p();
+    test_elapse_inheritance_of();
+    test_calc_fitness_of();
+    test_get_trait_value();
+    test_initialize_one();
+    test_clobber_immigrant();
+    test_trample_resident();
+}
