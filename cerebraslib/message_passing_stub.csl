@@ -1,0 +1,12 @@
+// no-op stand-in for <message_passing>, imported when it is disabled so that
+// no queues or colors are claimed; mirrors the interface used by the kernel
+param input_queue_id: u16;
+param output_queue_id: u16;
+
+const mp_input_queue = @get_input_queue(input_queue_id);
+const mp_output_queue = @get_output_queue(output_queue_id);
+const mp_comm_color = @get_color(16);
+
+fn init() void {}
+
+fn encode_header(dest_col: u16, dest_row: u16, length: u16) u32 { return 0; }
