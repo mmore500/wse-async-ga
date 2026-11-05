@@ -60,7 +60,9 @@ if [[ "${ASYNC_GA_ARCH_FLAG}" == *wse2* ]]; then
     echo "WARNING: wse2 arch unsupported" >&2
 fi
 
-ASYNC_GA_CHANNELS_FLAG="${ASYNC_GA_CHANNELS_FLAG:-1}"
+# memcpy I/O channels; more channels give more host<->device bandwidth
+# hardware supports at most one per row, up to 16
+ASYNC_GA_CHANNELS_FLAG="${ASYNC_GA_CHANNELS_FLAG:-$((ASYNC_GA_NROW < 16 ? ASYNC_GA_NROW : 16))}"
 echo "ASYNC_GA_CHANNELS_FLAG ${ASYNC_GA_CHANNELS_FLAG}"
 
 ASYNC_GA_FABRIC_OFFSETS_FLAG="${ASYNC_GA_FABRIC_OFFSETS_FLAG:-4,1}"
