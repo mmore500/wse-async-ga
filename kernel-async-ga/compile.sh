@@ -60,8 +60,8 @@ if [[ "${ASYNC_GA_ARCH_FLAG}" == *wse2* ]]; then
     echo "WARNING: wse2 arch unsupported" >&2
 fi
 
-# memcpy I/O channels; more channels give more host<->device bandwidth (e.g.,
-# faster fossil sampling), and the SDK allows at most 16 and at most one per row
+# memcpy I/O channels; more channels give more host<->device bandwidth
+# the SDK allows at most 16 channels and at most one per row
 ASYNC_GA_CHANNELS_FLAG="${ASYNC_GA_CHANNELS_FLAG:-$((ASYNC_GA_NROW < 16 ? ASYNC_GA_NROW : 16))}"
 echo "ASYNC_GA_CHANNELS_FLAG ${ASYNC_GA_CHANNELS_FLAG}"
 
