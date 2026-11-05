@@ -79,9 +79,10 @@ echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string ${C
 export COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string="${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string:-snapshot}"
 echo "COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string ${COMPCONFENV_ASYNC_GA_FOSSIL_SAMPLING_MODE__comptime_string}"
 
-# 1: exchange genomes with one random permanent partner PE (point-to-point)
-export COMPCONFENV_ASYNC_GA_P2P_ENABLED__u32="${COMPCONFENV_ASYNC_GA_P2P_ENABLED__u32:-0}"
-echo "COMPCONFENV_ASYNC_GA_P2P_ENABLED__u32 ${COMPCONFENV_ASYNC_GA_P2P_ENABLED__u32}"
+# per-cycle probability of sending a genome to one random permanent partner PE
+# (point-to-point); 0 disables the feature
+export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32:-0.0}"
+echo "COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32 ${COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32}"
 
 echo "setup dependency wheelhouse ---------------------------------------------"
 CS_PYTHON="${CS_PYTHON:-cs_python}"

@@ -57,10 +57,12 @@ const genome_ = @import_module(
   .{ .rng = rng },
 );
 const nTraitVals = genome_.nTraitVals;
-// point-to-point exchange with one permanent partner PE, chosen by host
-const p2pEnabled = comptime compconf.get_value_or(
-    "ASYNC_GA_P2P_ENABLED", @as(u32, 0)
-) != 0;
+// point-to-point exchange with one permanent partner PE, chosen by host;
+// each cycle, send to partner with this probability (0 disables feature)
+const p2pSendProbability = comptime compconf.get_value_or(
+    "ASYNC_GA_P2P_SEND_PROBABILITY", @as(f32, 0.0)
+);
+const p2pEnabled = comptime p2pSendProbability > 0.0;
 const mp = @import_module(  // stub claims no queues/colors if disabled
   if (p2pEnabled) "<message_passing>"
   else "cerebraslib/message_passing_stub.csl",
@@ -767,18 +769,17 @@ task cycleTask() void {
 
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
-  // partner, if enabled, is a fifth direction in round-robin, for fairness
-  const nSendDirs: u16 = if (p2pEnabled) 5 else 4;
-  const shuf2 = if (p2pEnabled) @random16() % 5 else @random16() & 3;
-  for (@range(u16, nSendDirs)) |i| {  // send to all neighbors
+  // partner send goes first, so neighbor sends can't starve it of threads
+  if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
+    if (dispatchSend_P()) { sendFlag_P = 0; }
+  }
+  const shuf2 = @random16() & 3;
+  for (@range(u16, 4)) |i| {  // send to all neighbors
     const numBusy = (
       busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
     );
     if (numBusy == 4) break;
-    const j = (  // round-robin order
-      if (p2pEnabled) (if (i + shuf2 >= 5) i + shuf2 - 5 else i + shuf2)
-      else (i + shuf2) & 3
-    );
+    const j = (i + shuf2) & 3;  // round-robin order
     if (j == 0 and sendFlag_N == 1) {
       if (dispatchSend_N()) { sendFlag_N = 0; }
     } else if (j == 1 and sendFlag_S == 1) {
@@ -787,8 +788,6 @@ task cycleTask() void {
       if (dispatchSend_E()) { sendFlag_E = 0; }
     } else if (j == 3 and sendFlag_W == 1) {
       if (dispatchSend_W()) { sendFlag_W = 0; }
-    } else if (p2pEnabled and j == 4 and sendFlag_P == 1) {
-      if (dispatchSend_P()) { sendFlag_P = 0; }
     }
   }
 

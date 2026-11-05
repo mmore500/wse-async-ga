@@ -675,8 +675,11 @@ log(f" - {populationFlavor=}")
 assert nWav in (genomeData["nWav"][0], -1)
 nWav = genomeData["nWav"][0]
 
-p2pEnabled = bool(int(compconf_data.get("ASYNC_GA_P2P_ENABLED:u32", 0)))
-log(f" - {p2pEnabled=}")
+p2pSendProbability = float(
+    compconf_data.get("ASYNC_GA_P2P_SEND_PROBABILITY:f32", 0.0)
+)
+p2pEnabled = p2pSendProbability > 0.0
+log(f" - {p2pSendProbability=} {p2pEnabled=}")
 
 
 def assign_p2p_partners(seed: int) -> "np.ndarray":

@@ -97,15 +97,15 @@ jobs:
           - arch: wse3
             nonBlock: 0
             genome: genome_bitdrift
-            p2p: 1
+            p2p: 1.0
           - arch: wse3
             nonBlock: 1
             genome: genome_bitdrift
-            p2p: 1
+            p2p: 0.5
           - arch: wse3
             nonBlock: 1
             genome: genome_mlsindiv_2026_10_18
-            p2p: 1
+            p2p: 0.5
     env:
       CSLC: cslc
       CS_PYTHON: cs_python
@@ -199,7 +199,7 @@ jobs:
         run: |
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
-          export COMPCONFENV_ASYNC_GA_P2P_ENABLED__u32="${{ matrix.p2p }}"
+          export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${{ matrix.p2p }}"
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/compile.sh \
@@ -214,7 +214,7 @@ jobs:
             ./kernel-async-ga/execute.sh
 
       - name: Check point-to-point exchange
-        if: matrix.p2p == 1
+        if: matrix.p2p != 0
         run: |
           python3 -c "
           import glob, polars as pl
