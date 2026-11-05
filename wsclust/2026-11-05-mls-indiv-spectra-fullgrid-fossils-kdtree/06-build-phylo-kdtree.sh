@@ -154,10 +154,8 @@ echo "SINGULARITYENV_NUMBA_NUM_THREADS=${SINGULARITYENV_NUMBA_NUM_THREADS}"
 # For each run (config), separately:
 #   1. with joinem v0.19.0 (jexl.group_id_kdtree, jepl.SampleOp), filter to
 #      non-extant, non-empty fossil genomes, then partition them into
-#      KDTREE_NUM_GROUPS groups by k-d tree over min-max normalized row,
-#      col, and fossil layer, with row and col further scaled by
-#      KDTREE_SPATIAL_SCALE (i.e., spatial dims span [0, 8], layer [0, 1]);
-#      choose groups in random order, taking at least
+#      KDTREE_NUM_GROUPS groups by k-d tree over raw (unnormalized) row and
+#      col (not fossil layer); choose groups in random order, taking at least
 #      KDTREE_MIN_GROUPS groups, and more if needed to reach SAMPLE_BUDGET
 #      genomes; sample SAMPLE_BUDGET genomes uniformly from chosen groups (or
 #      all, if fewer). Keeps the group id column (group_id_kdtree) and adds
@@ -211,8 +209,6 @@ KDTREE_NUM_GROUPS=1000
 echo "KDTREE_NUM_GROUPS ${KDTREE_NUM_GROUPS}"
 KDTREE_MIN_GROUPS=50
 echo "KDTREE_MIN_GROUPS ${KDTREE_MIN_GROUPS}"
-KDTREE_SPATIAL_SCALE=8
-echo "KDTREE_SPATIAL_SCALE ${KDTREE_SPATIAL_SCALE}"
 NONEMPTY='~pl.col("data_hex").str.contains(r"^0+$")'
 echo "NONEMPTY ${NONEMPTY}"
 
@@ -243,11 +239,7 @@ for CONFIG_DIR in "${WORKDIR}/03-postprocess"/*/; do
             --opipe "jepl.ChainOp(
                 lambda df: df.collect().with_columns(
                     jexl.group_id_kdtree(
-                        [
-                            jexl.scaled_minmax(\"row\") * ${KDTREE_SPATIAL_SCALE},
-                            jexl.scaled_minmax(\"col\") * ${KDTREE_SPATIAL_SCALE},
-                            jexl.scaled_minmax(\"layer\"),
-                        ],
+                        [\"row\", \"col\"],
                         n_group=${KDTREE_NUM_GROUPS},
                     ),
                 ).with_columns(
