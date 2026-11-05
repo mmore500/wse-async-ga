@@ -231,10 +231,14 @@ const closeoutTaskID: local_task_id = @get_local_task_id(18);
 const cycleTaskID: local_task_id = @get_local_task_id(19);
 
 const sendFinalizeTaskID_P: local_task_id = @get_local_task_id(20);
-const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(24);
+const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(25);
 
-// available: 25, 26, 32, 33, 34, 35
-// reserved (memcpy): 21, 22, 23, 27, 28, 30
+// no-op target for the control wavelet that ends each partner message
+// (memcpy reserves control task IDs 33-37 and 40)
+const padTaskID_P: control_task_id = @get_control_task_id(38);
+
+// available: 26, 32, 33, 34, 35
+// reserved (memcpy): 21, 22, 23, 24, 27, 28, 30
 // reserved: 29, 31
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -551,12 +555,19 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // point-to-point send/recv tasks
 // ============================================================================
 // exchange genomes with one permanent partner PE anywhere on the grid, using
-// SDK message passing; each message is a header wavelet plus one genome
+// SDK message passing; each message is a header wavelet, one genome, and a
+// pad wavelet
+//
+// the fabric delivers the last wavelet of a message as a control wavelet,
+// which activates the control task named by its upper 16 bits --- so the
+// message ends with a pad wavelet naming a no-op task, instead of a genome
+// word that could name an arbitrary task (e.g., memcpy's)
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
-const p2pMsgSize: u16 = if (p2pEnabled) 1 + genome_.gSize else 1;
+const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 2;
+const p2pPadWavelet: u32 = @as(u32, @get_int(padTaskID_P)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
-  if (p2pEnabled) @comptime_assert(genome_.gSize < 32);
+  if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
 }
 
 var p2pPartner = [2]u32{ 0xFFFFFFFF, 0xFFFFFFFF };  // col, row; set by host
@@ -565,11 +576,11 @@ var ptr_p2pPartner : [*]u32 = &p2pPartner;  // 0xFFFFFFFF means unpaired
 // send PARTNER ===============================================================
 var sendFlag_P: u8 = 0;  // need refill? initialized at startup
 var sendThread_P: u8;  // which thread is sending?
-var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, then genome being sent
+var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, genome being sent, pad
 const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> sendBuf_P[i], });
 const sendGenomeDsd_P = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{p2pMsgSize - 1} -> sendBuf_P[i + 1], });
+  .tensor_access = |i|{p2pMsgSize - 2} -> sendBuf_P[i + 1], });
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_P() void {
@@ -608,7 +619,7 @@ fn dispatchSend_P() bool {
 
 // recv PARTNER ===============================================================
 var recvFlag_P: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, then genome received
+var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome received, pad
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> recvBuf_P[i], });
 
@@ -631,6 +642,7 @@ const ignRecvTaskID_P: data_task_id = (
   else @get_data_task_id(@get_input_queue(0))  // unused placeholder
 );
 task ignRecvTask_P(_: u32) void { }
+task padTask_P() void { }
 
 ///////////////////////////////////////////////////////////////////////////////
 // ============================================================================
@@ -869,6 +881,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
       sendBuf_P[0] = mp.encode_header(
         @as(u16, p2pPartner[0]), @as(u16, p2pPartner[1]), p2pMsgSize - 1
       );
+      sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet;
       sendFlag_P = 1;
     }
   }
@@ -926,6 +939,7 @@ comptime {
     @bind_local_task(sendFinalizeTask_P, sendFinalizeTaskID_P);
     @bind_local_task(recvFinalizeTask_P, recvFinalizeTaskID_P);
     @bind_data_task(ignRecvTask_P, ignRecvTaskID_P); @block(ignRecvTaskID_P);
+    @bind_control_task(padTask_P, padTaskID_P);
   }
 
   @bind_local_task(cycleTask, cycleTaskID);
