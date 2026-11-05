@@ -90,6 +90,22 @@ jobs:
           - genome_mlsspectrum_2026_10_15
           - genome_mlsspectra_2026_10_22
           - genome_mlsindiv_2026_10_18
+        p2p:
+          - 0
+        include:
+          # point-to-point partner exchange, added as separate jobs
+          - arch: wse3
+            nonBlock: 0
+            genome: genome_bitdrift
+            p2p: 1.0
+          - arch: wse3
+            nonBlock: 1
+            genome: genome_bitdrift
+            p2p: 0.5
+          - arch: wse3
+            nonBlock: 1
+            genome: genome_mlsindiv_2026_10_18
+            p2p: 0.5
     env:
       CSLC: cslc
       CS_PYTHON: cs_python
@@ -183,6 +199,7 @@ jobs:
         run: |
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
+          export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${{ matrix.p2p }}"
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/compile.sh \
@@ -195,6 +212,20 @@ jobs:
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/execute.sh
+
+      - name: Check point-to-point exchange
+        if: matrix.p2p != 0
+        run: |
+          python3 -c "
+          import glob, polars as pl
+          (path,) = glob.glob('./kernel-async-ga/a=p2p+*.pqt')
+          df = pl.read_parquet(path)
+          print(df)
+          assert len(df) == 3 * 3, len(df)
+          assert df['is_paired'].sum() == 8  # 9 PEs, one left unpaired
+          paired = df.filter(pl.col('is_paired'))
+          assert (paired['imm_count'] > 0).all(), paired['imm_count']
+          "
 
   test-sample-populations:
     name: Test make sample population

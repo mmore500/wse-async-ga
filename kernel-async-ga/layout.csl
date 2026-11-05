@@ -59,6 +59,8 @@ layout {
   @export_name("immCounter_S", [*]u32, true);
   @export_name("immCounter_E", [*]u32, true);
   @export_name("immCounter_W", [*]u32, true);
+  @export_name("immCounter_P", [*]u32, true);
+  @export_name("p2pPartner", [*]u32, true);
   @export_name("recvCounter_N", [*]u32, true);
   @export_name("recvCounter_S", [*]u32, true);
   @export_name("recvCounter_E", [*]u32, true);

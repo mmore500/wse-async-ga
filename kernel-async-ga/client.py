@@ -675,6 +675,34 @@ log(f" - {populationFlavor=}")
 assert nWav in (genomeData["nWav"][0], -1)
 nWav = genomeData["nWav"][0]
 
+p2pSendProbability = float(
+    compconf_data.get("ASYNC_GA_P2P_SEND_PROBABILITY:f32", 0.0)
+)
+p2pEnabled = p2pSendProbability > 0.0
+log(f" - {p2pSendProbability=} {p2pEnabled=}")
+
+
+def assign_p2p_partners(seed: int) -> "np.ndarray":
+    """Randomly pair PEs within each subgrid (whole grid if no subgrids).
+
+    Returns (nRow, nCol, 2) uint32 array of partner (col, row) per PE, with
+    0xFFFFFFFF for a PE left unpaired (when its subgrid has odd size).
+    """
+    rng = np.random.default_rng(seed)
+    partners = np.full((nRow * nCol, 2), 0xFFFFFFFF, dtype=np.uint32)
+    rows, cols = np.divmod(np.arange(nRow * nCol), nCol)
+    subgrid_rows = rows // nRowSubgrid if nRowSubgrid else np.zeros_like(rows)
+    subgrid_cols = cols // nColSubgrid if nColSubgrid else np.zeros_like(cols)
+    subgrids = subgrid_rows * (nCol + 1) + subgrid_cols
+    for subgrid in np.unique(subgrids):
+        tiles = rng.permutation(np.flatnonzero(subgrids == subgrid))
+        num_pairs = len(tiles) // 2
+        a, b = tiles[: 2 * num_pairs : 2], tiles[1 : 2 * num_pairs : 2]
+        partners[a] = np.stack([cols[b], rows[b]], axis=1)
+        partners[b] = np.stack([cols[a], rows[a]], axis=1)
+    return partners.reshape(nRow, nCol, 2)
+
+
 metadata = {
     "genomeFlavor": (genomeFlavor, pl.Categorical),
     "globalSeed": (globalSeed, pl.UInt32),
@@ -765,6 +793,25 @@ log("- runner loaded")
 
 runner.run()
 log("- runner run ran")
+
+if p2pEnabled:
+    log("- assigning point-to-point partners")
+    p2pPartners = assign_p2p_partners(globalSeed)
+    log(f" - {np.sum(p2pPartners[:, :, 0] != 0xFFFFFFFF)=} paired PEs")
+    runner.memcpy_h2d(
+        runner.get_id("p2pPartner"),
+        p2pPartners.ravel(),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        2,  # num wavelets
+        streaming=False,
+        data_type=MemcpyDataType.MEMCPY_32BIT,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
+    log("- point-to-point partners copied to device")
 
 runner.launch("dolaunch", nonblock=False)
 launch_ns = time.time_ns()
@@ -1587,6 +1634,61 @@ immSum = [
 log(immSum[:100])
 log(f"{np.mean(immSum)=} {np.std(immSum)=} {sps.sem(immSum)=}")
 log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
+
+if p2pEnabled:
+    log("imm counter P (point-to-point partner) ======================")
+    out_tensors = np.zeros((nRow, nCol), np.uint32)
+    runner.memcpy_d2h(
+        out_tensors.ravel(),
+        runner.get_id("immCounter_P"),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        1,  # num wavelets
+        streaming=False,
+        data_type=MemcpyDataType.MEMCPY_32BIT,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
+    immP = out_tensors.copy()
+    log(immP[:20, :20])
+    log(f"{np.mean(immP)=} {np.median(immP)=} {np.min(immP)=} {np.max(immP)=}")
+
+    unpaired = p2pPartners[:, :, 0] == 0xFFFFFFFF
+    df = pl.DataFrame(
+        {
+            "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
+            "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
+            "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
+            "partner_row": pl.Series(
+                np.where(unpaired, 0, p2pPartners[:, :, 1]).ravel(),
+                dtype=pl.UInt16,
+            ),
+            "partner_col": pl.Series(
+                np.where(unpaired, 0, p2pPartners[:, :, 0]).ravel(),
+                dtype=pl.UInt16,
+            ),
+            "is_paired": pl.Series(~unpaired.ravel(), dtype=pl.Boolean),
+            "imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
+        }
+    )
+    df = with_subgrid_columns(df.lazy()).collect()
+    df = df.with_columns(
+        *(
+            pl.lit(value, dtype=dtype).alias(key)
+            for key, (value, dtype) in metadata.items()
+        ),
+    )
+    write_parquet_verbose(
+        df,
+        "a=p2p"
+        f"+flavor={genomeFlavor}"
+        f"+seed={globalSeed}"
+        f"+ncycle={nCycleAtLeast}"
+        "+ext=.pqt",
+    )
+    del df
 
 log("clobber counter ============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
