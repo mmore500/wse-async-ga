@@ -3,6 +3,7 @@ param popSize: u16;
 param pExtinction: f32;
 param tournamentSize: f32;
 param genome: imported_module;
+param symbolName: comptime_string = "";
 
 // module imports =============================================================
 const math = @import_module("<math>");
@@ -14,6 +15,7 @@ const opscalar = @import_module("cerebraslib/opscalar.csl");
 const bufSize = popSize * genome.gSize;
 
 var buffer = @zeros([bufSize]u32);
+var ptr_buffer : [*]u32 = &buffer;
 const bufferDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{bufSize} -> buffer[i],
 });
@@ -152,4 +154,10 @@ fn do_generation() void {
     _elapse_inheritance_all();
     _perform_selection_all();
     _perform_extinction_all();
+}
+
+comptime {  // symbols let memcpy gather end-state data from device to host
+    if (@strlen(symbolName) > 0) {  // empty name skips export for testing
+        @export_symbol(ptr_buffer, symbolName);
+    }
 }

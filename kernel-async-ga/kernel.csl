@@ -67,6 +67,7 @@ const population = @import_module(
   .{
     .genome = genome_, .popSize = popSize,
     .pExtinction = pExtinction, .tournamentSize = tournSize,
+    .symbolName = "populationBuffer",
   },
 );
 const fossil = @import_module(
