@@ -88,6 +88,8 @@ jobs:
           - genome_hypermutator
           - genome_mls_2025_08_15
           - genome_mlsspectrum_2026_10_15
+          - genome_mlsspectrum_2026_10_25
+          - genome_mlsspectrumstrong_2026_10_26
           - genome_mlsspectra_2026_10_22
           - genome_mlsindiv_2026_10_18
           - genome_mlsindivspectra_2026_10_23
