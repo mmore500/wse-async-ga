@@ -32,11 +32,11 @@ def log(msg: str, *args, **kwargs) -> None:
 
 
 # runtime configs are per-PE data for device symbols, as npz files or py files
-# that generate it, named for the config (see runtime_config/README.md); run
-# once per file present
+# that generate it, named for the config (see
+# runtime_config.md); run once per file present
 runtimeConfigPaths = sorted(
     path
-    for path in pathlib.Path("runtime_config").glob("*")
+    for path in pathlib.Path("runtime_config_dispatch").glob("*")
     if path.suffix in (".npz", ".py")
 )
 if len(runtimeConfigPaths) > 1 and "--runtime-config" not in sys.argv:
@@ -657,9 +657,9 @@ parser.add_argument(
     "--runtime-config",
     default=next(iter(map(str, runtimeConfigPaths)), None),
     help="npz file of per-PE data to copy to device symbols before launch, or"
-    " py file that generates it (see runtime_config/README.md); defaults to"
-    " running once for each such file in runtime_config/, or with default"
-    " data if there are none",
+    " py file that generates it (see runtime_config.md);"
+    " defaults to running once for each such file in runtime_config_dispatch/,"
+    " or with default data if there are none",
 )
 log("- parsing arguments")
 args = parser.parse_args()

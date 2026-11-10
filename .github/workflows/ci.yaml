@@ -198,9 +198,13 @@ jobs:
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
           # exercise dispatch of several runtime configs from one compile
           if [ "${{ matrix.genome }}+${{ matrix.nonBlock }}" == "genome_bitdrift+1" ]; then
-            python3 ./pyscript/runtime-config-make-sweep.py \
-              --symbol globalSeed --values 1 2 \
-              -o ./kernel-async-ga/runtime_config
+            printf '%s\n' \
+              '{"name": "globalSeed=1", "globalSeed": 1}' \
+              '{"name": "globalSeed=2", "globalSeed": 2}' \
+              > runtime_config_sweep.jsonl
+            sudo env PATH=$PATH python3 \
+              ./kernel-async-ga/runtime_config_generate.py \
+              runtime_config_sweep.jsonl
           fi
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \

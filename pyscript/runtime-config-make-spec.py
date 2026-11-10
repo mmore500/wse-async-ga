@@ -7,7 +7,7 @@ The spec file should set `RUNTIME_CONFIGS` to a dict of lists of
 
 Unlike py runtime configs, the spec is run here rather than by client.py, so
 can use pylib, and data is written as npz files. See
-kernel-async-ga/runtime_config/README.md.
+kernel-async-ga/runtime_config.md.
 """
 
 import argparse
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("compile_json", help="out.json written by cslc")
     parser.add_argument("spec", help="Python file setting RUNTIME_CONFIGS")
-    parser.add_argument("-o", "--outdir", default="runtime_config")
+    parser.add_argument("-o", "--outdir", default="runtime_config_dispatch")
     args = parser.parse_args()
 
     ctx = load_runtime_config_context(args.compile_json)
