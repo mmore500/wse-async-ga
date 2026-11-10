@@ -12,4 +12,4 @@ raw/
 
 # generated runtime configs, and directories each is run in
 runtime_config_dispatch/
-runtime_config=*/
+dispatch=*/

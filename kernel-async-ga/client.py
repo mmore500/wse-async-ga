@@ -54,7 +54,7 @@ parser.add_argument(
     "--runtime-config",
     help="py file that generates per-PE values to copy to rtc_* device symbols"
     " before launch; if not given, runs once for each such file in"
-    " runtime_config_dispatch/, in directory runtime_config=<name> unless"
+    " runtime_config_dispatch/, in directory dispatch=<slug> unless"
     " the only one is default.py",
 )
 parser.add_argument(
@@ -95,7 +95,7 @@ else:
         raise ValueError("no runtime configs in runtime_config_dispatch")
     returncodes = {}
     for i, path in enumerate(runtimeConfigPaths, start=1):
-        rundir = pathlib.Path(f"runtime_config={path.stem}")
+        rundir = pathlib.Path(f"dispatch={path.stem}")
         log(
             f" - running runtime config {path.stem} in {rundir}"
             f" ({i} of {len(runtimeConfigPaths)})"
@@ -717,8 +717,8 @@ with open("compconf.json", encoding="utf-8") as json_file:
     compconf_data = json.load(json_file)
 
 log("- loading runtime config")
-runtimeConfigName = pathlib.Path(args.runtime_config).stem
-log(f" - {runtimeConfigName=}")
+dispatchSlug = pathlib.Path(args.runtime_config).stem
+log(f" - {dispatchSlug=}")
 comptimeConfigJson = json.dumps(
     {
         **{key: int(value) for key, value in compile_data["params"].items()},
@@ -822,7 +822,7 @@ nWav = genomeData["nWav"][0]
 metadata = {
     "genomeFlavor": (genomeFlavor, pl.Categorical),
     "globalSeed": (globalSeed, pl.UInt32),
-    "runtimeConfig": (runtimeConfigName, pl.Categorical),
+    "dispatch": (dispatchSlug, pl.Categorical),
     "populationFlavor": (populationFlavor, pl.Categorical),
     "memcpyMajor": (memcpyMajor, pl.Categorical),
     "nCol": (nCol, pl.UInt16),
