@@ -76,6 +76,9 @@ layout {
   @export_name("whoami", [*]u32, true);
   @export_name("whereami_x", [*]u32, true);
   @export_name("whereami_y", [*]u32, true);
+  @export_name("globalSeed", [*]u32, true);
+  @export_name("nRowSubgrid", [*]u32, true);
+  @export_name("nColSubgrid", [*]u32, true);
   @export_name("tscControlBuffer", [*]u32, true);
   @export_name("tscEndBuffer", [*]u32, true);
   @export_name("tscStartBuffer", [*]u32, true);

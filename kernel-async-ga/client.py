@@ -11,6 +11,7 @@ import logging
 import os
 import pathlib
 import random
+import runpy
 import uuid
 import shutil
 import subprocess
@@ -28,6 +29,35 @@ logging.basicConfig(
 def log(msg: str, *args, **kwargs) -> None:
     msg = str(msg).replace("\n", "\n" + " " * 29)
     logging.info(msg, *args, **kwargs)
+
+
+# runtime configs are npz files of per-PE data for device symbols, named for
+# the config (see pyscript/runtime-config-*.py); run once per file present
+runtimeConfigPaths = sorted(pathlib.Path("runtime_config").glob("*.npz"))
+if len(runtimeConfigPaths) > 1 and "--runtime-config" not in sys.argv:
+    log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
+    returncodes = {}
+    for path in runtimeConfigPaths:
+        rundir = pathlib.Path(f"runtime_config={path.stem}")
+        log(f" - running runtime config {path.stem} in {rundir}")
+        rundir.mkdir(exist_ok=True)
+        for item in pathlib.Path().iterdir():  # share compile outputs
+            if not item.name.startswith("runtime_config"):
+                link = rundir / item.name
+                link.unlink(missing_ok=True)
+                link.symlink_to(item.resolve())
+        returncodes[path.stem] = subprocess.run(
+            [
+                sys.executable,
+                pathlib.Path(__file__).resolve(),
+                *sys.argv[1:],
+                "--runtime-config",
+                path.resolve(),
+            ],
+            cwd=rundir,
+        ).returncode
+    log(f"- runtime config {returncodes=}")
+    sys.exit(any(returncodes.values()))
 
 
 @functools.lru_cache(maxsize=None)
@@ -620,9 +650,10 @@ add_bool_arg(parser, "process-fossils", default=None)
 parser.add_argument("--cmaddr", help="IP:port for CS system")
 parser.add_argument(
     "--runtime-config",
-    default="runtime_config.npz",
+    default=next(iter(map(str, runtimeConfigPaths)), None),
     help="npz file with per-PE data to copy to device symbols before launch"
-    " (see pyscript/runtime-config-build.py); if missing, defaults are used",
+    " (see pyscript/runtime-config-*.py); defaults to running once for each"
+    " npz file in runtime_config/, or with default data if there are none",
 )
 log("- parsing arguments")
 args = parser.parse_args()
@@ -649,6 +680,51 @@ tournSize = (
 
 with open("compconf.json", encoding="utf-8") as json_file:
     compconf_data = json.load(json_file)
+
+log("- loading runtime config")
+runtimeConfig = {  # defaults, where applicable from compile-time params
+    "whoami": np.arange(nRow * nCol, dtype=np.uint32).reshape(nRow, nCol, 1),
+    "whereami_x": np.indices((nRow, nCol), np.uint32)[1][:, :, None],
+    "whereami_y": np.indices((nRow, nCol), np.uint32)[0][:, :, None],
+    "globalSeed": np.full((nRow, nCol, 1), globalSeed, np.uint32),
+    "nRowSubgrid": np.full((nRow, nCol, 1), nRowSubgrid, np.uint32),
+    "nColSubgrid": np.full((nRow, nCol, 1), nColSubgrid, np.uint32),
+}
+runtimeConfigName = "default"
+if args.runtime_config is not None:
+    runtimeConfigName = pathlib.Path(args.runtime_config).stem
+    with np.load(args.runtime_config) as npz_file:
+        for symbol, data in npz_file.items():
+            log(f" - {symbol} from {args.runtime_config}")
+            if symbol not in runtimeConfig:
+                raise ValueError(f"unknown runtime config symbol {symbol}")
+            if (data.shape, data.dtype) != (
+                runtimeConfig[symbol].shape,
+                runtimeConfig[symbol].dtype,
+            ):
+                raise ValueError(f"{symbol} has bad {data.shape=} {data.dtype=}")
+            runtimeConfig[symbol] = data
+
+            # validate_{symbol}.py alongside sets validate(data, params),
+            # which returns something truthy if data is bad
+            validator = pathlib.Path(args.runtime_config).with_name(
+                f"validate_{symbol}.py"
+            )
+            if validator.exists():
+                log(f" - validating {symbol} with {validator}")
+                params = {k: int(v) for k, v in compile_data["params"].items()}
+                failure = runpy.run_path(str(validator))["validate"](
+                    data, {**params, "nRow": nRow, "nCol": nCol}
+                )
+                if failure:
+                    raise ValueError(f"{symbol} fails {validator}: {failure}")
+log(f" - {runtimeConfigName=}")
+
+# host treats these as global, so runtime config can't vary them between PEs
+(globalSeed,) = map(int, np.unique(runtimeConfig["globalSeed"]))
+(nRowSubgrid,) = map(int, np.unique(runtimeConfig["nRowSubgrid"]))
+(nColSubgrid,) = map(int, np.unique(runtimeConfig["nColSubgrid"]))
+log(f" - {globalSeed=} {nRowSubgrid=} {nColSubgrid=}")
 
 log(f" - applying globalSeed={globalSeed}")
 random.seed(globalSeed)
@@ -684,6 +760,7 @@ nWav = genomeData["nWav"][0]
 metadata = {
     "genomeFlavor": (genomeFlavor, pl.Categorical),
     "globalSeed": (globalSeed, pl.UInt32),
+    "runtimeConfig": (runtimeConfigName, pl.Categorical),
     "populationFlavor": (populationFlavor, pl.Categorical),
     "memcpyMajor": (memcpyMajor, pl.Categorical),
     "nCol": (nCol, pl.UInt16),
@@ -771,27 +848,6 @@ log("- runner loaded")
 
 runner.run()
 log("- runner run ran")
-
-log("- loading runtime config")
-runtimeConfig = {  # defaults
-    "whoami": np.arange(nRow * nCol, dtype=np.uint32).reshape(nRow, nCol, 1),
-    "whereami_x": np.indices((nRow, nCol), np.uint32)[1][:, :, None],
-    "whereami_y": np.indices((nRow, nCol), np.uint32)[0][:, :, None],
-}
-if os.path.exists(args.runtime_config):
-    with np.load(args.runtime_config) as npz_file:
-        for symbol, data in npz_file.items():
-            log(f" - {symbol} from {args.runtime_config}")
-            if symbol not in runtimeConfig:
-                raise ValueError(f"unknown runtime config symbol {symbol}")
-            if (data.shape, data.dtype) != (
-                runtimeConfig[symbol].shape,
-                runtimeConfig[symbol].dtype,
-            ):
-                raise ValueError(f"{symbol} has bad {data.shape=} {data.dtype=}")
-            runtimeConfig[symbol] = data
-else:
-    log(f" - no {args.runtime_config}, using defaults")
 
 for symbol, data in runtimeConfig.items():
     log(f" - copying {symbol} to device")

@@ -1,3 +1,5 @@
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -6,6 +8,11 @@ from pylib._runtime_config import (
     RuntimeConfigEntry,
     RuntimeConfigRule,
     build_runtime_config,
+    save_runtime_configs,
+)
+from pylib._runtime_config_defaults import (
+    make_runtime_config_constant,
+    make_runtime_config_defaults,
 )
 
 
@@ -77,3 +84,34 @@ def test_build_runtime_config_rule_modes(
     assert "whoami fails rule unique" in capsys.readouterr().out
     with pytest.raises(ValueError, match="unknown"):
         build("bogus")
+
+
+def test_make_runtime_config_defaults() -> None:
+    ctx = RuntimeConfigContext(
+        nRow=3, nCol=4, nRowSubgrid=2, nColSubgrid=0, globalSeed=7
+    )
+    res = build_runtime_config(ctx, make_runtime_config_defaults(ctx))
+    assert all(data.shape == (3, 4, 1) for data in res.values())
+    assert res["whoami"].ravel().tolist() == [*range(12)]
+    assert res["whereami_x"][1, :, 0].tolist() == [0, 1, 2, 3]
+    assert res["whereami_y"][:, 1, 0].tolist() == [0, 1, 2]
+    assert (res["globalSeed"] == 7).all()
+    assert (res["nRowSubgrid"] == 2).all()
+    assert (res["nColSubgrid"] == 0).all()
+
+
+def test_save_runtime_configs(tmp_path: pathlib.Path) -> None:
+    ctx = RuntimeConfigContext(nRow=3, nCol=4)
+    configs = {
+        f"globalSeed={seed}": build_runtime_config(
+            ctx, [make_runtime_config_constant("globalSeed", seed)]
+        )
+        for seed in (1, 2)
+    }
+    save_runtime_configs(configs, str(tmp_path / "runtime_config"))
+    for seed in (1, 2):
+        path = tmp_path / "runtime_config" / f"globalSeed={seed}.npz"
+        with np.load(path) as npz_file:
+            assert npz_file.files == ["globalSeed"]
+            assert (npz_file["globalSeed"] == seed).all()
+            assert npz_file["globalSeed"].dtype == np.uint32

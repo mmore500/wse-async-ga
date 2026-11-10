@@ -136,6 +136,14 @@ var whoami = @zeros([1]u32); var ptr_whoami : [*]u32 = &whoami;
 var whereami_x = @zeros([1]u32); var ptr_whereami_x : [*]u32 = &whereami_x;
 var whereami_y = @zeros([1]u32); var ptr_whereami_y : [*]u32 = &whereami_y;
 
+// runtime config defaulting to compile-time params, host may override
+var rtGlobalSeed = [1]u32{ @as(u32, globalSeed) };
+var ptr_rtGlobalSeed : [*]u32 = &rtGlobalSeed;
+var rtNRowSubgrid = [1]u32{ @as(u32, nRowSubgrid) };
+var ptr_rtNRowSubgrid : [*]u32 = &rtNRowSubgrid;
+var rtNColSubgrid = [1]u32{ @as(u32, nColSubgrid) };
+var ptr_rtNColSubgrid : [*]u32 = &rtNColSubgrid;
+
 // timestamp buffers, ensure an even number for 32-bit word memcpy
 var tscControlBuffer = @zeros([(time.tsc_size_words + 1) / 2]u32);
 var ptr_tscControlBuffer : [*]u32 = &tscControlBuffer;
@@ -724,14 +732,16 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   sendFlag_W = @as(u8, x != 0);  // except left col
 
   // apply barrierEveryNth to disable migration between PEs
-  if (nRowSubgrid != 0) {
-    const yOffset = y % nRowSubgrid;
+  const rowSubgrid = @as(i16, rtNRowSubgrid[0]);
+  if (rowSubgrid != 0) {
+    const yOffset = y % rowSubgrid;
     if (yOffset == 0) sendFlag_N = 0;
-    if (yOffset == nRowSubgrid - 1) sendFlag_S = 0;
+    if (yOffset == rowSubgrid - 1) sendFlag_S = 0;
   }
-  if (nColSubgrid != 0) {
-    const xOffset = x % nColSubgrid;
-    if (xOffset == nColSubgrid - 1) sendFlag_E = 0;
+  const colSubgrid = @as(i16, rtNColSubgrid[0]);
+  if (colSubgrid != 0) {
+    const xOffset = x % colSubgrid;
+    if (xOffset == colSubgrid - 1) sendFlag_E = 0;
     if (xOffset == 0) sendFlag_W = 0;
   }
 
@@ -740,12 +750,12 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
 
   // + 1 ensures nonzero local seed
   const localSeed = math.max(
-    @as(u32, globalSeed) * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1,
+    rtGlobalSeed[0] * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1,
     1
   );
   // rng.seed_pe(globalSeed);  // works, but very slow... especially on wse 2
   rng.seed(  // use (paranoid) naive approach instead
-    localSeed, ((@as(u32, globalSeed) + 1) * whoami[0] + 1) ^ 0xD943B64C
+    localSeed, ((rtGlobalSeed[0] + 1) * whoami[0] + 1) ^ 0xD943B64C
   );
   random.set_global_prng_seed(math.max(rng.next(), 1));  // need nonzero seed
 
@@ -848,6 +858,9 @@ comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_whoami, "whoami");
   @export_symbol(ptr_whereami_x, "whereami_x");
   @export_symbol(ptr_whereami_y, "whereami_y");
+  @export_symbol(ptr_rtGlobalSeed, "globalSeed");
+  @export_symbol(ptr_rtNRowSubgrid, "nRowSubgrid");
+  @export_symbol(ptr_rtNColSubgrid, "nColSubgrid");
   @export_symbol(ptr_tscControlBuffer, "tscControlBuffer");
   @export_symbol(ptr_tscEndBuffer, "tscEndBuffer");
   @export_symbol(ptr_tscStartBuffer, "tscStartBuffer");

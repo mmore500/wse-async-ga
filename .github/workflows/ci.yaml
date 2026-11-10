@@ -196,15 +196,33 @@ jobs:
         run: |
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
-          if [ "${{ matrix.nonBlock }}" == "1" ]; then  # else, use defaults
-            python3 ./pyscript/runtime-config-build.py \
-              ./kernel-async-ga/out/out.json \
-              --spec ./kernel-async-ga/runtime_config/identity.py \
-              -o ./kernel-async-ga/runtime_config.npz
+          # exercise dispatch of several runtime configs from one compile
+          if [ "${{ matrix.genome }}+${{ matrix.nonBlock }}" == "genome_bitdrift+1" ]; then
+            sudo env PATH=$PATH python3 ./pyscript/runtime-config-make-sweep.py \
+              ./kernel-async-ga/out/out.json --symbol globalSeed --values 1 2 \
+              -o ./kernel-async-ga/runtime_config
           fi
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/execute.sh
+
+      - name: Check runtime config dispatch
+        if: matrix.genome == 'genome_bitdrift' && matrix.nonBlock == 1
+        run: |
+          python3 -c "
+          import glob, polars as pl
+          seeds = {'default': 0, 'globalSeed=1': 1, 'globalSeed=2': 2}
+          for name, seed in seeds.items():
+              paths = glob.glob(
+                  f'./kernel-async-ga/runtime_config={name}/a=*+seed={seed}+*.pqt'
+              )
+              dfs = [*map(pl.read_parquet, paths)]
+              dfs = [df for df in dfs if 'runtimeConfig' in df.columns]
+              assert dfs, name
+              for df in dfs:
+                  assert (df['runtimeConfig'] == name).all(), name
+                  assert (df['globalSeed'] == seed).all(), name
+          "
 
   test-sample-populations:
     name: Test make sample population

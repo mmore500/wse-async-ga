@@ -181,3 +181,7 @@ build-*/
 docgen_tmp/
 
 # End of https://www.toptal.com/developers/gitignore/api/zig,python
+
+# generated runtime configs
+kernel-async-ga/runtime_config/*.npz
+kernel-async-ga/runtime_config=*/

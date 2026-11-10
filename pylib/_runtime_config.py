@@ -1,4 +1,6 @@
 import dataclasses
+import json
+import os
 import typing
 import warnings
 
@@ -14,6 +16,19 @@ class RuntimeConfigContext:
     nRowSubgrid: int = 0
     nColSubgrid: int = 0
     globalSeed: int = 0
+
+
+def load_runtime_config_context(compile_json: str) -> RuntimeConfigContext:
+    """Read compiled kernel parameters from out.json written by cslc."""
+    with open(compile_json, encoding="utf-8") as json_file:
+        params = json.load(json_file)["params"]
+    return RuntimeConfigContext(
+        nRow=int(params["nRow"]),
+        nCol=int(params["nCol"]),
+        nRowSubgrid=int(params["nRowSubgrid"]),
+        nColSubgrid=int(params["nColSubgrid"]),
+        globalSeed=int(params["globalSeed"]),
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -86,3 +101,15 @@ def build_runtime_config(
         result[symbol] = data.astype(np.uint32)
 
     return result
+
+
+def save_runtime_configs(
+    runtime_configs: dict[str, dict[str, np.ndarray]], outdir: str
+) -> None:
+    """Write runtime configs to outdir, as one npz file named for each."""
+    os.makedirs(outdir, exist_ok=True)
+    for name, runtime_config in runtime_configs.items():
+        path = os.path.join(outdir, f"{name}.npz")
+        with open(path, "wb") as npz_file:
+            np.savez(npz_file, **runtime_config)
+        print(f"wrote {[*runtime_config]} to {path}")
