@@ -101,9 +101,11 @@ else:
             f" ({i} of {len(runtimeConfigPaths)})"
         )
         rundir.mkdir(exist_ok=True)
-        for name in "cerebraslib", "compconf.json", "out":  # compile outputs
-            (rundir / name).unlink(missing_ok=True)
-            (rundir / name).symlink_to(pathlib.Path(name).resolve())
+        for compileOutput in "cerebraslib", "compconf.json", "out":
+            (rundir / compileOutput).unlink(missing_ok=True)
+            (rundir / compileOutput).symlink_to(
+                pathlib.Path(compileOutput).resolve()
+            )
         returncodes[path.stem] = subprocess.run(
             [
                 sys.executable,

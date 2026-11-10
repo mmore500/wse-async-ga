@@ -1,4 +1,4 @@
-"""Runtime config ${name}, from runtime_config_template/default.py.in.
+"""Runtime config ${runtime_config_name}, from runtime_config_template/default.py.in.
 
 Reads comptime configs as JSON from stdin, and writes an npz file of per-PE
 values for rtc_* device symbols to stdout.
@@ -12,7 +12,7 @@ import numpy as np
 if __name__ == "__main__":
     comptime = json.load(sys.stdin)
     comptime.update(${overrides})  # from jsonl
-    print(f"runtime config ${name} {comptime=}", file=sys.stderr)
+    print(f"runtime config ${runtime_config_name} {comptime=}", file=sys.stderr)
 
     shape = (comptime["nRow"], comptime["nCol"], 1)
     np.savez(
