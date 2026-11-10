@@ -654,7 +654,7 @@ parser.add_argument(
     default=next(iter(map(str, runtimeConfigPaths)), None),
     help="py file that generates per-PE values to copy to rtc_* device symbols"
     " before launch; defaults to running once for each such file in"
-    " runtime_config_dispatch/, or with default values if there are none",
+    " runtime_config_dispatch/, or with comptime defaults if there are none",
 )
 parser.add_argument(
     "--runtime-config-validate-warn",
@@ -691,17 +691,7 @@ with open("compconf.json", encoding="utf-8") as json_file:
     compconf_data = json.load(json_file)
 
 log("- loading runtime config")
-shape = (nRow, nCol, 1)
-runtimeConfig = {  # defaults, where applicable from compile-time params
-    "rtc_whoami": np.arange(nRow * nCol, dtype=np.uint32).reshape(shape),
-    "rtc_whereami_x": np.indices((nRow, nCol), np.uint32)[1].reshape(shape),
-    "rtc_whereami_y": np.indices((nRow, nCol), np.uint32)[0].reshape(shape),
-    "rtc_globalSeed": np.full(shape, globalSeed, np.uint32),
-    "rtc_nRowSubgrid": np.full(shape, nRowSubgrid, np.uint32),
-    "rtc_nColSubgrid": np.full(shape, nColSubgrid, np.uint32),
-    "rtc_nCycleAtLeast": np.full(shape, nCycleAtLeast, np.uint32),
-}
-runtimeConfigName = "default"
+runtimeConfigName = "none"
 comptimeConfigJson = json.dumps(
     {
         **{key: int(value) for key, value in compile_data["params"].items()},
@@ -709,48 +699,32 @@ comptimeConfigJson = json.dumps(
         "nCol": nCol,
     }
 )
-runtimeConfigFromFile = {}
+runtimeConfig = {}
 if args.runtime_config is not None:  # comptime to stdin, npz from stdout
     runtimeConfigName = pathlib.Path(args.runtime_config).stem
     log(f" - running {args.runtime_config}")
-    with np.load(
-        io.BytesIO(
-            subprocess.run(
-                [sys.executable, args.runtime_config],
-                input=comptimeConfigJson.encode(),
-                stdout=subprocess.PIPE,
-                check=True,
-            ).stdout
-        )
-    ) as npz_file:
-        runtimeConfigFromFile = dict(npz_file)
+    runtimeConfigNpz = subprocess.run(
+        [sys.executable, args.runtime_config],
+        input=comptimeConfigJson.encode(),
+        stdout=subprocess.PIPE,
+        check=True,
+    ).stdout
+    with np.load(io.BytesIO(runtimeConfigNpz)) as npz_file:
+        runtimeConfig = dict(npz_file)
+
+    runtimeConfigPath = f"a=runtimeconfig+name={runtimeConfigName}+ext=.npz"
+    log(f" - saving runtime config to {runtimeConfigPath}")
+    pathlib.Path(runtimeConfigPath).write_bytes(runtimeConfigNpz)
 else:
-    log(" - no runtime config, using defaults")
+    log(" - no runtime config, rtc_* device symbols keep comptime defaults")
 
-for symbol, data in runtimeConfigFromFile.items():
-    log(f" - {symbol} from {args.runtime_config}")
-    if symbol not in runtimeConfig:
-        raise ValueError(f"unknown runtime config symbol {symbol}")
-    data = np.asarray(data)
-    if data.shape != runtimeConfig[symbol].shape:
+for symbol, data in runtimeConfig.items():
+    log(f" - {symbol} {data.shape=} {data.dtype=}")
+    if data.ndim != 3 or data.shape[:2] != (nRow, nCol):
         raise ValueError(f"{symbol} has bad {data.shape=}")
-    if not np.issubdtype(data.dtype, np.integer) or (
-        data.astype(np.uint32) != data
-    ).any():
-        raise ValueError(f"{symbol} has data that doesn't fit uint32")
-    runtimeConfig[symbol] = data.astype(np.uint32)
+    if data.dtype != np.uint32:
+        raise ValueError(f"{symbol} has bad {data.dtype=}")
 
-runtimeConfigNpz = io.BytesIO()
-np.savez(runtimeConfigNpz, **runtimeConfig)
-
-# telemetry, in case run fails
-runtimeConfigPath = f"a=runtimeconfig+name={runtimeConfigName}+ext=.npz"
-log(f" - saving runtime config to {runtimeConfigPath}")
-pathlib.Path(runtimeConfigPath).write_bytes(runtimeConfigNpz.getvalue())
-
-# validators take comptime configs json as argument and runtime config npz on
-# stdin, and raise if values for their symbol are bad
-for symbol in runtimeConfig:
     validators = sorted(
         pathlib.Path(__file__)
         .resolve()
@@ -761,11 +735,14 @@ for symbol in runtimeConfig:
         log(f"   - running {validator}")
         result = subprocess.run(
             [sys.executable, validator, comptimeConfigJson],
-            input=runtimeConfigNpz.getvalue(),
+            input=runtimeConfigNpz,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        log(result.stdout.decode())
+        lines = result.stdout.decode().splitlines()
+        if len(lines) > 20:  # head and tail
+            lines = [*lines[:10], "...", *lines[-10:]]
+        log("\n".join(lines))
         slug = f"{symbol}/{validator.stem}"
         if result.returncode == 0:
             pass
@@ -779,10 +756,14 @@ for symbol in runtimeConfig:
 log(f" - {runtimeConfigName=}")
 
 # host treats these as global, so runtime config can't vary them between PEs
-(globalSeed,) = map(int, np.unique(runtimeConfig["rtc_globalSeed"]))
-(nRowSubgrid,) = map(int, np.unique(runtimeConfig["rtc_nRowSubgrid"]))
-(nColSubgrid,) = map(int, np.unique(runtimeConfig["rtc_nColSubgrid"]))
-(nCycleAtLeast,) = map(int, np.unique(runtimeConfig["rtc_nCycleAtLeast"]))
+if "rtc_globalSeed" in runtimeConfig:
+    (globalSeed,) = map(int, np.unique(runtimeConfig["rtc_globalSeed"]))
+if "rtc_nRowSubgrid" in runtimeConfig:
+    (nRowSubgrid,) = map(int, np.unique(runtimeConfig["rtc_nRowSubgrid"]))
+if "rtc_nColSubgrid" in runtimeConfig:
+    (nColSubgrid,) = map(int, np.unique(runtimeConfig["rtc_nColSubgrid"]))
+if "rtc_nCycleAtLeast" in runtimeConfig:
+    (nCycleAtLeast,) = map(int, np.unique(runtimeConfig["rtc_nCycleAtLeast"]))
 log(f" - {globalSeed=} {nRowSubgrid=} {nColSubgrid=} {nCycleAtLeast=}")
 
 log(f" - applying globalSeed={globalSeed}")
@@ -1162,7 +1143,7 @@ out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
-    runner.get_id("rtc_whoami"),
+    runner.get_id("whoami"),
     0,  # x0
     0,  # y0
     nCol,  # width
@@ -1182,7 +1163,7 @@ out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
-    runner.get_id("rtc_whereami_x"),
+    runner.get_id("whereami_x"),
     0,  # x0
     0,  # y0
     nCol,  # width
@@ -1202,7 +1183,7 @@ out_tensors = np.zeros((nRow, nCol), np.uint32)
 
 runner.memcpy_d2h(
     out_tensors.ravel(),
-    runner.get_id("rtc_whereami_y"),
+    runner.get_id("whereami_y"),
     0,  # x0
     0,  # y0
     nCol,  # width

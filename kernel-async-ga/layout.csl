@@ -73,9 +73,9 @@ layout {
   @export_name("fitness", [*]f32, true);
   @export_name("genome", [*]u32, true);
   @export_name("fossilBookend", [*]u32, true);
-  @export_name("rtc_whoami", [*]u32, true);
-  @export_name("rtc_whereami_x", [*]u32, true);
-  @export_name("rtc_whereami_y", [*]u32, true);
+  @export_name("whoami", [*]u32, true);
+  @export_name("whereami_x", [*]u32, true);
+  @export_name("whereami_y", [*]u32, true);
   @export_name("rtc_globalSeed", [*]u32, true);
   @export_name("rtc_nRowSubgrid", [*]u32, true);
   @export_name("rtc_nColSubgrid", [*]u32, true);
