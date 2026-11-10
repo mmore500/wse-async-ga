@@ -23,5 +23,5 @@ for cmd in "export ASYNC_GA_GLOBAL_SEED=1 ASYNC_GA_NCYCLE_AT_LEAST=25" \
 
 done
 
-find runtime_config=default/a=genomes+flavor=${ASYNC_GA_GENOME_FLAVOR}+*.pqt \
+find a=genomes+flavor=${ASYNC_GA_GENOME_FLAVOR}+*.pqt \
   | python3 -m joinem "a=concatenated_genomes+flavor=${ASYNC_GA_GENOME_FLAVOR}+ext=.csv"

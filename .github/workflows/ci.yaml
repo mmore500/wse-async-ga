@@ -530,7 +530,7 @@ jobs:
 
       - name: Build tree from end-state genomes
         run: |
-          ls -1 ./kernel-async-ga/runtime_config=default/a=genomes* \
+          ls -1 ./kernel-async-ga/a=genomes* \
             | python3 -m hstrat.dataframe.surface_build_tree \
             --with-column "pl.coalesce(pl.col('^downstream_filter_packed$'), pl.lit('pl.lit(True)')).alias('downstream_validate_packed')" \
             --with-column "pl.lit('pl.lit(True)').alias('downstream_filter_packed')" \
@@ -546,7 +546,7 @@ jobs:
 
       - name: Build tree from fossil genomes
         run: |
-          ls -1 ./kernel-async-ga/runtime_config=default/a=fossils* \
+          ls -1 ./kernel-async-ga/a=fossils* \
             | python3 -m hstrat.dataframe.surface_build_tree \
             --with-column "pl.coalesce(pl.col('^downstream_filter_packed$'), pl.lit('pl.lit(True)')).alias('downstream_validate_packed')" \
             --with-column "pl.lit('pl.lit(True)').alias('downstream_filter_packed')" \
@@ -562,8 +562,7 @@ jobs:
 
       - name: Build tree from all genomes
         run: |
-          ls -1 ./kernel-async-ga/runtime_config=default/a=fossils* \
-            ./kernel-async-ga/runtime_config=default/a=genomes* \
+          ls -1 ./kernel-async-ga/a=fossils* ./kernel-async-ga/a=genomes* \
             | python3 -m hstrat.dataframe.surface_build_tree \
             --with-column "pl.coalesce(pl.col('^downstream_filter_packed$'), pl.lit('pl.lit(True)')).alias('downstream_validate_packed')" \
             --with-column "pl.lit('pl.lit(True)').alias('downstream_filter_packed')" \

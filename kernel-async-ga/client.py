@@ -34,10 +34,13 @@ def log(msg: str, *args, **kwargs) -> None:
 
 # each runtime config file (runtime_config_dispatch/*.py) defines one set of
 # per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
-if "--runtime-config" not in sys.argv:
-    runtimeConfigPaths = sorted(
-        pathlib.Path("runtime_config_dispatch").glob("*.py")
-    )
+runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
+if "--runtime-config" in sys.argv:
+    pass
+elif [path.stem for path in runtimeConfigPaths] == ["default"]:
+    log("- running default runtime config in place")  # backwards compatible
+    sys.argv += ["--runtime-config", str(runtimeConfigPaths[0])]
+else:
     log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
     if not runtimeConfigPaths:
         raise ValueError("no runtime configs in runtime_config_dispatch")
@@ -657,7 +660,8 @@ parser.add_argument(
     required=True,
     help="py file that generates per-PE values to copy to rtc_* device symbols"
     " before launch; if not given, runs once for each such file in"
-    " runtime_config_dispatch/, in directory runtime_config=<name>",
+    " runtime_config_dispatch/, in directory runtime_config=<name> unless"
+    " the only one is default.py",
 )
 parser.add_argument(
     "--runtime-config-validate-lax",
@@ -701,7 +705,7 @@ comptimeConfigJson = json.dumps(
         **{key: int(value) for key, value in compile_data["params"].items()},
         "nRow": nRow,
         "nCol": nCol,
-    }
+    },
 )
 log(f" - running {args.runtime_config}")  # comptime to stdin, npz from stdout
 runtimeConfigNpz = subprocess.run(
@@ -710,6 +714,7 @@ runtimeConfigNpz = subprocess.run(
     stdout=subprocess.PIPE,
     check=True,
 ).stdout
+log(f" - runtime config npz is {len(runtimeConfigNpz)} bytes")
 with np.load(io.BytesIO(runtimeConfigNpz)) as npz_file:
     runtimeConfig = dict(npz_file)
 
