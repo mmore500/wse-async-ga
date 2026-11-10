@@ -118,6 +118,7 @@ echo "make default runtime config ---------------------------------------------"
 # per-PE values copied to rtc_* device symbols before launch
 if [ "$(ls runtime_config_dispatch 2>/dev/null || :)" == "default.py" ]; then
     echo "WARNING: overwriting runtime_config_dispatch/default.py" >&2
+    cat runtime_config_dispatch/default.py >&2
     rm -rf runtime_config_dispatch
 fi
 if [ ! -d runtime_config_dispatch ]; then
