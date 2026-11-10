@@ -71,61 +71,6 @@ args = parser.parse_args()
 log("args =======================================================")
 log(args)
 
-# each runtime config file (runtime_config_dispatch/*.py) defines one set of
-# per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
-log("- ls runtime_config_dispatch")
-log(
-    subprocess.run(
-        ["ls", "-l", "runtime_config_dispatch"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    ).stdout,
-)
-runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
-log(f"- {runtimeConfigPaths=}")
-if args.runtime_config is not None:
-    log("- running runtime config given by --runtime-config")
-elif [path.stem for path in runtimeConfigPaths] == ["default"]:
-    log("- running default runtime config in place")  # backwards compatible
-    args.runtime_config = str(runtimeConfigPaths[0])
-else:
-    log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
-    if not runtimeConfigPaths:
-        raise ValueError("no runtime configs in runtime_config_dispatch")
-    returncodes = {}
-    for i, path in enumerate(runtimeConfigPaths, start=1):
-        rundir = pathlib.Path(f"dispatch={path.stem}")
-        log(
-            f" - running runtime config {path.stem} in {rundir}"
-            f" ({i} of {len(runtimeConfigPaths)})"
-        )
-        rundir.mkdir(exist_ok=True)
-        for compileOutput in "cerebraslib", "compconf.json", "out":
-            (rundir / compileOutput).unlink(missing_ok=True)
-            (rundir / compileOutput).symlink_to(
-                pathlib.Path(compileOutput).resolve()
-            )
-        returncodes[path.stem] = subprocess.run(
-            [
-                sys.executable,
-                pathlib.Path(__file__).resolve(),
-                *sys.argv[1:],
-                "--runtime-config",
-                path.resolve(),
-            ],
-            cwd=rundir,
-        ).returncode
-        log(f" - runtime config {path.stem} returned {returncodes[path.stem]}")
-    log(f"- runtime config {returncodes=}")
-    numFailed = sum(map(bool, returncodes.values()))
-    if numFailed:
-        log(f"- FAILURE! {numFailed} of {len(returncodes)} runtime configs")
-    else:
-        log(f"- SUCCESS! all {len(returncodes)} runtime configs")
-    sys.exit(numFailed > 0)
-
-
 @functools.lru_cache(maxsize=None)
 def log_once(msg: str, *args, **kwargs) -> bool:
     before = log_once.cache_info().hits
@@ -586,35 +531,100 @@ os.makedirs(temp_dir, exist_ok=True)
 atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
 log(f"  - {temp_dir=}")
 
-log("- installing dependencies from wheelhouse")
-wheelhouse = pathlib.Path(
-    os.getenv(
-        "ASYNC_GA_WHEELHOUSE_PATH",
-        pathlib.Path(__file__).resolve().parent / "wheelhouse",
+# dispatched runs reuse wheels installed by the run that dispatched them
+wheelhouseTarget = os.getenv("ASYNC_GA_WHEELHOUSE_TARGET")
+if wheelhouseTarget is not None:
+    log(f"- reusing dependencies installed to {wheelhouseTarget=}")
+else:
+    log("- installing dependencies from wheelhouse")
+    wheelhouse = pathlib.Path(
+        os.getenv(
+            "ASYNC_GA_WHEELHOUSE_PATH",
+            pathlib.Path(__file__).resolve().parent / "wheelhouse",
+        )
     )
-)
-log(f"  - {wheelhouse=}")
-try:
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--no-index",  # offline: wheels only from wheelhouse
-            f"--find-links={wheelhouse}",
-            "--no-deps",  # prevent numpy from being reinstalled
-            f"--target={temp_dir}",
-            f"--requirement={wheelhouse / 'requirements.txt'}",
-        ],
-    )
-except subprocess.CalledProcessError as e:
-    raise RuntimeError(
-        f"could not install pinned wheels from {wheelhouse}",
-    ) from e
+    log(f"  - {wheelhouse=}")
+    wheelhouseTarget = os.path.abspath(temp_dir)
+    try:
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--no-index",  # offline: wheels only from wheelhouse
+                f"--find-links={wheelhouse}",
+                "--no-deps",  # prevent numpy from being reinstalled
+                f"--target={wheelhouseTarget}",
+                f"--requirement={wheelhouse / 'requirements.txt'}",
+            ],
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"could not install pinned wheels from {wheelhouse}",
+        ) from e
+    os.environ["ASYNC_GA_WHEELHOUSE_TARGET"] = wheelhouseTarget
 
-log(f"- prepending temp dir to sys path {temp_dir=}")
-sys.path.insert(0, temp_dir)
+log(f"- prepending to sys path {wheelhouseTarget=}")
+sys.path.insert(0, wheelhouseTarget)
+
+# each runtime config file (runtime_config_dispatch/*.py) defines one set of
+# per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
+if args.runtime_config is None:
+    log("- ls runtime_config_dispatch")
+    log(
+        subprocess.run(
+            ["ls", "-l", "runtime_config_dispatch"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ).stdout,
+    )
+    runtimeConfigPaths = sorted(
+        pathlib.Path("runtime_config_dispatch").glob("*.py")
+    )
+    log(f"- {runtimeConfigPaths=}")
+    if not runtimeConfigPaths:
+        raise ValueError("no runtime configs in runtime_config_dispatch")
+
+if args.runtime_config is not None:
+    log("- running runtime config given by --runtime-config")
+elif [path.stem for path in runtimeConfigPaths] == ["default"]:
+    log("- running default runtime config in place")  # backwards compatible
+    args.runtime_config = str(runtimeConfigPaths[0])
+else:
+    log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
+    returncodes = {}
+    for i, path in enumerate(runtimeConfigPaths, start=1):
+        rundir = pathlib.Path(f"dispatch={path.stem}")
+        log(
+            f" - running runtime config {path.stem} in {rundir}"
+            f" ({i} of {len(runtimeConfigPaths)})"
+        )
+        rundir.mkdir(exist_ok=True)
+        for compileOutput in {"cerebraslib", "compconf.json", "out", args.name}:
+            (rundir / compileOutput).unlink(missing_ok=True)
+            (rundir / compileOutput).symlink_to(
+                pathlib.Path(compileOutput).resolve()
+            )
+        returncodes[path.stem] = subprocess.run(
+            [
+                sys.executable,
+                pathlib.Path(__file__).resolve(),
+                *sys.argv[1:],
+                "--runtime-config",
+                path.resolve(),
+            ],
+            cwd=rundir,
+        ).returncode
+        log(f" - runtime config {path.stem} returned {returncodes[path.stem]}")
+    log(f"- runtime config {returncodes=}")
+    numFailed = sum(map(bool, returncodes.values()))
+    if numFailed:
+        log(f"- FAILURE! {numFailed} of {len(returncodes)} runtime configs")
+    else:
+        log(f"- SUCCESS! all {len(returncodes)} runtime configs")
+    sys.exit(numFailed > 0)
 
 import downstream  # type: ignore
 from downstream import dstream  # type: ignore
@@ -1139,6 +1149,7 @@ else:
     process_fossils(nWav)
 
 log("runtime config =============================================")
+runtimeConfigMismatches = []  # raise at end, so that outputs get saved
 for symbol, data in runtimeConfig.items():
     log(f" - reading back {symbol}")
     out_tensors = np.zeros_like(data)
@@ -1157,7 +1168,8 @@ for symbol, data in runtimeConfig.items():
     )
     log(f"{symbol} {out_tensors[:20, :20, 0]}")
     if not np.array_equal(out_tensors, data):
-        raise ValueError(f"{symbol} on device differs from runtime config")
+        runtimeConfigMismatches.append(symbol)
+        warnings.warn(f"{symbol} on device differs from runtime config")
 
 log("whoami =====================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1951,6 +1963,11 @@ del df, tsc_ticks, tsc_sec, tsc_cysec, tsc_cyhz, tsc_cyns, tscStart_ints, tscEnd
 
 # runner.dump("corefile.cs1")
 runner.stop()
+
+if runtimeConfigMismatches:
+    raise ValueError(
+        f"{runtimeConfigMismatches} on device differ from runtime config"
+    )
 
 # Ensure that the result matches our expectation
 log("SUCCESS!")

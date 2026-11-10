@@ -36,13 +36,14 @@ if __name__ == "__main__":
         overrides = json.loads(line)
         dispatch_slug = overrides.pop("dispatch_slug")
         outpath = outdir / f"{dispatch_slug}.py"
-        if outpath.exists():
-            logging.info(f"- keeping existing {outpath}")
-            continue
-
-        logging.info(f"- writing {outpath} with {overrides}")
-        outpath.write_text(
-            string.Template(text).substitute(
-                dispatch_slug=dispatch_slug, overrides=overrides
-            )
+        content = string.Template(text).substitute(
+            dispatch_slug=dispatch_slug, overrides=overrides
         )
+        if not outpath.exists():
+            logging.info(f"- writing {outpath} with {overrides}")
+        elif outpath.read_text() == content:
+            logging.info(f"- keeping {outpath}, already up to date")
+        else:
+            logging.warning(f"- overwriting {outpath} with {overrides}; was")
+            logging.warning(outpath.read_text())
+        outpath.write_text(content)
