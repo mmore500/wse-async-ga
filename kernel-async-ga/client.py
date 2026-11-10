@@ -32,6 +32,45 @@ def log(msg: str, *args, **kwargs) -> None:
     logging.info(msg, *args, **kwargs)
 
 
+# adapted from https://stackoverflow.com/a/31347222/17332200
+def add_bool_arg(parser, name, default=False):
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument(
+        "--" + name, dest=name.replace("-", "_"), action="store_true"
+    )
+    group.add_argument(
+        "--no-" + name, dest=name.replace("-", "_"), action="store_false"
+    )
+    parser.set_defaults(**{name.replace("-", "_"): default})
+
+
+log("- configuring argparse")
+parser = argparse.ArgumentParser()
+parser.add_argument("--name", help="the test compile output dir", default="out")
+add_bool_arg(parser, "suptrace", default=True)
+add_bool_arg(parser, "process-fossils", default=None)
+parser.add_argument("--cmaddr", help="IP:port for CS system")
+parser.add_argument(
+    "--runtime-config",
+    help="py file that generates per-PE values to copy to rtc_* device symbols"
+    " before launch; if not given, runs once for each such file in"
+    " runtime_config_dispatch/, in directory runtime_config=<name> unless"
+    " the only one is default.py",
+)
+parser.add_argument(
+    "--runtime-config-validate-lax",
+    action="append",
+    default=[],
+    metavar="SYMBOL/VALIDATOR",
+    help="only warn if this runtime config validator fails, instead of raising"
+    " error; takes wildcards (e.g. 'rtc_globalSeed/*') and can be repeated",
+)
+log("- parsing arguments")
+args = parser.parse_args()
+
+log("args =======================================================")
+log(args)
+
 # each runtime config file (runtime_config_dispatch/*.py) defines one set of
 # per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
 log("- ls runtime_config_dispatch")
@@ -45,12 +84,11 @@ log(
 )
 runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
 log(f"- {runtimeConfigPaths=}")
-runtimeConfigInPlace = None  # default for --runtime-config
-if "--runtime-config" in sys.argv:
+if args.runtime_config is not None:
     log("- running runtime config given by --runtime-config")
 elif [path.stem for path in runtimeConfigPaths] == ["default"]:
     log("- running default runtime config in place")  # backwards compatible
-    runtimeConfigInPlace = str(runtimeConfigPaths[0])
+    args.runtime_config = str(runtimeConfigPaths[0])
 else:
     log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
     if not runtimeConfigPaths:
@@ -634,18 +672,6 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     log("- verbose save complete!")
 
 
-# adapted from https://stackoverflow.com/a/31347222/17332200
-def add_bool_arg(parser, name, default=False):
-    group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument(
-        "--" + name, dest=name.replace("-", "_"), action="store_true"
-    )
-    group.add_argument(
-        "--no-" + name, dest=name.replace("-", "_"), action="store_false"
-    )
-    parser.set_defaults(**{name.replace("-", "_"): default})
-
-
 log("- reading env variables")
 # number of rows, columns, and genome words
 nCol = int(os.getenv("ASYNC_GA_NCOL", 3))
@@ -662,35 +688,6 @@ wavSize = 32  # number of bits in a wavelet
 tscSizeWords = 3  # number of 16-bit values in 48-bit timestamp values
 tscSizeWords += tscSizeWords % 2  # make even multiple of 32-bit words
 tscTicksPerSecond = 850 * 10**6  # 850 MHz
-
-log("- configuring argparse")
-parser = argparse.ArgumentParser()
-parser.add_argument("--name", help="the test compile output dir", default="out")
-add_bool_arg(parser, "suptrace", default=True)
-add_bool_arg(parser, "process-fossils", default=None)
-parser.add_argument("--cmaddr", help="IP:port for CS system")
-parser.add_argument(
-    "--runtime-config",
-    default=runtimeConfigInPlace,
-    required=runtimeConfigInPlace is None,
-    help="py file that generates per-PE values to copy to rtc_* device symbols"
-    " before launch; if not given, runs once for each such file in"
-    " runtime_config_dispatch/, in directory runtime_config=<name> unless"
-    " the only one is default.py",
-)
-parser.add_argument(
-    "--runtime-config-validate-lax",
-    action="append",
-    default=[],
-    metavar="SYMBOL/VALIDATOR",
-    help="only warn if this runtime config validator fails, instead of raising"
-    " error; takes wildcards (e.g. 'rtc_globalSeed/*') and can be repeated",
-)
-log("- parsing arguments")
-args = parser.parse_args()
-
-log("args =======================================================")
-log(args)
 
 log("metadata ===================================================")
 with open(f"{args.name}/out.json", encoding="utf-8") as json_file:
