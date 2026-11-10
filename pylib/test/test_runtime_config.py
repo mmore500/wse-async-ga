@@ -10,10 +10,6 @@ from pylib._runtime_config import (
     build_runtime_config,
     save_runtime_configs,
 )
-from pylib._runtime_config_defaults import (
-    make_runtime_config_constant,
-    make_runtime_config_defaults,
-)
 
 
 def _make_whoami(ctx: RuntimeConfigContext) -> np.ndarray:
@@ -86,25 +82,17 @@ def test_build_runtime_config_rule_modes(
         build("bogus")
 
 
-def test_make_runtime_config_defaults() -> None:
-    ctx = RuntimeConfigContext(
-        nRow=3, nCol=4, nRowSubgrid=2, nColSubgrid=0, globalSeed=7
-    )
-    res = build_runtime_config(ctx, make_runtime_config_defaults(ctx))
-    assert all(data.shape == (3, 4, 1) for data in res.values())
-    assert res["whoami"].ravel().tolist() == [*range(12)]
-    assert res["whereami_x"][1, :, 0].tolist() == [0, 1, 2, 3]
-    assert res["whereami_y"][:, 1, 0].tolist() == [0, 1, 2]
-    assert (res["globalSeed"] == 7).all()
-    assert (res["nRowSubgrid"] == 2).all()
-    assert (res["nColSubgrid"] == 0).all()
-
-
 def test_save_runtime_configs(tmp_path: pathlib.Path) -> None:
     ctx = RuntimeConfigContext(nRow=3, nCol=4)
     configs = {
         f"globalSeed={seed}": build_runtime_config(
-            ctx, [make_runtime_config_constant("globalSeed", seed)]
+            ctx,
+            [
+                RuntimeConfigEntry(
+                    "globalSeed",
+                    lambda ctx, seed=seed: np.full((3, 4, 1), seed),
+                )
+            ],
         )
         for seed in (1, 2)
     }

@@ -5,7 +5,8 @@ The spec file should set `RUNTIME_CONFIGS` to a dict of lists of
 `RuntimeConfigEntry`, keyed by runtime config name. It is run with
 `ctx` set to the `RuntimeConfigContext` for the compiled kernel.
 
-Runtime configs are npz files of per-PE data for device symbols; see
+Unlike py runtime configs, the spec is run here rather than by client.py, so
+can use pylib, and data is written as npz files. See
 kernel-async-ga/runtime_config/README.md.
 """
 

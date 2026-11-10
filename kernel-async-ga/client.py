@@ -31,9 +31,14 @@ def log(msg: str, *args, **kwargs) -> None:
     logging.info(msg, *args, **kwargs)
 
 
-# runtime configs are npz files of per-PE data for device symbols, named for
-# the config (see pyscript/runtime-config-*.py); run once per file present
-runtimeConfigPaths = sorted(pathlib.Path("runtime_config").glob("*.npz"))
+# runtime configs are per-PE data for device symbols, as npz files or py files
+# that generate it, named for the config (see runtime_config/README.md); run
+# once per file present
+runtimeConfigPaths = sorted(
+    path
+    for path in pathlib.Path("runtime_config").glob("*")
+    if path.suffix in (".npz", ".py") and not path.stem.startswith("validate_")
+)
 if len(runtimeConfigPaths) > 1 and "--runtime-config" not in sys.argv:
     log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
     returncodes = {}
@@ -651,9 +656,10 @@ parser.add_argument("--cmaddr", help="IP:port for CS system")
 parser.add_argument(
     "--runtime-config",
     default=next(iter(map(str, runtimeConfigPaths)), None),
-    help="npz file with per-PE data to copy to device symbols before launch"
-    " (see pyscript/runtime-config-*.py); defaults to running once for each"
-    " npz file in runtime_config/, or with default data if there are none",
+    help="npz file of per-PE data to copy to device symbols before launch, or"
+    " py file that generates it (see runtime_config/README.md); defaults to"
+    " running once for each such file in runtime_config/, or with default"
+    " data if there are none",
 )
 log("- parsing arguments")
 args = parser.parse_args()
@@ -691,33 +697,53 @@ runtimeConfig = {  # defaults, where applicable from compile-time params
     "nColSubgrid": np.full((nRow, nCol, 1), nColSubgrid, np.uint32),
 }
 runtimeConfigName = "default"
-if args.runtime_config is not None:
+runtimeConfigParams = {
+    **{key: int(value) for key, value in compile_data["params"].items()},
+    "nRow": nRow,
+    "nCol": nCol,
+}
+if args.runtime_config is None:
+    overrides = {}
+elif args.runtime_config.endswith(".py"):  # sets generate(params)
+    runtimeConfigName = pathlib.Path(args.runtime_config).stem
+    overrides = runpy.run_path(args.runtime_config)["generate"](
+        runtimeConfigParams
+    )
+elif args.runtime_config.endswith(".npz"):
     runtimeConfigName = pathlib.Path(args.runtime_config).stem
     with np.load(args.runtime_config) as npz_file:
-        for symbol, data in npz_file.items():
-            log(f" - {symbol} from {args.runtime_config}")
-            if symbol not in runtimeConfig:
-                raise ValueError(f"unknown runtime config symbol {symbol}")
-            if (data.shape, data.dtype) != (
-                runtimeConfig[symbol].shape,
-                runtimeConfig[symbol].dtype,
-            ):
-                raise ValueError(f"{symbol} has bad {data.shape=} {data.dtype=}")
-            runtimeConfig[symbol] = data
+        overrides = dict(npz_file)
+else:
+    raise ValueError(f"unknown runtime config type {args.runtime_config}")
 
-            # validate_{symbol}.py alongside sets validate(data, params),
-            # which returns something truthy if data is bad
-            validator = pathlib.Path(args.runtime_config).with_name(
-                f"validate_{symbol}.py"
-            )
-            if validator.exists():
-                log(f" - validating {symbol} with {validator}")
-                params = {k: int(v) for k, v in compile_data["params"].items()}
-                failure = runpy.run_path(str(validator))["validate"](
-                    data, {**params, "nRow": nRow, "nCol": nCol}
-                )
-                if failure:
-                    raise ValueError(f"{symbol} fails {validator}: {failure}")
+for symbol, data in overrides.items():
+    log(f" - {symbol} from {args.runtime_config}")
+    if symbol not in runtimeConfig:
+        raise ValueError(f"unknown runtime config symbol {symbol}")
+    data = np.asarray(data)
+    if data.shape != runtimeConfig[symbol].shape:
+        raise ValueError(f"{symbol} has bad {data.shape=}")
+    if not np.issubdtype(data.dtype, np.integer) or (
+        data.astype(np.uint32) != data
+    ).any():
+        raise ValueError(f"{symbol} has data that doesn't fit uint32")
+    runtimeConfig[symbol] = data.astype(np.uint32)
+
+    # validate_{symbol}.py alongside sets validate(data, params), which
+    # returns something truthy if data is bad
+    validator = pathlib.Path(args.runtime_config).with_name(
+        f"validate_{symbol}.py"
+    )
+    if validator.exists():
+        log(f" - validating {symbol} with {validator}")
+        failure = runpy.run_path(str(validator))["validate"](
+            runtimeConfig[symbol], runtimeConfigParams
+        )
+        if failure:
+            raise ValueError(f"{symbol} fails {validator}: {failure}")
+
+# record data as resolved, in case it was generated
+np.savez(f"a=runtimeconfig+name={runtimeConfigName}+ext=.npz", **runtimeConfig)
 log(f" - {runtimeConfigName=}")
 
 # host treats these as global, so runtime config can't vary them between PEs

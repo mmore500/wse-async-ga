@@ -184,4 +184,5 @@ docgen_tmp/
 
 # generated runtime configs
 kernel-async-ga/runtime_config/*.npz
+kernel-async-ga/runtime_config/*=*.py
 kernel-async-ga/runtime_config=*/

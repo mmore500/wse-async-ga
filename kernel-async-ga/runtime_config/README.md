@@ -3,17 +3,25 @@
 Runtime configs are per-PE data that `client.py` copies to device symbols
 before launch.
 
-- `<name>.npz` holds one runtime config, with an array of shape
-  `(nRow, nCol, width)` and dtype `uint32` per symbol. `client.py` runs once
-  for each npz file here, in directory `runtime_config=<name>` if there is
-  more than one. Symbols missing from a file keep their defaults.
-- `validate_<symbol>.py`, if present, is run by `client.py` each time data
-  for that symbol is loaded from an npz file. It should set
-  `validate(data, params)`, which returns something truthy if `data` is bad;
-  `params` has `nRow`, `nCol`, and the kernel's compile-time parameters.
+- `<name>.py` or `<name>.npz` is one runtime config. `client.py` runs once
+  for each here, in directory `runtime_config=<name>` if there is more than
+  one. Symbols a config doesn't give keep their defaults.
+  - A py file should set `generate(params)`, which returns a dict of data
+    keyed by symbol. It is run by `client.py`, so can only import what the
+    wheelhouse provides.
+  - An npz file holds data keyed by symbol.
+  - Data for a symbol is an integer array of shape `(nRow, nCol, width)`
+    with values that fit `uint32`.
+- `validate_<symbol>.py`, if present, is run by `client.py` each time a
+  config gives data for that symbol. It should set `validate(data, params)`,
+  which returns something truthy if `data` is bad.
+- `params` has `nRow`, `nCol`, and the kernel's compile-time parameters.
 
-`compile.sh` writes `default.npz`. To make others, see
-`pyscript/runtime-config-*.py`.
+`client.py` saves the data it copies to device alongside its other outputs,
+as `a=runtimeconfig+name=<name>+ext=.npz`.
+
+`default.py` overrides nothing. To make others, write one by hand or see
+`pyscript/runtime-config-make-*.py`.
 
 | symbol | default | effect |
 | --- | --- | --- |
