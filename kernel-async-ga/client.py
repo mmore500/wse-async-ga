@@ -116,7 +116,12 @@ else:
         ).returncode
         log(f" - runtime config {path.stem} returned {returncodes[path.stem]}")
     log(f"- runtime config {returncodes=}")
-    sys.exit(any(returncodes.values()))
+    numFailed = sum(map(bool, returncodes.values()))
+    if numFailed:
+        log(f"- FAILURE! {numFailed} of {len(returncodes)} runtime configs")
+    else:
+        log(f"- SUCCESS! all {len(returncodes)} runtime configs")
+    sys.exit(numFailed > 0)
 
 
 @functools.lru_cache(maxsize=None)
@@ -729,6 +734,7 @@ runtimeConfigNpz = subprocess.run(
 log(f" - runtime config npz is {len(runtimeConfigNpz)} bytes")
 with np.load(io.BytesIO(runtimeConfigNpz)) as npz_file:
     runtimeConfig = dict(npz_file)
+log(f" - runtime config symbols {[*runtimeConfig]}")
 
 for i, (symbol, data) in enumerate(runtimeConfig.items(), start=1):
     log(f" - {symbol} ({i} of {len(runtimeConfig)})")
