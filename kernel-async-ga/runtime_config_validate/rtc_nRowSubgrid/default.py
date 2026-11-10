@@ -1,4 +1,4 @@
-"""Validator for rtc_nRowSubgrid values in a runtime config.
+"""Validators for rtc_nRowSubgrid values in a runtime config.
 
 Takes comptime configs json as argument and runtime config npz on stdin.
 """
@@ -10,7 +10,7 @@ import sys
 import numpy as np
 
 
-def validate_rtc_nRowSubgrid(data: np.ndarray, comptime: dict) -> None:
+def validate_rtc_nRowSubgrid_uniform(data: np.ndarray, comptime: dict) -> None:
     assert len(np.unique(data)) == 1, "subgrid size differs between PEs"
 
 
@@ -18,4 +18,4 @@ if __name__ == "__main__":
     comptime = json.loads(sys.argv[1])
     data = np.load(io.BytesIO(sys.stdin.buffer.read()))["rtc_nRowSubgrid"]
     print(f"validating rtc_nRowSubgrid {data.shape=}")
-    validate_rtc_nRowSubgrid(data, comptime)
+    validate_rtc_nRowSubgrid_uniform(data, comptime)
