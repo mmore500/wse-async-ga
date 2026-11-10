@@ -1,10 +1,13 @@
+"""Checks data for globalSeed, in runtime config npz file from stdin."""
+
+import io
+import sys
+
 import numpy as np
 
-
-def validate(data: np.ndarray, params: dict) -> str:
-    if len(np.unique(data)) != 1:
-        return "seed differs between PEs"
+if __name__ == "__main__":
+    data = np.load(io.BytesIO(sys.stdin.buffer.read()))["globalSeed"]
+    print(f"validating globalSeed {data.shape=}")
+    assert len(np.unique(data)) == 1, "seed differs between PEs"
     # kernel computes local seeds as globalSeed * nRow * nCol + whoami + 1
-    if (int(data.max()) + 1) * params["nRow"] * params["nCol"] >= 2**32:
-        return "seed too large, local seeds would overflow u32"
-    return ""
+    assert (int(data.max()) + 1) * data.size < 2**32, "local seeds overflow"

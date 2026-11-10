@@ -1,7 +1,11 @@
+"""Checks data for nRowSubgrid, in runtime config npz file from stdin."""
+
+import io
+import sys
+
 import numpy as np
 
-
-def validate(data: np.ndarray, params: dict) -> str:
-    if len(np.unique(data)) != 1:
-        return "subgrid size differs between PEs"
-    return ""
+if __name__ == "__main__":
+    data = np.load(io.BytesIO(sys.stdin.buffer.read()))["nRowSubgrid"]
+    print(f"validating nRowSubgrid {data.shape=}")
+    assert len(np.unique(data)) == 1, "subgrid size differs between PEs"

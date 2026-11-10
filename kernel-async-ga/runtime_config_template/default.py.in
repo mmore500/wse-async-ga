@@ -1,41 +1,27 @@
-"""Runtime config ${name}, generated from runtime_config_template/default.py.in.
+"""Runtime config ${name}, from runtime_config_template/default.py.in.
 
 Reads kernel parameters as JSON from stdin, and writes an npz file of data
 for symbols to stdout; see runtime_config.md.
 """
 
-import contextlib
 import json
-import pathlib
-import runpy
 import sys
 
 import numpy as np
 
 if __name__ == "__main__":
     params = json.load(sys.stdin)
+    params.update(${overrides})  # from jsonl
+    print(f"runtime config ${name} {params=}", file=sys.stderr)
+
     nRow, nCol = params["nRow"], params["nCol"]
     shape = (nRow, nCol, 1)
-    runtime_config = {
-        "whoami": np.arange(nRow * nCol, dtype=np.uint32).reshape(shape),
-        "whereami_x": np.indices((nRow, nCol), np.uint32)[1].reshape(shape),
-        "whereami_y": np.indices((nRow, nCol), np.uint32)[0].reshape(shape),
-        "globalSeed": np.full(shape, ${globalSeed}, dtype=np.uint32),
-        "nRowSubgrid": np.full(shape, ${nRowSubgrid}, dtype=np.uint32),
-        "nColSubgrid": np.full(shape, ${nColSubgrid}, dtype=np.uint32),
-    }
-
-    # run all validators for each symbol, which return truthy if data is bad
-    validate_dir = pathlib.Path(__file__).resolve().parents[1].joinpath(
-        "runtime_config_validate"
+    np.savez(
+        sys.stdout.buffer,
+        whoami=np.arange(nRow * nCol, dtype=np.uint32).reshape(shape),
+        whereami_x=np.indices((nRow, nCol), np.uint32)[1].reshape(shape),
+        whereami_y=np.indices((nRow, nCol), np.uint32)[0].reshape(shape),
+        globalSeed=np.full(shape, params["globalSeed"], dtype=np.uint32),
+        nRowSubgrid=np.full(shape, params["nRowSubgrid"], dtype=np.uint32),
+        nColSubgrid=np.full(shape, params["nColSubgrid"], dtype=np.uint32),
     )
-    with contextlib.redirect_stdout(sys.stderr):  # keep stdout for npz
-        for symbol, data in runtime_config.items():
-            for validator in sorted(validate_dir.glob(f"{symbol}/*.py")):
-                failure = runpy.run_path(str(validator))["validate"](
-                    data, params
-                )
-                if failure:
-                    sys.exit(f"{symbol} fails {validator}: {failure}")
-
-    np.savez(sys.stdout.buffer, **runtime_config)

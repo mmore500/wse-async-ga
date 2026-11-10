@@ -31,14 +31,9 @@ def log(msg: str, *args, **kwargs) -> None:
     logging.info(msg, *args, **kwargs)
 
 
-# runtime configs are per-PE data for device symbols, as npz files or py files
-# that generate it, named for the config (see
-# runtime_config.md); run once per file present
-runtimeConfigPaths = sorted(
-    path
-    for path in pathlib.Path("runtime_config_dispatch").glob("*")
-    if path.suffix in (".npz", ".py")
-)
+# runtime configs are py files that generate per-PE data for device symbols,
+# named for the config (see runtime_config.md); run once per file present
+runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
 if len(runtimeConfigPaths) > 1 and "--runtime-config" not in sys.argv:
     log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
     returncodes = {}
@@ -656,10 +651,9 @@ parser.add_argument("--cmaddr", help="IP:port for CS system")
 parser.add_argument(
     "--runtime-config",
     default=next(iter(map(str, runtimeConfigPaths)), None),
-    help="npz file of per-PE data to copy to device symbols before launch, or"
-    " py file that generates it (see runtime_config.md);"
-    " defaults to running once for each such file in runtime_config_dispatch/,"
-    " or with default data if there are none",
+    help="py file that generates per-PE data to copy to device symbols before"
+    " launch (see runtime_config.md); defaults to running once for each such"
+    " file in runtime_config_dispatch/, or with default data if there are none",
 )
 log("- parsing arguments")
 args = parser.parse_args()
@@ -702,24 +696,20 @@ runtimeConfigParams = {
     "nRow": nRow,
     "nCol": nCol,
 }
-if args.runtime_config is None:
-    overrides = {}
-elif args.runtime_config.endswith(".py"):  # params to stdin, npz from stdout
+overrides = {}
+if args.runtime_config is not None:  # params to stdin, npz from stdout
     runtimeConfigName = pathlib.Path(args.runtime_config).stem
+    log(f" - running {args.runtime_config}")
     generated = subprocess.run(
         [sys.executable, args.runtime_config],
         input=json.dumps(runtimeConfigParams).encode(),
         stdout=subprocess.PIPE,
-        check=True,  # script should exit nonzero if its data is invalid
+        check=True,
     ).stdout
     with np.load(io.BytesIO(generated)) as npz_file:
         overrides = dict(npz_file)
-elif args.runtime_config.endswith(".npz"):
-    runtimeConfigName = pathlib.Path(args.runtime_config).stem
-    with np.load(args.runtime_config) as npz_file:
-        overrides = dict(npz_file)
 else:
-    raise ValueError(f"unknown runtime config type {args.runtime_config}")
+    log(" - no runtime config, using defaults")
 
 for symbol, data in overrides.items():
     log(f" - {symbol} from {args.runtime_config}")
@@ -734,8 +724,24 @@ for symbol, data in overrides.items():
         raise ValueError(f"{symbol} has data that doesn't fit uint32")
     runtimeConfig[symbol] = data.astype(np.uint32)
 
-# record data as resolved, in case it was generated
-np.savez(f"a=runtimeconfig+name={runtimeConfigName}+ext=.npz", **runtimeConfig)
+runtimeConfigPath = f"a=runtimeconfig+name={runtimeConfigName}+ext=.npz"
+log(f" - saving runtime config to {runtimeConfigPath}")
+np.savez(runtimeConfigPath, **runtimeConfig)
+
+# validators take npz from stdin, and raise if data for their symbol is bad
+for symbol in runtimeConfig:
+    validators = sorted(
+        pathlib.Path(__file__)
+        .resolve()
+        .parent.glob(f"runtime_config_validate/{symbol}/*.py")
+    )
+    log(f" - {symbol} has {len(validators)} validators")
+    for validator in validators:
+        log(f"   - running {validator}")
+        with open(runtimeConfigPath, "rb") as npz_file:
+            subprocess.run(
+                [sys.executable, validator], stdin=npz_file, check=True
+            )
 log(f" - {runtimeConfigName=}")
 
 # host treats these as global, so runtime config can't vary them between PEs
@@ -1096,6 +1102,7 @@ else:
 
 log("runtime config =============================================")
 for symbol, data in runtimeConfig.items():
+    log(f" - reading back {symbol}")
     out_tensors = np.zeros_like(data)
     runner.memcpy_d2h(
         out_tensors.ravel(),

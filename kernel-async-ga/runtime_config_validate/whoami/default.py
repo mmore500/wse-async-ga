@@ -1,7 +1,11 @@
+"""Checks data for whoami, in runtime config npz file from stdin."""
+
+import io
+import sys
+
 import numpy as np
 
-
-def validate(data: np.ndarray, params: dict) -> str:
-    if len(np.unique(data)) != data.size:
-        return "PE ids are not unique"
-    return ""
+if __name__ == "__main__":
+    data = np.load(io.BytesIO(sys.stdin.buffer.read()))["whoami"]
+    print(f"validating whoami {data.shape=}")
+    assert len(np.unique(data)) == data.size, "PE ids are not unique"
