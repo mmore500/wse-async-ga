@@ -35,6 +35,7 @@ def log(msg: str, *args, **kwargs) -> None:
 # each runtime config file (runtime_config_dispatch/*.py) defines one set of
 # per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
 runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
+log(f"- {runtimeConfigPaths=}")
 if "--runtime-config" in sys.argv:
     pass
 elif [path.stem for path in runtimeConfigPaths] == ["default"]:
