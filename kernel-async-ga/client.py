@@ -822,7 +822,7 @@ nWav = genomeData["nWav"][0]
 metadata = {
     "genomeFlavor": (genomeFlavor, pl.Categorical),
     "globalSeed": (globalSeed, pl.UInt32),
-    "dispatch": (dispatchSlug, pl.Categorical),
+    "dispatchSlug": (dispatchSlug, pl.Categorical),
     "populationFlavor": (populationFlavor, pl.Categorical),
     "memcpyMajor": (memcpyMajor, pl.Categorical),
     "nCol": (nCol, pl.UInt16),

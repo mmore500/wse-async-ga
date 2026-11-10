@@ -225,10 +225,10 @@ jobs:
                   f'./kernel-async-ga/dispatch={name}/a=*+seed={seed}+*.pqt'
               )
               dfs = [*map(pl.read_parquet, paths)]
-              dfs = [df for df in dfs if 'dispatch' in df.columns]
+              dfs = [df for df in dfs if 'dispatchSlug' in df.columns]
               assert dfs, name
               for df in dfs:
-                  assert (df['dispatch'] == name).all(), name
+                  assert (df['dispatchSlug'] == name).all(), name
                   assert (df['globalSeed'] == seed).all(), name
           "
 
