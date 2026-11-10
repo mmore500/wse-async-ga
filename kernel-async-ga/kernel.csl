@@ -20,18 +20,18 @@
 
 // layout parameters ==========================================================
 ///////////////////////////////////////////////////////////////////////////////
-param nCycleAtLeast: u32;  // how many self-activation cycles to run for?
+param ctc_nCycleAtLeast: u32;  // how many self-activation cycles to run for?
 param msecAtLeast: u32;  // how many real-time milliseconds to run for?
 param tscAtLeast: u32;  // how many timestamp counter ticks to run for?
 param nRow: i16;  // how big is PE array?
 param nCol: i16;
-param nRowSubgrid: i16;  // if n, disable migration between PEs every n rows
-param nColSubgrid: i16;  // if n, disable migration between PEs every n cols
+param ctc_nRowSubgrid: i16;  // if n, disable migration between PEs every n rows
+param ctc_nColSubgrid: i16;  // if n, disable migration between PEs every n cols
 param nonBlock: u8;  // if true, unblock memcpy command stream at startup
 param popSize: u16;  // how many genomes in each local population?
 param tournSize: f32;  // how many genomes compete for selection?
 param memcpy_params;  // parameters for memcpy layout
-param globalSeed: u16;
+param ctc_globalSeed: u16;
 param colorSwapParity: bool;  // is "black" or "white" tile in checkerboard?
 
 // module imports =============================================================
@@ -137,14 +137,14 @@ var whoami = @zeros([1]u32); var ptr_whoami : [*]u32 = &whoami;
 var whereami_x = @zeros([1]u32); var ptr_whereami_x : [*]u32 = &whereami_x;
 var whereami_y = @zeros([1]u32); var ptr_whereami_y : [*]u32 = &whereami_y;
 
-// runtime config defaulting to compile-time params, host may override
-var rtc_globalSeed = [1]u32{ @as(u32, globalSeed) };
+// runtime config (rtc) defaults to compile-time config (ctc), host may override
+var rtc_globalSeed = [1]u32{ @as(u32, ctc_globalSeed) };
 var ptr_rtc_globalSeed : [*]u32 = &rtc_globalSeed;
-var rtc_nRowSubgrid = [1]u32{ @as(u32, nRowSubgrid) };
+var rtc_nRowSubgrid = [1]u32{ @as(u32, ctc_nRowSubgrid) };
 var ptr_rtc_nRowSubgrid : [*]u32 = &rtc_nRowSubgrid;
-var rtc_nColSubgrid = [1]u32{ @as(u32, nColSubgrid) };
+var rtc_nColSubgrid = [1]u32{ @as(u32, ctc_nColSubgrid) };
 var ptr_rtc_nColSubgrid : [*]u32 = &rtc_nColSubgrid;
-var rtc_nCycleAtLeast = [1]u32{ nCycleAtLeast };
+var rtc_nCycleAtLeast = [1]u32{ ctc_nCycleAtLeast };
 var ptr_rtc_nCycleAtLeast : [*]u32 = &rtc_nCycleAtLeast;
 
 // timestamp buffers, ensure an even number for 32-bit word memcpy
@@ -572,7 +572,8 @@ task closeoutTask() void {
 
 // halt condition ============================================================
 fn shouldHalt(cycle: u32) bool {
-  const nCycleOk = cycle >= rtc_nCycleAtLeast[0];
+  const nCycleAtLeast = rtc_nCycleAtLeast[0];
+  const nCycleOk = cycle >= nCycleAtLeast;
   return nCycleOk;
   // const msecOk = optime.has_elapsed_ms_(
   //   msecAtLeast,
@@ -738,30 +739,31 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   sendFlag_W = @as(u8, x != 0);  // except left col
 
   // apply barrierEveryNth to disable migration between PEs
-  const rowSubgrid = @as(i16, rtc_nRowSubgrid[0]);
-  if (rowSubgrid != 0) {
-    const yOffset = y % rowSubgrid;
+  const nRowSubgrid = @as(i16, rtc_nRowSubgrid[0]);
+  const nColSubgrid = @as(i16, rtc_nColSubgrid[0]);
+  if (nRowSubgrid != 0) {
+    const yOffset = y % nRowSubgrid;
     if (yOffset == 0) sendFlag_N = 0;
-    if (yOffset == rowSubgrid - 1) sendFlag_S = 0;
+    if (yOffset == nRowSubgrid - 1) sendFlag_S = 0;
   }
-  const colSubgrid = @as(i16, rtc_nColSubgrid[0]);
-  if (colSubgrid != 0) {
-    const xOffset = x % colSubgrid;
-    if (xOffset == colSubgrid - 1) sendFlag_E = 0;
+  if (nColSubgrid != 0) {
+    const xOffset = x % nColSubgrid;
+    if (xOffset == nColSubgrid - 1) sendFlag_E = 0;
     if (xOffset == 0) sendFlag_W = 0;
   }
 
   //  how many active neighbors?
   closeoutRemaining = sendFlag_N + sendFlag_S + sendFlag_E + sendFlag_W;
 
+  const globalSeed = rtc_globalSeed[0];
   // + 1 ensures nonzero local seed
   const localSeed = math.max(
-    rtc_globalSeed[0] * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1,
+    @as(u32, globalSeed) * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1,
     1
   );
   // rng.seed_pe(globalSeed);  // works, but very slow... especially on wse 2
   rng.seed(  // use (paranoid) naive approach instead
-    localSeed, ((rtc_globalSeed[0] + 1) * whoami[0] + 1) ^ 0xD943B64C
+    localSeed, ((@as(u32, globalSeed) + 1) * whoami[0] + 1) ^ 0xD943B64C
   );
   random.set_global_prng_seed(math.max(rng.next(), 1));  // need nonzero seed
 
