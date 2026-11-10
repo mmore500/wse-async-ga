@@ -41,23 +41,27 @@ log(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-    ).stdout
+    ).stdout,
 )
 runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
-log(f"- picked up runtime configs {[*map(str, runtimeConfigPaths)]}")
+log(f"- {runtimeConfigPaths=}")
+runtimeConfigInPlace = None  # default for --runtime-config
 if "--runtime-config" in sys.argv:
-    pass
+    log("- running runtime config given by --runtime-config")
 elif [path.stem for path in runtimeConfigPaths] == ["default"]:
     log("- running default runtime config in place")  # backwards compatible
-    sys.argv += ["--runtime-config", str(runtimeConfigPaths[0])]
+    runtimeConfigInPlace = str(runtimeConfigPaths[0])
 else:
     log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
     if not runtimeConfigPaths:
         raise ValueError("no runtime configs in runtime_config_dispatch")
     returncodes = {}
-    for path in runtimeConfigPaths:
+    for i, path in enumerate(runtimeConfigPaths, start=1):
         rundir = pathlib.Path(f"runtime_config={path.stem}")
-        log(f" - running runtime config {path.stem} in {rundir}")
+        log(
+            f" - running runtime config {path.stem} in {rundir}"
+            f" ({i} of {len(runtimeConfigPaths)})"
+        )
         rundir.mkdir(exist_ok=True)
         for name in "cerebraslib", "compconf.json", "out":  # compile outputs
             (rundir / name).unlink(missing_ok=True)
@@ -667,7 +671,8 @@ add_bool_arg(parser, "process-fossils", default=None)
 parser.add_argument("--cmaddr", help="IP:port for CS system")
 parser.add_argument(
     "--runtime-config",
-    required=True,
+    default=runtimeConfigInPlace,
+    required=runtimeConfigInPlace is None,
     help="py file that generates per-PE values to copy to rtc_* device symbols"
     " before launch; if not given, runs once for each such file in"
     " runtime_config_dispatch/, in directory runtime_config=<name> unless"
@@ -728,8 +733,9 @@ log(f" - runtime config npz is {len(runtimeConfigNpz)} bytes")
 with np.load(io.BytesIO(runtimeConfigNpz)) as npz_file:
     runtimeConfig = dict(npz_file)
 
-for symbol, data in runtimeConfig.items():
-    log(f" - {symbol} {data.shape=} {data.dtype=}")
+for i, (symbol, data) in enumerate(runtimeConfig.items(), start=1):
+    log(f" - {symbol} ({i} of {len(runtimeConfig)})")
+    log(f"   - {data.shape=} {data.dtype=}")
     if data.ndim != 3 or data.shape[:2] != (nRow, nCol):
         raise ValueError(f"{symbol} has bad {data.shape=}")
     if data.dtype != np.uint32:
@@ -743,8 +749,8 @@ for symbol, data in runtimeConfig.items():
         .parent.glob(f"runtime_config_validate/{symbol}/*.py")
     )
     log(f"   - {len(validators)} validators")
-    for validator in validators:
-        log(f"   - running {validator}")
+    for j, validator in enumerate(validators, start=1):
+        log(f"   - running {validator} ({j} of {len(validators)})")
         result = subprocess.run(
             [sys.executable, validator, comptimeConfigJson],
             input=runtimeConfigNpz,
