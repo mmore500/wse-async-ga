@@ -84,6 +84,8 @@ cp -rL "${WORKDIR}/source/kernel-async-ga/cerebraslib" .
 cp -rL "${WORKDIR}/source/kernel-async-ga/out" .
 cp -L "${WORKDIR}/source/kernel-async-ga/client.py" .
 cp -L "${WORKDIR}/source/kernel-async-ga/compconf.json" .
+cp -rL "${WORKDIR}/source/kernel-async-ga/runtime_config_dispatch" .
+cp -rL "${WORKDIR}/source/kernel-async-ga/runtime_config_validate" .
 ls
 
 cd "${WORKDIR}"

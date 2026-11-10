@@ -178,6 +178,8 @@ for genome_flavor in genome_purifyingonly genome_purifyingsweep; do
     cp -rL "${CONFIG_COMPILE_WORKDIR}/out" .
     cp -L "${CONFIG_COMPILE_WORKDIR}/client.py" .
     cp -L "${CONFIG_COMPILE_WORKDIR}/compconf.json" .
+    cp -rL "${CONFIG_COMPILE_WORKDIR}/runtime_config_dispatch" .
+    cp -rL "${CONFIG_COMPILE_WORKDIR}/runtime_config_validate" .
     ls
     cat client.py
 
