@@ -6,16 +6,21 @@ before launch.
 - `<name>.py` or `<name>.npz` is one runtime config. `client.py` runs once
   for each here, in directory `runtime_config=<name>` if there is more than
   one. Symbols a config doesn't give keep their defaults.
-  - A py file should set `generate(params)`, which returns a dict of data
-    keyed by symbol. It is run by `client.py`, so can only import what the
-    wheelhouse provides.
+  - A py file is run by `client.py`, which writes `params` as JSON to its
+    stdin and reads an npz file of data keyed by symbol from its stdout.
+    It should check its own data, and exit nonzero if the data is bad. It can
+    only import what the wheelhouse provides, and should print only to
+    stderr.
   - An npz file holds data keyed by symbol.
   - Data for a symbol is an integer array of shape `(nRow, nCol, width)`
     with values that fit `uint32`.
-- `validate_<symbol>.py`, if present, is run by `client.py` each time a
-  config gives data for that symbol. It should set `validate(data, params)`,
-  which returns something truthy if `data` is bad.
 - `params` has `nRow`, `nCol`, and the kernel's compile-time parameters.
+
+A py runtime config can also be run by hand,
+
+```bash
+echo '{"nRow": 3, "nCol": 3}' | python3 default.py > default.npz
+```
 
 `client.py` saves the data it copies to device alongside its other outputs,
 as `a=runtimeconfig+name=<name>+ext=.npz`.

@@ -5,13 +5,13 @@ import atexit
 from collections import Counter
 import functools
 import gc
+import io
 import itertools as it
 import json
 import logging
 import os
 import pathlib
 import random
-import runpy
 import uuid
 import shutil
 import subprocess
@@ -37,7 +37,7 @@ def log(msg: str, *args, **kwargs) -> None:
 runtimeConfigPaths = sorted(
     path
     for path in pathlib.Path("runtime_config").glob("*")
-    if path.suffix in (".npz", ".py") and not path.stem.startswith("validate_")
+    if path.suffix in (".npz", ".py")
 )
 if len(runtimeConfigPaths) > 1 and "--runtime-config" not in sys.argv:
     log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
@@ -704,11 +704,16 @@ runtimeConfigParams = {
 }
 if args.runtime_config is None:
     overrides = {}
-elif args.runtime_config.endswith(".py"):  # sets generate(params)
+elif args.runtime_config.endswith(".py"):  # params to stdin, npz from stdout
     runtimeConfigName = pathlib.Path(args.runtime_config).stem
-    overrides = runpy.run_path(args.runtime_config)["generate"](
-        runtimeConfigParams
-    )
+    generated = subprocess.run(
+        [sys.executable, args.runtime_config],
+        input=json.dumps(runtimeConfigParams).encode(),
+        stdout=subprocess.PIPE,
+        check=True,  # script should exit nonzero if its data is invalid
+    ).stdout
+    with np.load(io.BytesIO(generated)) as npz_file:
+        overrides = dict(npz_file)
 elif args.runtime_config.endswith(".npz"):
     runtimeConfigName = pathlib.Path(args.runtime_config).stem
     with np.load(args.runtime_config) as npz_file:
@@ -728,19 +733,6 @@ for symbol, data in overrides.items():
     ).any():
         raise ValueError(f"{symbol} has data that doesn't fit uint32")
     runtimeConfig[symbol] = data.astype(np.uint32)
-
-    # validate_{symbol}.py alongside sets validate(data, params), which
-    # returns something truthy if data is bad
-    validator = pathlib.Path(args.runtime_config).with_name(
-        f"validate_{symbol}.py"
-    )
-    if validator.exists():
-        log(f" - validating {symbol} with {validator}")
-        failure = runpy.run_path(str(validator))["validate"](
-            runtimeConfig[symbol], runtimeConfigParams
-        )
-        if failure:
-            raise ValueError(f"{symbol} fails {validator}: {failure}")
 
 # record data as resolved, in case it was generated
 np.savez(f"a=runtimeconfig+name={runtimeConfigName}+ext=.npz", **runtimeConfig)

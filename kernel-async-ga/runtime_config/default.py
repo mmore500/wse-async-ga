@@ -1,14 +1,18 @@
-"""Runtime config that leaves all symbols at their defaults."""
+"""Runtime config that leaves all symbols at their defaults.
+
+Reads kernel parameters as JSON from stdin, and writes an npz file of data to
+override symbols' defaults to stdout; see README.md.
+"""
+
+import json
+import sys
 
 import numpy as np
 
-
-def generate(params: dict) -> "dict[str, np.ndarray]":
-    """Return data to override symbols' defaults, keyed by symbol.
-
-    Data should have shape (nRow, nCol, width); for example,
-
-        shape = (params["nRow"], params["nCol"], 1)
-        return {"globalSeed": np.full(shape, 42, dtype=np.uint32)}
-    """
-    return {}
+if __name__ == "__main__":
+    params = json.load(sys.stdin)
+    shape = (params["nRow"], params["nCol"], 1)
+    overrides = {
+        # "globalSeed": np.full(shape, 42, dtype=np.uint32),
+    }
+    np.savez(sys.stdout.buffer, **overrides)
