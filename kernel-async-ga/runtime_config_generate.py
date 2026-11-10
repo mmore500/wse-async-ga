@@ -2,8 +2,8 @@
 """Generate a runtime config for each line of a jsonl file, from templates.
 
 Writes runtime_config_dispatch/<name>.py from the template for each line,
-which is a JSON object with a `name` and, optionally, comptime configs to
-override, e.g. {"name": "seed=1", "globalSeed": 1}.
+which is a JSON object with a `runtime_config_name` and, optionally, comptime
+configs to override, e.g. {"runtime_config_name": "seed=1", "globalSeed": 1}.
 """
 
 import argparse
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     outdir.mkdir(exist_ok=True)
     for line in pathlib.Path(args.jsonl).read_text().splitlines():
         overrides = json.loads(line)
-        name = overrides.pop("name")
+        name = overrides.pop("runtime_config_name")
         outpath = outdir / f"{name}.py"
         if outpath.exists():
             logging.info(f"- keeping existing {outpath}")

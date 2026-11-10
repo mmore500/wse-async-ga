@@ -199,8 +199,8 @@ jobs:
           # exercise dispatch of several runtime configs from one compile
           if [ "${{ matrix.genome }}+${{ matrix.nonBlock }}" == "genome_bitdrift+1" ]; then
             printf '%s\n' \
-              '{"name": "ci-sweep-globalSeed=1", "globalSeed": 1}' \
-              '{"name": "ci-sweep-globalSeed=2", "globalSeed": 2}' \
+              '{"runtime_config_name": "ci-sweep-globalSeed=1", "globalSeed": 1}' \
+              '{"runtime_config_name": "ci-sweep-globalSeed=2", "globalSeed": 2}' \
               > runtime_config_sweep.jsonl
             sudo env PATH=$PATH python3 \
               ./kernel-async-ga/runtime_config_generate.py \
