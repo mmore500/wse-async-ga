@@ -1,3 +1,5 @@
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -6,6 +8,7 @@ from pylib._runtime_config import (
     RuntimeConfigEntry,
     RuntimeConfigRule,
     build_runtime_config,
+    save_runtime_configs,
 )
 
 
@@ -77,3 +80,26 @@ def test_build_runtime_config_rule_modes(
     assert "whoami fails rule unique" in capsys.readouterr().out
     with pytest.raises(ValueError, match="unknown"):
         build("bogus")
+
+
+def test_save_runtime_configs(tmp_path: pathlib.Path) -> None:
+    ctx = RuntimeConfigContext(nRow=3, nCol=4)
+    configs = {
+        f"globalSeed={seed}": build_runtime_config(
+            ctx,
+            [
+                RuntimeConfigEntry(
+                    "globalSeed",
+                    lambda ctx, seed=seed: np.full((3, 4, 1), seed),
+                )
+            ],
+        )
+        for seed in (1, 2)
+    }
+    save_runtime_configs(configs, str(tmp_path / "runtime_config"))
+    for seed in (1, 2):
+        path = tmp_path / "runtime_config" / f"globalSeed={seed}.npz"
+        with np.load(path) as npz_file:
+            assert npz_file.files == ["globalSeed"]
+            assert (npz_file["globalSeed"] == seed).all()
+            assert npz_file["globalSeed"].dtype == np.uint32
