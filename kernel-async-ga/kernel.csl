@@ -38,7 +38,6 @@ param colorSwapParity: bool;  // is "black" or "white" tile in checkerboard?
 ///////////////////////////////////////////////////////////////////////////////
 const math = @import_module("<math>");
 // memcpy module for copying data and launching functions from the host
-const layout_module = @import_module("<layout>");
 const memcpy = @import_module("<memcpy/memcpy>", memcpy_params);
 const random = @import_module("<random>");
 const time = @import_module("<time>");
@@ -712,12 +711,9 @@ fn dorefresh() void {  // launched by RPC (remote procedure call)
 
 fn dolaunch() void {  // launched by RPC (remote procedure call)
   time.enable_tsc();
-  // record layout params for telemetry
-  x = @as(i16, layout_module.get_x_coord());
-  y = @as(i16, layout_module.get_y_coord());
-  whereami_x[0] = @as(u32, x);
-  whereami_y[0] = @as(u32, y);
-  whoami[0] = whereami_y[0] * @as(u32, nCol) + whereami_x[0];
+  // PE identity is runtime config, copied in by host before launch
+  x = @as(i16, whereami_x[0]);
+  y = @as(i16, whereami_y[0]);
 
   busyThreads[0] = nonBlock;  // leave microthread/queue 0 open for memcpy
 

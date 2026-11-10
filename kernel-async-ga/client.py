@@ -618,6 +618,12 @@ parser.add_argument("--name", help="the test compile output dir", default="out")
 add_bool_arg(parser, "suptrace", default=True)
 add_bool_arg(parser, "process-fossils", default=None)
 parser.add_argument("--cmaddr", help="IP:port for CS system")
+parser.add_argument(
+    "--runtime-config",
+    default="runtime_config.npz",
+    help="npz file with per-PE data to copy to device symbols before launch"
+    " (see pyscript/runtime-config-build.py); if missing, defaults are used",
+)
 log("- parsing arguments")
 args = parser.parse_args()
 
@@ -765,6 +771,43 @@ log("- runner loaded")
 
 runner.run()
 log("- runner run ran")
+
+log("- loading runtime config")
+runtimeConfig = {  # defaults
+    "whoami": np.arange(nRow * nCol, dtype=np.uint32).reshape(nRow, nCol, 1),
+    "whereami_x": np.indices((nRow, nCol), np.uint32)[1][:, :, None],
+    "whereami_y": np.indices((nRow, nCol), np.uint32)[0][:, :, None],
+}
+if os.path.exists(args.runtime_config):
+    with np.load(args.runtime_config) as npz_file:
+        for symbol, data in npz_file.items():
+            log(f" - {symbol} from {args.runtime_config}")
+            if symbol not in runtimeConfig:
+                raise ValueError(f"unknown runtime config symbol {symbol}")
+            if (data.shape, data.dtype) != (
+                runtimeConfig[symbol].shape,
+                runtimeConfig[symbol].dtype,
+            ):
+                raise ValueError(f"{symbol} has bad {data.shape=} {data.dtype=}")
+            runtimeConfig[symbol] = data
+else:
+    log(f" - no {args.runtime_config}, using defaults")
+
+for symbol, data in runtimeConfig.items():
+    log(f" - copying {symbol} to device")
+    runner.memcpy_h2d(
+        runner.get_id(symbol),
+        np.ascontiguousarray(data).ravel(),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        data.shape[2],  # num wavelets
+        streaming=False,
+        data_type=MemcpyDataType.MEMCPY_32BIT,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
 
 runner.launch("dolaunch", nonblock=False)
 launch_ns = time.time_ns()
@@ -976,6 +1019,26 @@ if args.process_fossils is False:
 else:
     log(f" - processing fossils {nWav=}...")
     process_fossils(nWav)
+
+log("runtime config =============================================")
+for symbol, data in runtimeConfig.items():
+    out_tensors = np.zeros_like(data)
+    runner.memcpy_d2h(
+        out_tensors.ravel(),
+        runner.get_id(symbol),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        data.shape[2],  # num wavelets
+        streaming=False,
+        data_type=MemcpyDataType.MEMCPY_32BIT,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
+    log(f"{symbol} {out_tensors[:20, :20, 0]}")
+    if not np.array_equal(out_tensors, data):
+        raise ValueError(f"{symbol} on device differs from runtime config")
 
 log("whoami =====================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT

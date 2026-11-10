@@ -196,6 +196,12 @@ jobs:
         run: |
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
+          if [ "${{ matrix.nonBlock }}" == "1" ]; then  # else, use defaults
+            python3 ./pyscript/runtime-config-build.py \
+              ./kernel-async-ga/out/out.json \
+              --spec ./kernel-async-ga/runtime_config/identity.py \
+              -o ./kernel-async-ga/runtime_config.npz
+          fi
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/execute.sh
