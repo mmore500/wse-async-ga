@@ -34,9 +34,17 @@ def log(msg: str, *args, **kwargs) -> None:
 
 # each runtime config file (runtime_config_dispatch/*.py) defines one set of
 # per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
-log(f"- {os.path.isdir('runtime_config_dispatch')=}")
+log("- ls runtime_config_dispatch")
+log(
+    subprocess.run(
+        ["ls", "-l", "runtime_config_dispatch"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    ).stdout
+)
 runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
-log(f"- {runtimeConfigPaths=}")
+log(f"- picked up runtime configs {[*map(str, runtimeConfigPaths)]}")
 if "--runtime-config" in sys.argv:
     pass
 elif [path.stem for path in runtimeConfigPaths] == ["default"]:
