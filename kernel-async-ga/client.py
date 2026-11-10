@@ -34,19 +34,21 @@ def log(msg: str, *args, **kwargs) -> None:
 
 # each runtime config file (runtime_config_dispatch/*.py) defines one set of
 # per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
-runtimeConfigPaths = sorted(pathlib.Path("runtime_config_dispatch").glob("*.py"))
-if len(runtimeConfigPaths) > 1 and "--runtime-config" not in sys.argv:
+if "--runtime-config" not in sys.argv:
+    runtimeConfigPaths = sorted(
+        pathlib.Path("runtime_config_dispatch").glob("*.py")
+    )
     log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
+    if not runtimeConfigPaths:
+        raise ValueError("no runtime configs in runtime_config_dispatch")
     returncodes = {}
     for path in runtimeConfigPaths:
         rundir = pathlib.Path(f"runtime_config={path.stem}")
         log(f" - running runtime config {path.stem} in {rundir}")
         rundir.mkdir(exist_ok=True)
-        for item in pathlib.Path().iterdir():  # share compile outputs
-            if not item.name.startswith("runtime_config"):
-                link = rundir / item.name
-                link.unlink(missing_ok=True)
-                link.symlink_to(item.resolve())
+        for name in "cerebraslib", "compconf.json", "out":  # compile outputs
+            (rundir / name).unlink(missing_ok=True)
+            (rundir / name).symlink_to(pathlib.Path(name).resolve())
         returncodes[path.stem] = subprocess.run(
             [
                 sys.executable,
@@ -57,6 +59,7 @@ if len(runtimeConfigPaths) > 1 and "--runtime-config" not in sys.argv:
             ],
             cwd=rundir,
         ).returncode
+        log(f" - runtime config {path.stem} returned {returncodes[path.stem]}")
     log(f"- runtime config {returncodes=}")
     sys.exit(any(returncodes.values()))
 
@@ -651,13 +654,13 @@ add_bool_arg(parser, "process-fossils", default=None)
 parser.add_argument("--cmaddr", help="IP:port for CS system")
 parser.add_argument(
     "--runtime-config",
-    default=next(iter(map(str, runtimeConfigPaths)), None),
+    required=True,
     help="py file that generates per-PE values to copy to rtc_* device symbols"
-    " before launch; defaults to running once for each such file in"
-    " runtime_config_dispatch/, or with comptime defaults if there are none",
+    " before launch; if not given, runs once for each such file in"
+    " runtime_config_dispatch/, in directory runtime_config=<name>",
 )
 parser.add_argument(
-    "--runtime-config-validate-warn",
+    "--runtime-config-validate-lax",
     action="append",
     default=[],
     metavar="SYMBOL/VALIDATOR",
@@ -691,7 +694,8 @@ with open("compconf.json", encoding="utf-8") as json_file:
     compconf_data = json.load(json_file)
 
 log("- loading runtime config")
-runtimeConfigName = "none"
+runtimeConfigName = pathlib.Path(args.runtime_config).stem
+log(f" - {runtimeConfigName=}")
 comptimeConfigJson = json.dumps(
     {
         **{key: int(value) for key, value in compile_data["params"].items()},
@@ -699,24 +703,15 @@ comptimeConfigJson = json.dumps(
         "nCol": nCol,
     }
 )
-runtimeConfig = {}
-if args.runtime_config is not None:  # comptime to stdin, npz from stdout
-    runtimeConfigName = pathlib.Path(args.runtime_config).stem
-    log(f" - running {args.runtime_config}")
-    runtimeConfigNpz = subprocess.run(
-        [sys.executable, args.runtime_config],
-        input=comptimeConfigJson.encode(),
-        stdout=subprocess.PIPE,
-        check=True,
-    ).stdout
-    with np.load(io.BytesIO(runtimeConfigNpz)) as npz_file:
-        runtimeConfig = dict(npz_file)
-
-    runtimeConfigPath = f"a=runtimeconfig+name={runtimeConfigName}+ext=.npz"
-    log(f" - saving runtime config to {runtimeConfigPath}")
-    pathlib.Path(runtimeConfigPath).write_bytes(runtimeConfigNpz)
-else:
-    log(" - no runtime config, rtc_* device symbols keep comptime defaults")
+log(f" - running {args.runtime_config}")  # comptime to stdin, npz from stdout
+runtimeConfigNpz = subprocess.run(
+    [sys.executable, args.runtime_config],
+    input=comptimeConfigJson.encode(),
+    stdout=subprocess.PIPE,
+    check=True,
+).stdout
+with np.load(io.BytesIO(runtimeConfigNpz)) as npz_file:
+    runtimeConfig = dict(npz_file)
 
 for symbol, data in runtimeConfig.items():
     log(f" - {symbol} {data.shape=} {data.dtype=}")
@@ -724,13 +719,15 @@ for symbol, data in runtimeConfig.items():
         raise ValueError(f"{symbol} has bad {data.shape=}")
     if data.dtype != np.uint32:
         raise ValueError(f"{symbol} has bad {data.dtype=}")
+    log(f"   - {len(np.unique(data))=} {data.min()=} {data.max()=}")
+    log(f"   - head {data.ravel()[:8]} tail {data.ravel()[-8:]}")
 
     validators = sorted(
         pathlib.Path(__file__)
         .resolve()
         .parent.glob(f"runtime_config_validate/{symbol}/*.py")
     )
-    log(f" - {symbol} has {len(validators)} validators")
+    log(f"   - {len(validators)} validators")
     for validator in validators:
         log(f"   - running {validator}")
         result = subprocess.run(
@@ -739,32 +736,31 @@ for symbol, data in runtimeConfig.items():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        lines = result.stdout.decode().splitlines()
-        if len(lines) > 20:  # head and tail
-            lines = [*lines[:10], "...", *lines[-10:]]
-        log("\n".join(lines))
+        log(result.stdout.decode())
         slug = f"{symbol}/{validator.stem}"
         if result.returncode == 0:
             pass
         elif any(
             fnmatch.fnmatch(slug, pattern)
-            for pattern in args.runtime_config_validate_warn
+            for pattern in args.runtime_config_validate_lax
         ):
             warnings.warn(f"runtime config validator {slug} failed")
         else:
             raise ValueError(f"runtime config validator {slug} failed")
-log(f" - {runtimeConfigName=}")
 
 # host treats these as global, so runtime config can't vary them between PEs
 if "rtc_globalSeed" in runtimeConfig:
-    (globalSeed,) = map(int, np.unique(runtimeConfig["rtc_globalSeed"]))
+    globalSeed = np.unique(runtimeConfig["rtc_globalSeed"]).item()
+    log(f" - runtime config sets {globalSeed=}")
 if "rtc_nRowSubgrid" in runtimeConfig:
-    (nRowSubgrid,) = map(int, np.unique(runtimeConfig["rtc_nRowSubgrid"]))
+    nRowSubgrid = np.unique(runtimeConfig["rtc_nRowSubgrid"]).item()
+    log(f" - runtime config sets {nRowSubgrid=}")
 if "rtc_nColSubgrid" in runtimeConfig:
-    (nColSubgrid,) = map(int, np.unique(runtimeConfig["rtc_nColSubgrid"]))
+    nColSubgrid = np.unique(runtimeConfig["rtc_nColSubgrid"]).item()
+    log(f" - runtime config sets {nColSubgrid=}")
 if "rtc_nCycleAtLeast" in runtimeConfig:
-    (nCycleAtLeast,) = map(int, np.unique(runtimeConfig["rtc_nCycleAtLeast"]))
-log(f" - {globalSeed=} {nRowSubgrid=} {nColSubgrid=} {nCycleAtLeast=}")
+    nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
+    log(f" - runtime config sets {nCycleAtLeast=}")
 
 log(f" - applying globalSeed={globalSeed}")
 random.seed(globalSeed)

@@ -20,19 +20,21 @@
 
 // layout parameters ==========================================================
 ///////////////////////////////////////////////////////////////////////////////
-param ctc_nCycleAtLeast: u32;  // how many self-activation cycles to run for?
 param msecAtLeast: u32;  // how many real-time milliseconds to run for?
 param tscAtLeast: u32;  // how many timestamp counter ticks to run for?
 param nRow: i16;  // how big is PE array?
 param nCol: i16;
-param ctc_nRowSubgrid: i16;  // if n, disable migration between PEs every n rows
-param ctc_nColSubgrid: i16;  // if n, disable migration between PEs every n cols
 param nonBlock: u8;  // if true, unblock memcpy command stream at startup
 param popSize: u16;  // how many genomes in each local population?
 param tournSize: f32;  // how many genomes compete for selection?
 param memcpy_params;  // parameters for memcpy layout
-param ctc_globalSeed: u16;
 param colorSwapParity: bool;  // is "black" or "white" tile in checkerboard?
+
+// compile-time config (ctc), defaults for runtime config (rtc) of same name
+param ctc_globalSeed: u16;
+param ctc_nCycleAtLeast: u32;  // how many self-activation cycles to run for?
+param ctc_nRowSubgrid: i16;  // if n, disable migration between PEs every n rows
+param ctc_nColSubgrid: i16;  // if n, disable migration between PEs every n cols
 
 // module imports =============================================================
 ///////////////////////////////////////////////////////////////////////////////

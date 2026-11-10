@@ -117,7 +117,7 @@ python3 -m compconf --compconf-jq ". += {\"ASYNC_GA_GENOME_FLAVOR:comptime_strin
 echo "make default runtime config ---------------------------------------------"
 # per-PE values copied to rtc_* device symbols before launch
 if [ ! -d runtime_config_dispatch ]; then
-    python3 runtime_config_generate.py
+    python3 runtime_config_generate.py default.py.in
 else
     echo "runtime_config_dispatch exists, keeping it"
     ls runtime_config_dispatch

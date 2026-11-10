@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate a runtime config for each line of a jsonl file, from templates.
 
-Writes runtime_config_dispatch/<name>.py for each line, which is a JSON
-object with a `name` and, optionally, a `template` in runtime_config_template
-and comptime configs to override, e.g. {"name": "seed=1", "globalSeed": 1}.
+Writes runtime_config_dispatch/<name>.py from the template for each line,
+which is a JSON object with a `name` and, optionally, comptime configs to
+override, e.g. {"name": "seed=1", "globalSeed": 1}.
 """
 
 import argparse
@@ -18,24 +18,28 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "template", help="file in runtime_config_template, e.g. default.py.in"
+    )
+    parser.add_argument(
         "jsonl", nargs="?", default=here / "runtime_config_default.jsonl"
     )
     args = parser.parse_args()
 
-    logging.info(f"generating runtime configs from {args.jsonl}")
+    logging.info(
+        f"generating {args.template} runtime configs from {args.jsonl}"
+    )
+    text = here.joinpath("runtime_config_template", args.template).read_text()
     outdir = here / "runtime_config_dispatch"
     outdir.mkdir(exist_ok=True)
     for line in pathlib.Path(args.jsonl).read_text().splitlines():
         overrides = json.loads(line)
         name = overrides.pop("name")
-        template = overrides.pop("template", "default.py.in")
         outpath = outdir / f"{name}.py"
         if outpath.exists():
             logging.info(f"- keeping existing {outpath}")
             continue
 
-        logging.info(f"- writing {outpath} from {template} with {overrides}")
-        text = here.joinpath("runtime_config_template", template).read_text()
+        logging.info(f"- writing {outpath} with {overrides}")
         outpath.write_text(
             string.Template(text).substitute(name=name, overrides=overrides)
         )
