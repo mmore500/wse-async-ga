@@ -1,7 +1,7 @@
 """Runtime config ${name}, from runtime_config_template/default.py.in.
 
-Reads kernel parameters as JSON from stdin, and writes an npz file of data
-for symbols to stdout; see runtime_config.md.
+Reads comptime configs as JSON from stdin, and writes an npz file of per-PE
+values for rtc_* device symbols to stdout.
 """
 
 import json
@@ -10,18 +10,19 @@ import sys
 import numpy as np
 
 if __name__ == "__main__":
-    params = json.load(sys.stdin)
-    params.update(${overrides})  # from jsonl
-    print(f"runtime config ${name} {params=}", file=sys.stderr)
+    comptime = json.load(sys.stdin)
+    comptime.update(${overrides})  # from jsonl
+    print(f"runtime config ${name} {comptime=}", file=sys.stderr)
 
-    nRow, nCol = params["nRow"], params["nCol"]
+    nRow, nCol = comptime["nRow"], comptime["nCol"]
     shape = (nRow, nCol, 1)
     np.savez(
         sys.stdout.buffer,
-        whoami=np.arange(nRow * nCol, dtype=np.uint32).reshape(shape),
-        whereami_x=np.indices((nRow, nCol), np.uint32)[1].reshape(shape),
-        whereami_y=np.indices((nRow, nCol), np.uint32)[0].reshape(shape),
-        globalSeed=np.full(shape, params["globalSeed"], dtype=np.uint32),
-        nRowSubgrid=np.full(shape, params["nRowSubgrid"], dtype=np.uint32),
-        nColSubgrid=np.full(shape, params["nColSubgrid"], dtype=np.uint32),
+        rtc_whoami=np.arange(nRow * nCol, dtype=np.uint32).reshape(shape),
+        rtc_whereami_x=np.indices((nRow, nCol), np.uint32)[1].reshape(shape),
+        rtc_whereami_y=np.indices((nRow, nCol), np.uint32)[0].reshape(shape),
+        rtc_globalSeed=np.full(shape, comptime["globalSeed"], np.uint32),
+        rtc_nRowSubgrid=np.full(shape, comptime["nRowSubgrid"], np.uint32),
+        rtc_nColSubgrid=np.full(shape, comptime["nColSubgrid"], np.uint32),
+        rtc_nCycleAtLeast=np.full(shape, comptime["nCycleAtLeast"], np.uint32),
     )

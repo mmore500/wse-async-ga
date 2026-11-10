@@ -132,17 +132,22 @@ var fitness = @zeros([1]f32);  // samples 0th population element (convenient)
 var ptr_fitness : [*]f32 = &fitness;
 
 // report back layout params (sanity check)
-var whoami = @zeros([1]u32); var ptr_whoami : [*]u32 = &whoami;
-var whereami_x = @zeros([1]u32); var ptr_whereami_x : [*]u32 = &whereami_x;
-var whereami_y = @zeros([1]u32); var ptr_whereami_y : [*]u32 = &whereami_y;
+var rtc_whoami = @zeros([1]u32);
+var ptr_rtc_whoami : [*]u32 = &rtc_whoami;
+var rtc_whereami_x = @zeros([1]u32);
+var ptr_rtc_whereami_x : [*]u32 = &rtc_whereami_x;
+var rtc_whereami_y = @zeros([1]u32);
+var ptr_rtc_whereami_y : [*]u32 = &rtc_whereami_y;
 
 // runtime config defaulting to compile-time params, host may override
-var rtGlobalSeed = [1]u32{ @as(u32, globalSeed) };
-var ptr_rtGlobalSeed : [*]u32 = &rtGlobalSeed;
-var rtNRowSubgrid = [1]u32{ @as(u32, nRowSubgrid) };
-var ptr_rtNRowSubgrid : [*]u32 = &rtNRowSubgrid;
-var rtNColSubgrid = [1]u32{ @as(u32, nColSubgrid) };
-var ptr_rtNColSubgrid : [*]u32 = &rtNColSubgrid;
+var rtc_globalSeed = [1]u32{ @as(u32, globalSeed) };
+var ptr_rtc_globalSeed : [*]u32 = &rtc_globalSeed;
+var rtc_nRowSubgrid = [1]u32{ @as(u32, nRowSubgrid) };
+var ptr_rtc_nRowSubgrid : [*]u32 = &rtc_nRowSubgrid;
+var rtc_nColSubgrid = [1]u32{ @as(u32, nColSubgrid) };
+var ptr_rtc_nColSubgrid : [*]u32 = &rtc_nColSubgrid;
+var rtc_nCycleAtLeast = [1]u32{ nCycleAtLeast };
+var ptr_rtc_nCycleAtLeast : [*]u32 = &rtc_nCycleAtLeast;
 
 // timestamp buffers, ensure an even number for 32-bit word memcpy
 var tscControlBuffer = @zeros([(time.tsc_size_words + 1) / 2]u32);
@@ -569,7 +574,7 @@ task closeoutTask() void {
 
 // halt condition ============================================================
 fn shouldHalt(cycle: u32) bool {
-  const nCycleOk = cycle >= nCycleAtLeast;
+  const nCycleOk = cycle >= rtc_nCycleAtLeast[0];
   return nCycleOk;
   // const msecOk = optime.has_elapsed_ms_(
   //   msecAtLeast,
@@ -710,7 +715,7 @@ task cycleTask() void {
 // numbers of cycles on different PEs at launch to desynchronize them at startup
 fn desync() void { for (@range(u16, @random16() % 256)) |i| { @random16(); } }
 
-fn genomerefresh() void { fossil.pull_sample(whoami[0]); }
+fn genomerefresh() void { fossil.pull_sample(rtc_whoami[0]); }
 
 fn dorefresh() void {  // launched by RPC (remote procedure call)
   genomerefresh();
@@ -720,8 +725,8 @@ fn dorefresh() void {  // launched by RPC (remote procedure call)
 fn dolaunch() void {  // launched by RPC (remote procedure call)
   time.enable_tsc();
   // PE identity is runtime config, copied in by host before launch
-  x = @as(i16, whereami_x[0]);
-  y = @as(i16, whereami_y[0]);
+  x = @as(i16, rtc_whereami_x[0]);
+  y = @as(i16, rtc_whereami_y[0]);
 
   busyThreads[0] = nonBlock;  // leave microthread/queue 0 open for memcpy
 
@@ -732,13 +737,13 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   sendFlag_W = @as(u8, x != 0);  // except left col
 
   // apply barrierEveryNth to disable migration between PEs
-  const rowSubgrid = @as(i16, rtNRowSubgrid[0]);
+  const rowSubgrid = @as(i16, rtc_nRowSubgrid[0]);
   if (rowSubgrid != 0) {
     const yOffset = y % rowSubgrid;
     if (yOffset == 0) sendFlag_N = 0;
     if (yOffset == rowSubgrid - 1) sendFlag_S = 0;
   }
-  const colSubgrid = @as(i16, rtNColSubgrid[0]);
+  const colSubgrid = @as(i16, rtc_nColSubgrid[0]);
   if (colSubgrid != 0) {
     const xOffset = x % colSubgrid;
     if (xOffset == colSubgrid - 1) sendFlag_E = 0;
@@ -750,12 +755,12 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
 
   // + 1 ensures nonzero local seed
   const localSeed = math.max(
-    rtGlobalSeed[0] * @as(u32, nRow) * @as(u32, nCol) + whoami[0] + 1,
+    rtc_globalSeed[0] * @as(u32, nRow) * @as(u32, nCol) + rtc_whoami[0] + 1,
     1
   );
   // rng.seed_pe(globalSeed);  // works, but very slow... especially on wse 2
   rng.seed(  // use (paranoid) naive approach instead
-    localSeed, ((rtGlobalSeed[0] + 1) * whoami[0] + 1) ^ 0xD943B64C
+    localSeed, ((rtc_globalSeed[0] + 1) * rtc_whoami[0] + 1) ^ 0xD943B64C
   );
   random.set_global_prng_seed(math.max(rng.next(), 1));  // need nonzero seed
 
@@ -855,12 +860,13 @@ comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_traitValues, "traitValues");
   @export_symbol(ptr_fitness, "fitness");
   @export_symbol(ptr_genome, "genome");
-  @export_symbol(ptr_whoami, "whoami");
-  @export_symbol(ptr_whereami_x, "whereami_x");
-  @export_symbol(ptr_whereami_y, "whereami_y");
-  @export_symbol(ptr_rtGlobalSeed, "globalSeed");
-  @export_symbol(ptr_rtNRowSubgrid, "nRowSubgrid");
-  @export_symbol(ptr_rtNColSubgrid, "nColSubgrid");
+  @export_symbol(ptr_rtc_whoami, "rtc_whoami");
+  @export_symbol(ptr_rtc_whereami_x, "rtc_whereami_x");
+  @export_symbol(ptr_rtc_whereami_y, "rtc_whereami_y");
+  @export_symbol(ptr_rtc_globalSeed, "rtc_globalSeed");
+  @export_symbol(ptr_rtc_nRowSubgrid, "rtc_nRowSubgrid");
+  @export_symbol(ptr_rtc_nColSubgrid, "rtc_nColSubgrid");
+  @export_symbol(ptr_rtc_nCycleAtLeast, "rtc_nCycleAtLeast");
   @export_symbol(ptr_tscControlBuffer, "tscControlBuffer");
   @export_symbol(ptr_tscEndBuffer, "tscEndBuffer");
   @export_symbol(ptr_tscStartBuffer, "tscStartBuffer");

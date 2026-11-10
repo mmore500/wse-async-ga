@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Generate a runtime config for each line of a jsonl file, from templates.
 
-See runtime_config.md.
+Writes runtime_config_dispatch/<name>.py for each line, which is a JSON
+object with a `name` and, optionally, a `template` in runtime_config_template
+and comptime configs to override, e.g. {"name": "seed=1", "globalSeed": 1}.
 """
 
 import argparse
