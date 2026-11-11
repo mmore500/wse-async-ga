@@ -764,7 +764,7 @@ task cycleTask() void {
     }
   }
 
-  if (p2pEnabled) if (recvFlag_P == 1) {  // p2p recv
+  if (p2pEnabled and recvFlag_P == 1) {  // p2p recv
     var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
     clobberCounter[0] += population.immigrate_genomes(recvGenomePtr_P, 1);
     immCounter_P[0] += 1;
