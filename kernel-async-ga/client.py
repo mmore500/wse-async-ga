@@ -617,6 +617,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--name", help="the test compile output dir", default="out")
 add_bool_arg(parser, "suptrace", default=True)
 add_bool_arg(parser, "process-fossils", default=None)
+add_bool_arg(parser, "dump-population", default=False)
 parser.add_argument("--cmaddr", help="IP:port for CS system")
 log("- parsing arguments")
 args = parser.parse_args()
@@ -1275,6 +1276,78 @@ write_parquet_verbose(
     "+ext=.pqt",
 )
 del df, fitness_data, genome_raw
+
+if args.dump_population:
+    log("population values ==========================================")
+    memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
+    out_tensors = np.zeros((nRow, nCol, tilePopSize * nWav), np.uint32)
+
+    runner.memcpy_d2h(
+        out_tensors.ravel(),
+        runner.get_id("populationBuffer"),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        tilePopSize * nWav,  # num wavelets
+        streaming=False,
+        data_type=memcpy_dtype,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
+    # one binary string per population member, tile-major
+    population_raw = (
+        np.ascontiguousarray(out_tensors.astype(">u4").ravel())
+        .view(f"V{nWav * 4}")
+        .astype(object)
+    )
+    assert population_raw.shape == (nRow * nCol * tilePopSize,)
+
+    log(" - creating DataFrame")
+    df = pl.DataFrame(
+        {
+            "data_raw": pl.Series(population_raw, dtype=pl.Binary),
+            "is_extant": True,
+            "population_index": pl.Series(
+                np.tile(np.arange(tilePopSize), nRow * nCol), dtype=pl.UInt32
+            ),
+            "tile": pl.Series(
+                np.repeat(whoami_data.ravel(), tilePopSize), dtype=pl.UInt32
+            ),
+            "row": pl.Series(
+                np.repeat(whereami_y_data.ravel(), tilePopSize),
+                dtype=pl.UInt16,
+            ),
+            "col": pl.Series(
+                np.repeat(whereami_x_data.ravel(), tilePopSize),
+                dtype=pl.UInt16,
+            ),
+        }
+    )
+    df = with_subgrid_columns(df.lazy()).collect()
+    assert (df["data_raw"].bin.size(unit="b") == nWav * 4).all()
+    df = df.with_columns(
+        *(
+            pl.lit(value, dtype=dtype).alias(key)
+            for key, (value, dtype) in metadata.items()
+        ),
+        data_hex=pl.col("data_raw").bin.encode("hex"),
+    ).drop("data_raw")
+
+    log(f" - data_hex: {df['data_hex'].head(3)}")
+    assert (df["data_hex"].str.len_chars() == nWav * 8).all()
+
+    write_parquet_verbose(
+        df,
+        "a=population"
+        f"+flavor={genomeFlavor}"
+        f"+seed={globalSeed}"
+        f"+ncycle={nCycleAtLeast}"
+        "+ext=.pqt",
+    )
+    del df, population_raw
+else:
+    log("population values skipped (pass --dump-population to enable)")
 
 log("cycle counter =============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
