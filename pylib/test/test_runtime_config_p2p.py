@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 kernel_dir = pathlib.Path(__file__).resolve().parents[2] / "kernel-async-ga"
-validate_dir = kernel_dir / "runtime_config_validate" / "rtc_p2pPartner"
+validate_dir = kernel_dir / "runtime_config_validate" / "rtc_p2pTarget"
 
 
 def _generate(
@@ -72,16 +72,17 @@ def test_p2p_pairs_template(
     }
     pairs = {"p2pMode": "pairs"}
     npz = _generate(tmp_path, comptime, pairs)
-    data = np.load(io.BytesIO(npz))["rtc_p2pPartner"]
-    assert data.shape == (nRow, nCol, 2) and data.dtype == np.uint32
-    assert (data[:, :, 0] != 0xFFFFFFFF).sum() == numPaired
+    data = np.load(io.BytesIO(npz))["rtc_p2pTarget"]
+    assert data.shape == (nRow, nCol, 1) and data.dtype == np.uint32
+    data = data[:, :, 0]  # col << 16 | row
+    has_target = data != 0xFFFFFFFF
+    assert has_target.sum() == numPaired
 
-    # pairs: partner's partner is self
+    # pairs: target's target is self
     rows, cols = np.indices((nRow, nCol))
-    is_paired = data[:, :, 0] != 0xFFFFFFFF
-    back = data[data[:, :, 1][is_paired], data[:, :, 0][is_paired]]
-    assert (back[:, 0] == cols[is_paired]).all()
-    assert (back[:, 1] == rows[is_paired]).all()
+    back = data[data[has_target] & 0xFFFF, data[has_target] >> 16]
+    assert (back >> 16 == cols[has_target]).all()
+    assert (back & 0xFFFF == rows[has_target]).all()
 
     assert npz == _generate(tmp_path, comptime, pairs)
     for validator in "default.py", "intersubgrid.py":
@@ -108,39 +109,37 @@ def test_p2p_pairs_template_seed(tmp_path: pathlib.Path) -> None:
 def test_p2p_validators_reject() -> None:
     comptime = {"nRow": 2, "nCol": 2, "nRowSubgrid": 0, "nColSubgrid": 0}
     none = 0xFFFFFFFF
-    # (0, 0) <-> (1, 1) paired, others unpaired; values are (col, row)
-    good = np.array(
-        [[[1, 1], [none, none]], [[none, none], [0, 0]]], dtype=np.uint32
-    )
+    # (0, 0) <-> (1, 1) paired, others lack target; values are col << 16 | row
+    good = np.array([[[1 << 16 | 1], [none]], [[none], [0]]], dtype=np.uint32)
     validators = "default.py", "intersubgrid.py"
     assert all(
-        _validate(v, _to_npz(rtc_p2pPartner=good), comptime) for v in validators
+        _validate(v, _to_npz(rtc_p2pTarget=good), comptime) for v in validators
     )
 
     # pairs are one mode of connectivity, others pass validators too
     one_way = good.copy()
     one_way[1, 1] = none
     assert all(
-        _validate(v, _to_npz(rtc_p2pPartner=one_way), comptime)
+        _validate(v, _to_npz(rtc_p2pTarget=one_way), comptime)
         for v in validators
     )
 
     off_grid = good.copy()
-    off_grid[0, 1] = (5, 0)
+    off_grid[0, 1] = 5 << 16
     assert not _validate(
-        "default.py", _to_npz(rtc_p2pPartner=off_grid), comptime
+        "default.py", _to_npz(rtc_p2pTarget=off_grid), comptime
     )
 
     # subgrid size comes from runtime config if there, else comptime
     assert not _validate(
         "intersubgrid.py",
-        _to_npz(rtc_p2pPartner=good),
+        _to_npz(rtc_p2pTarget=good),
         {**comptime, "nRowSubgrid": 1},
     )
     assert not _validate(
         "intersubgrid.py",
         _to_npz(
-            rtc_p2pPartner=good,
+            rtc_p2pTarget=good,
             rtc_nRowSubgrid=np.zeros((2, 2, 1), np.uint32),
             rtc_nColSubgrid=np.ones((2, 2, 1), np.uint32),
         ),

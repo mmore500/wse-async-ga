@@ -255,7 +255,7 @@ EOF
     echo "do compile: ${CONFIG_NAME} -------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
-    # runtime config sets point-to-point partners, if p2p enabled; otherwise,
+    # runtime config sets point-to-point targets, if p2p enabled; otherwise,
     # compile.sh generates default runtime config
     rm -rf "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch"
     if [ "${p2p}" != "0.0" ]; then

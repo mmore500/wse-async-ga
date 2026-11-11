@@ -59,8 +59,8 @@ const genome_ = @import_module(
   .{ .rng = rng },
 );
 const nTraitVals = genome_.nTraitVals;
-// point-to-point exchange with one permanent partner PE, chosen by host;
-// each cycle, send to partner with this probability (0 disables feature)
+// point-to-point exchange with one permanent target PE, chosen by host;
+// each cycle, send to target with this probability (0 disables feature)
 const ctc_p2pSendProbability = comptime compconf.get_value_or(
     "ASYNC_GA_P2P_SEND_PROBABILITY", @as(f32, 0.0)
 );
@@ -133,7 +133,7 @@ var ptr_sendCounter_E : [*]u32 = &sendCounter_E;
 var sendCounter_W = @zeros([1]u32);
 var ptr_sendCounter_W : [*]u32 = &sendCounter_W;
 
-var immCounter_P = @zeros([1]u32);  // point-to-point partner
+var immCounter_P = @zeros([1]u32);  // point-to-point
 var ptr_immCounter_P : [*]u32 = &immCounter_P;
 
 var traitCounts = @zeros([nTraitVals]u32);
@@ -245,7 +245,7 @@ const cycleTaskID: local_task_id = @get_local_task_id(19);
 const sendFinalizeTaskID_P: local_task_id = @get_local_task_id(20);
 const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(25);
 
-// no-op target for the control wavelet that ends each partner message
+// no-op target for the control wavelet that ends each p2p message
 // (memcpy reserves control task IDs 33-37 and 40)
 const padTaskID_P: control_task_id = @get_control_task_id(38);
 
@@ -566,7 +566,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // ============================================================================
 // point-to-point send/recv tasks
 // ============================================================================
-// exchange genomes with one partner PE anywhere on grid via message passing,
+// exchange genomes with another PE anywhere on grid via message passing,
 // each message is a header wavelet, one genome, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
@@ -577,19 +577,19 @@ comptime {  // fixed-length message passing supports at most 31 wavelets
   if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
 }
 
-// runtime config: partner col, row set by host; 0xFFFFFFFF means unpaired
-var rtc_p2pPartner = [2]u32{ 0xFFFFFFFF, 0xFFFFFFFF };
-var ptr_rtc_p2pPartner : [*]u32 = &rtc_p2pPartner;
+// runtime config: target col << 16 | row set by host; 0xFFFFFFFF means none
+var rtc_p2pTarget = [1]u32{ 0xFFFFFFFF };
+var ptr_rtc_p2pTarget : [*]u32 = &rtc_p2pTarget;
 var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
 var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
 
-// send PARTNER ===============================================================
+// send P2P ===================================================================
 var sendFlag_P: u8 = 0;  // need refill? initialized at startup
 var sendThread_P: u8;  // which thread is sending?
 var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, genome being sent, pad
 const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> sendBuf_P[i], });
-const sendGenomeDsd_P = @get_dsd(mem1d_dsd, .{
+const sendGenomeDsd_P = @get_dsd(mem1d_dsd, .{  // minus header and pad
   .tensor_access = |i|{p2pMsgSize - 2} -> sendBuf_P[i + 1], });
 
 // callback for when send is complete, set flag to request refill & next send
@@ -612,7 +612,7 @@ fn tryDispatchSend_P(thread: u8) bool {
   busyThreads[thread] = 1;  // mark thread as busy
   sendThread_P = thread;
   population.emigrate_genomes(sendGenomeDsd_P, 1);
-  switch (thread) {  // thread 3 is reserved for partner recv
+  switch (thread) {  // thread 3 is reserved for p2p recv
     0 => doDispatchSend_P(0),
     1 => doDispatchSend_P(1),
     2 => doDispatchSend_P(2),
@@ -628,7 +628,7 @@ fn dispatchSend_P() bool {
   return false;
 }
 
-// recv PARTNER ===============================================================
+// recv P2P ===================================================================
 var recvFlag_P: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
 var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome received, pad
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
@@ -763,7 +763,7 @@ task cycleTask() void {
     }
   }
 
-  if (p2pEnabled and recvFlag_P == 1) {  // partner recv, not throttled
+  if (p2pEnabled and recvFlag_P == 1) {  // p2p recv
     var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
     clobberCounter[0] += population.immigrate_genomes(recvGenomePtr_P, 1);
     immCounter_P[0] += 1;
@@ -780,7 +780,7 @@ task cycleTask() void {
 
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
-  // partner send goes first, so neighbor sends can't starve it of threads
+  // p2p send goes first, so neighbor sends can't starve it of threads
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
     if (dispatchSend_P()) { sendFlag_P = 0; }
@@ -886,14 +886,15 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     if (xOffset == 0) sendFlag_W = 0;
   }
 
-  // set up point-to-point exchange with partner, if any
+  // set up point-to-point exchange, if any
   if (p2pEnabled) {
     mp.init();
-    busyThreads[p2pRecvThread] = 1;  // reserve microthread for partner recv
-    if (rtc_p2pPartner[0] != 0xFFFFFFFF) {
+    busyThreads[p2pRecvThread] = 1;  // reserve microthread for p2p recv
+    const p2pTarget = rtc_p2pTarget[0];
+    if (p2pTarget != 0xFFFFFFFF) {
       sendBuf_P[0] = mp.encode_header(
-        @as(u16, rtc_p2pPartner[0]),  // dest_col
-        @as(u16, rtc_p2pPartner[1]),  // dest_row
+        @as(u16, p2pTarget >> 16),  // dest_col
+        @as(u16, p2pTarget & 0xFFFF),  // dest_row
         p2pMsgSize - 1  // length, wavelets after header: genome and pad
       );
       sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet;
@@ -1010,7 +1011,7 @@ comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_immCounter_E, "immCounter_E");
   @export_symbol(ptr_immCounter_W, "immCounter_W");
   @export_symbol(ptr_immCounter_P, "immCounter_P");
-  @export_symbol(ptr_rtc_p2pPartner, "rtc_p2pPartner");
+  @export_symbol(ptr_rtc_p2pTarget, "rtc_p2pTarget");
   @export_symbol(ptr_rtc_p2pSendProbability, "rtc_p2pSendProbability");
   @export_symbol(ptr_recvCounter_N, "recvCounter_N");
   @export_symbol(ptr_recvCounter_S, "recvCounter_S");

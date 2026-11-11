@@ -266,8 +266,8 @@ jobs:
           df = pl.read_parquet(path)
           print(df)
           assert len(df) == 3 * 3, len(df)
-          assert df['is_paired'].sum() == 8  # 9 PEs, one left unpaired
-          paired = df.filter(pl.col('is_paired'))
+          assert df['has_target'].sum() == 8  # 9 PEs, one left unpaired
+          paired = df.filter(pl.col('has_target'))
           assert (paired['imm_count'] > 0).all(), paired['imm_count']
           "
 

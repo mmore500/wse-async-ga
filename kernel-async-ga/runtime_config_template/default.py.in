@@ -42,7 +42,7 @@ if __name__ == "__main__":
         )
         rng = np.random.default_rng(runtime_config.get("p2pSeed", globalSeed))
         tile = np.arange(nRow * nCol).reshape(nRow, nCol)
-        partner = np.full((nRow * nCol, 2), 0xFFFFFFFF, dtype=np.uint32)
+        target = np.full(nRow * nCol, -1)  # tile id, -1 for none
         for row, col in it.product(
             range(0, nRow, nRowSubgrid or nRow),
             range(0, nCol, nColSubgrid or nCol),
@@ -53,15 +53,17 @@ if __name__ == "__main__":
             ]
             tiles = rng.permutation(subgrid.ravel())
             a, b = tiles[: len(tiles) // 2 * 2].reshape(-1, 2).T
-            partner[a] = np.column_stack([b % nCol, b // nCol])  # col, row
-            partner[b] = np.column_stack([a % nCol, a // nCol])
+            target[a], target[b] = b, a
 
-        # check partner's partner is self, and not self
-        partner_tile = partner[:, 1].astype(int) * nCol + partner[:, 0]
-        paired = np.flatnonzero(partner[:, 0] != 0xFFFFFFFF)
-        assert (partner_tile[paired] != paired).all()
-        assert (partner_tile[partner_tile[paired]] == paired).all()
-        symbols["rtc_p2pPartner"] = partner.reshape(nRow, nCol, 2)
+        # check target's target is self, and not self
+        paired = np.flatnonzero(target != -1)
+        assert (target[paired] != paired).all()
+        assert (target[target[paired]] == paired).all()
+        symbols["rtc_p2pTarget"] = np.where(
+            target != -1,
+            (target % nCol) << 16 | (target // nCol),  # col << 16 | row
+            0xFFFFFFFF,
+        ).astype(np.uint32).reshape(shape)
     else:
         raise ValueError(f"unknown {p2pMode=}")
 

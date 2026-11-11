@@ -804,8 +804,8 @@ if "rtc_nColSubgrid" in runtimeConfig:
 if "rtc_nCycleAtLeast" in runtimeConfig:
     nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
     log(f" - runtime config sets {nCycleAtLeast=}")
-if p2pEnabled and "rtc_p2pPartner" not in runtimeConfig:
-    warnings.warn("p2p is enabled, but runtime config has no rtc_p2pPartner")
+if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
+    warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 
 log(f" - applying globalSeed={globalSeed}")
 random.seed(globalSeed)
@@ -1792,7 +1792,7 @@ log(f"{np.mean(immSum)=} {np.std(immSum)=} {sps.sem(immSum)=}")
 log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
 
 if p2pEnabled:
-    log("imm counter P (point-to-point partner) ======================")
+    log("imm counter P (point-to-point) ======================")
     out_tensors = np.zeros((nRow, nCol), np.uint32)
     runner.memcpy_d2h(
         out_tensors.ravel(),
@@ -1811,27 +1811,25 @@ if p2pEnabled:
     log(immP[:20, :20])
     log(f"{np.mean(immP)=} {np.median(immP)=} {np.min(immP)=} {np.max(immP)=}")
 
-    # checked against device by runtime config readback; unpaired if not set
-    p2pPartners = runtimeConfig.get(
-        "rtc_p2pPartner",
-        np.full((nRow, nCol, 2), 0xFFFFFFFF, dtype=np.uint32),
-    )  # col, row
+    # checked against device by runtime config readback; none if not set
+    p2pTarget = runtimeConfig.get(
+        "rtc_p2pTarget",
+        np.full((nRow, nCol, 1), 0xFFFFFFFF, dtype=np.uint32),
+    ).ravel()  # col << 16 | row
 
-    unpaired = p2pPartners[:, :, 0] == 0xFFFFFFFF
+    hasTarget = p2pTarget != 0xFFFFFFFF
     df = pl.DataFrame(
         {
             "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
             "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
             "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
-            "partner_row": pl.Series(
-                np.where(unpaired, 0, p2pPartners[:, :, 1]).ravel(),
-                dtype=pl.UInt16,
+            "target_row": pl.Series(
+                np.where(hasTarget, p2pTarget & 0xFFFF, 0), dtype=pl.UInt16
             ),
-            "partner_col": pl.Series(
-                np.where(unpaired, 0, p2pPartners[:, :, 0]).ravel(),
-                dtype=pl.UInt16,
+            "target_col": pl.Series(
+                np.where(hasTarget, p2pTarget >> 16, 0), dtype=pl.UInt16
             ),
-            "is_paired": pl.Series(~unpaired.ravel(), dtype=pl.Boolean),
+            "has_target": pl.Series(hasTarget, dtype=pl.Boolean),
             "imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
         }
     )
