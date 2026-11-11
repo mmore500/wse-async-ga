@@ -1840,7 +1840,7 @@ if p2pEnabled:
         f"+ncycle={nCycleAtLeast}"
         "+ext=.pqt",
     )
-    del df
+    del df, p2pTarget
 
 log("clobber counter ============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
