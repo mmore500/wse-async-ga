@@ -33,6 +33,7 @@ if __name__ == "__main__":
     text = here.joinpath("runtime_config_template", args.template).read_text()
     outdir = here / "runtime_config_dispatch"
     outdir.mkdir(exist_ok=True)
+
     for line in pathlib.Path(args.jsonl).read_text().splitlines():
         runtime_config = json.loads(line)
         dispatch_slug = runtime_config.pop("dispatch_slug")
