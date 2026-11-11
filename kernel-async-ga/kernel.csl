@@ -640,8 +640,8 @@ task recvFinalizeTask_P() void { recvFlag_P = 1;
   if (closeoutRemaining == 0) { @unblock(ignRecvTaskID_P); }
 }
 
-// (not mp.recv_message: it reads the header synchronously, blocking the PE
-// until a message arrives)
+// (not mp.recv_message: it reads the header with a synchronous move, which
+// blocks the PE until a message arrives)
 fn dispatchRecv_P() void {  // open async microthread to recv into recvBuf
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = p2pMsgSize, .input_queue = mp.mp_input_queue, });
