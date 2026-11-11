@@ -248,7 +248,8 @@ const padTaskID_P: control_task_id = @get_control_task_id(38);
 
 // local task IDs (8-30), checked against SDK v2.10.0 memcpy
 // available: 22, 23, 26
-// reserved (memcpy): 21, 27, 28, 30; 24 (context switch entry, unbound here)
+// available (memcpy SYS_EN_MAIN, only used with context switching): 24
+// reserved (memcpy): 21, 27, 28, 30
 // reserved: 29 (teardown)
 // control task IDs reserved (memcpy): 33, 34, 35, 36, 37
 
