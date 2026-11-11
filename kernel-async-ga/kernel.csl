@@ -567,7 +567,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // each message is a header wavelet, one genome, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
-const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 2;
+const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
 const p2pPadWavelet: u32 = @as(u32, @get_int(padTaskID_P)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
@@ -586,8 +586,11 @@ var sendThread_P: u8;  // which thread is sending?
 var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
 const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> sendBuf_P[i], });
-const sendGenomeDsd_P = @get_dsd(mem1d_dsd, .{  // minus header and pad
-  .tensor_access = |i|{p2pMsgSize - 2} -> sendBuf_P[i + 1], });
+const sendGenomeDsd_P = (  // minus header and pad
+  if (p2pEnabled) @get_dsd(mem1d_dsd, .{
+    .tensor_access = |i|{p2pMsgSize - 2} -> sendBuf_P[i + 1], })
+  else sendBufDsd_P  // unused placeholder
+);
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_P() void {
@@ -761,7 +764,7 @@ task cycleTask() void {
     }
   }
 
-  if (p2pEnabled and recvFlag_P == 1) {  // p2p recv
+  if (p2pEnabled) if (recvFlag_P == 1) {  // p2p recv
     var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
     clobberCounter[0] += population.immigrate_genomes(recvGenomePtr_P, 1);
     immCounter_P[0] += 1;
