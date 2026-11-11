@@ -1811,25 +1811,17 @@ if p2pEnabled:
     log(immP[:20, :20])
     log(f"{np.mean(immP)=} {np.median(immP)=} {np.min(immP)=} {np.max(immP)=}")
 
-    # checked against device by runtime config readback; none if not set
-    p2pTarget = runtimeConfig.get(
-        "rtc_p2pTarget",
-        np.full((nRow, nCol, 1), 0xFFFFFFFF, dtype=np.uint32),
-    ).ravel()  # col << 16 | row
-
-    hasTarget = p2pTarget != 0xFFFFFFFF
+    p2pTarget = runtimeConfig.get(  # col << 16 | row
+        "rtc_p2pTarget", np.full_like(immP, 0xFFFFFFFF)
+    ).ravel()
     df = pl.DataFrame(
         {
             "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
             "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
             "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
-            "target_row": pl.Series(
-                np.where(hasTarget, p2pTarget & 0xFFFF, 0), dtype=pl.UInt16
-            ),
-            "target_col": pl.Series(
-                np.where(hasTarget, p2pTarget >> 16, 0), dtype=pl.UInt16
-            ),
-            "has_target": pl.Series(hasTarget, dtype=pl.Boolean),
+            "target_row": pl.Series(p2pTarget & 0xFFFF, dtype=pl.UInt16),
+            "target_col": pl.Series(p2pTarget >> 16, dtype=pl.UInt16),
+            "has_target": pl.Series(p2pTarget != 0xFFFFFFFF),
             "imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
         }
     )

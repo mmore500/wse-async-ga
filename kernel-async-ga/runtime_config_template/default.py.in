@@ -1,7 +1,9 @@
 """Runtime config ${dispatch_slug}, from runtime_config_template/default.py.in.
 
 Reads comptime configs as JSON from stdin, and writes an npz file of per-PE
-values for rtc_* device symbols to stdout. See runtime_config_options.md.
+values for rtc_* device symbols to stdout.
+
+See `runtime_config_options.md`.
 """
 
 import itertools as it

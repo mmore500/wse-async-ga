@@ -59,15 +59,13 @@ const genome_ = @import_module(
   .{ .rng = rng },
 );
 const nTraitVals = genome_.nTraitVals;
-// point-to-point exchange with one permanent target PE, chosen by host;
-// each cycle, send to target with this probability (0 disables feature)
 const ctc_p2pSendProbability = comptime compconf.get_value_or(
     "ASYNC_GA_P2P_SEND_PROBABILITY", @as(f32, 0.0)
 );
 const p2pEnabled = comptime ctc_p2pSendProbability > 0.0;
-const mp = @import_module(  // stub claims no queues/colors if disabled
+const mp = @import_module(
   if (p2pEnabled) "<message_passing>"
-  else "cerebraslib/message_passing_stub.csl",
+  else "cerebraslib/message_passing_stub.csl",  // no-op
   .{ .input_queue_id = 2, .output_queue_id = 2 },
 );
 
@@ -246,7 +244,6 @@ const sendFinalizeTaskID_P: local_task_id = @get_local_task_id(20);
 const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(25);
 
 // no-op target for the control wavelet that ends each p2p message
-// (memcpy reserves control task IDs 33-37 and 40)
 const padTaskID_P: control_task_id = @get_control_task_id(38);
 
 // available: 26, 32, 33, 34, 35
@@ -566,7 +563,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // ============================================================================
 // point-to-point send/recv tasks
 // ============================================================================
-// exchange genomes with another PE anywhere on grid via message passing,
+// exchange genomes with another PE via point-to-point message passing,
 // each message is a header wavelet, one genome, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
@@ -586,7 +583,7 @@ var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
 // send P2P ===================================================================
 var sendFlag_P: u8 = 0;  // need refill? initialized at startup
 var sendThread_P: u8;  // which thread is sending?
-var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, genome being sent, pad
+var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
 const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> sendBuf_P[i], });
 const sendGenomeDsd_P = @get_dsd(mem1d_dsd, .{  // minus header and pad
@@ -599,7 +596,7 @@ task sendFinalizeTask_P() void {
 
 // open async uthread to send from sendBuf, header is set at launch
 // (not mp.send_message: as of SDK v2.10.0, it sends the header with a
-// synchronous move, which can stall the PE, and doesn't allow microthread
+// synchronous move and doesn't allow microthread
 // selection)
 fn doDispatchSend_P(comptime thread: u8) void {
   const sendDsd_P = @get_dsd(fabout_dsd, .{ .fabric_color = mp.mp_comm_color,
@@ -631,7 +628,7 @@ fn dispatchSend_P() bool {
 
 // recv P2P ===================================================================
 var recvFlag_P: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome received, pad
+var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> recvBuf_P[i], });
 
@@ -642,7 +639,7 @@ task recvFinalizeTask_P() void { recvFlag_P = 1;
 }
 
 // (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
-// synchronous move, which blocks the PE until a message arrives)
+// synchronous move and doesn't allow microthread selection)
 fn dispatchRecv_P() void {  // open async microthread to recv into recvBuf
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = p2pMsgSize, .input_queue = mp.mp_input_queue, });
@@ -896,7 +893,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
       sendBuf_P[0] = mp.encode_header(
         @as(u16, p2pTarget >> 16),  // dest_col
         @as(u16, p2pTarget & 0xFFFF),  // dest_row
-        p2pMsgSize - 1  // length, wavelets after header: genome and pad
+        p2pMsgSize - 1  // body length: genome and pad
       );
       sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet;
       sendFlag_P = 1;
