@@ -59,6 +59,18 @@ const genome_ = @import_module(
   .{ .rng = rng },
 );
 const nTraitVals = genome_.nTraitVals;
+// point-to-point exchange with one permanent partner PE, chosen by host;
+// each cycle, send to partner with this probability (0 disables feature)
+const ctc_p2pSendProbability = comptime compconf.get_value_or(
+    "ASYNC_GA_P2P_SEND_PROBABILITY", @as(f32, 0.0)
+);
+const p2pEnabled = comptime ctc_p2pSendProbability > 0.0;
+const mp = @import_module(  // stub claims no queues/colors if disabled
+  if (p2pEnabled) "<message_passing>"
+  else "cerebraslib/message_passing_stub.csl",
+  .{ .input_queue_id = 2, .output_queue_id = 2 },
+);
+
 const pExtinction = comptime compconf.get_value_or(
     "CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY",
     @as(f32, 0.0),
@@ -120,6 +132,9 @@ var sendCounter_E = @zeros([1]u32);
 var ptr_sendCounter_E : [*]u32 = &sendCounter_E;
 var sendCounter_W = @zeros([1]u32);
 var ptr_sendCounter_W : [*]u32 = &sendCounter_W;
+
+var immCounter_P = @zeros([1]u32);  // point-to-point partner
+var ptr_immCounter_P : [*]u32 = &immCounter_P;
 
 var traitCounts = @zeros([nTraitVals]u32);
 var ptr_traitCounts : [*]u32 = &traitCounts;
@@ -227,8 +242,15 @@ const recvFinalizeTaskID_W: local_task_id = @get_local_task_id(17);
 const closeoutTaskID: local_task_id = @get_local_task_id(18);
 const cycleTaskID: local_task_id = @get_local_task_id(19);
 
-// available: 20, 24, 25, 26, 32, 33, 34, 35
-// reserved (memcpy): 21, 22, 23, 27, 28, 30
+const sendFinalizeTaskID_P: local_task_id = @get_local_task_id(20);
+const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(25);
+
+// no-op target for the control wavelet that ends each partner message
+// (memcpy reserves control task IDs 33-37 and 40)
+const padTaskID_P: control_task_id = @get_control_task_id(38);
+
+// available: 26, 32, 33, 34, 35
+// reserved (memcpy): 21, 22, 23, 24, 27, 28, 30
 // reserved: 29, 31
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -542,6 +564,96 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 
 ///////////////////////////////////////////////////////////////////////////////
 // ============================================================================
+// point-to-point send/recv tasks
+// ============================================================================
+// exchange genomes with one partner PE anywhere on grid via message passing,
+// each message is a header wavelet, one genome, and a pad wavelet
+///////////////////////////////////////////////////////////////////////////////
+const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
+const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 2;
+// last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
+const p2pPadWavelet: u32 = @as(u32, @get_int(padTaskID_P)) << 16;
+comptime {  // fixed-length message passing supports at most 31 wavelets
+  if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
+}
+
+// runtime config: partner col, row set by host; 0xFFFFFFFF means unpaired
+var rtc_p2pPartner = [2]u32{ 0xFFFFFFFF, 0xFFFFFFFF };
+var ptr_rtc_p2pPartner : [*]u32 = &rtc_p2pPartner;
+var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
+var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
+
+// send PARTNER ===============================================================
+var sendFlag_P: u8 = 0;  // need refill? initialized at startup
+var sendThread_P: u8;  // which thread is sending?
+var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, genome being sent, pad
+const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
+  .tensor_access = |i|{p2pMsgSize} -> sendBuf_P[i], });
+const sendGenomeDsd_P = @get_dsd(mem1d_dsd, .{
+  .tensor_access = |i|{p2pMsgSize - 2} -> sendBuf_P[i + 1], });
+
+// callback for when send is complete, set flag to request refill & next send
+task sendFinalizeTask_P() void {
+  sendFlag_P = 1; busyThreads[sendThread_P] = 0;
+}
+
+// open async uthread to send from sendBuf, header is set at launch
+fn doDispatchSend_P(comptime thread: u8) void {
+  const sendDsd_P = @get_dsd(fabout_dsd, .{ .fabric_color = mp.mp_comm_color,
+    .extent = p2pMsgSize, .output_queue = mp.mp_output_queue, });
+  @mov32(sendDsd_P, sendBufDsd_P, .{ .async = true,  // callback on complete
+    .activate = sendFinalizeTaskID_P, .ut_id = @get_ut_id(thread), });
+}
+
+fn tryDispatchSend_P(thread: u8) bool {
+  if (busyThreads[thread] == 1) { return false; }
+  busyThreads[thread] = 1;  // mark thread as busy
+  sendThread_P = thread;
+  population.emigrate_genomes(sendGenomeDsd_P, 1);
+  switch (thread) {  // thread 3 is reserved for partner recv
+    0 => doDispatchSend_P(0),
+    1 => doDispatchSend_P(1),
+    2 => doDispatchSend_P(2),
+    else => { @assert(false); },
+  }
+  return true;
+}
+
+fn dispatchSend_P() bool {
+  for (@range(u8, p2pRecvThread)) |thread| {
+    if (tryDispatchSend_P(thread)) { return true; }
+  }
+  return false;
+}
+
+// recv PARTNER ===============================================================
+var recvFlag_P: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
+var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome received, pad
+const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
+  .tensor_access = |i|{p2pMsgSize} -> recvBuf_P[i], });
+
+// callback when recv is complete, set flag to
+// 1) trigger immigration from recv buffer into pop and 2) request next recv
+task recvFinalizeTask_P() void { recvFlag_P = 1;
+  if (closeoutRemaining == 0) { @unblock(ignRecvTaskID_P); }
+}
+
+fn dispatchRecv_P() void {  // open async microthread to recv into recvBuf
+  const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
+    .extent = p2pMsgSize, .input_queue = mp.mp_input_queue, });
+  @mov32(recvBufDsd_P, recvDsd_P, .{ .async = true,  // callback on complete
+    .activate = recvFinalizeTaskID_P, .ut_id = @get_ut_id(p2pRecvThread), });
+}
+
+const ignRecvTaskID_P: data_task_id = (
+  if (p2pEnabled) @get_data_task_id(mp.mp_input_queue)
+  else @get_data_task_id(@get_input_queue(0))  // unused placeholder
+);
+task ignRecvTask_P(_: u32) void { }
+task padTask_P() void { }
+
+///////////////////////////////////////////////////////////////////////////////
+// ============================================================================
 // closeout task
 // ============================================================================
 // when PEs' sends are complete, ensure all recvs are open
@@ -553,6 +665,7 @@ fn closeoutSend() bool {
   if (sendFlag_S == 1) { sendFlag_S = 0; closeoutRemaining -= 1; }
   if (sendFlag_E == 1) { sendFlag_E = 0; closeoutRemaining -= 1; }
   if (sendFlag_W == 1) { sendFlag_W = 0; closeoutRemaining -= 1; }
+  if (sendFlag_P == 1) { sendFlag_P = 0; closeoutRemaining -= 1; }
   return !@as(bool, closeoutRemaining);
 }
 task ignRecvTask_N(_: u16) void { } task ignRecvTask_S(_: u16) void { }
@@ -562,6 +675,9 @@ fn closeoutRecv() void {
   if (recvFlag_S == 1) { recvFlag_S = 0; @unblock(ignRecvTaskID_S); }
   if (recvFlag_E == 1) { recvFlag_E = 0; @unblock(ignRecvTaskID_E); }
   if (recvFlag_W == 1) { recvFlag_W = 0; @unblock(ignRecvTaskID_W); }
+  if (p2pEnabled and recvFlag_P == 1) {
+    recvFlag_P = 0; @unblock(ignRecvTaskID_P);
+  }
 }
 
 task closeoutTask() void {
@@ -643,6 +759,13 @@ task cycleTask() void {
     }
   }
 
+  if (p2pEnabled and recvFlag_P == 1) {  // partner recv, not throttled
+    var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
+    clobberCounter[0] += population.immigrate_genomes(recvGenomePtr_P, 1);
+    immCounter_P[0] += 1;
+    recvFlag_P = 0; dispatchRecv_P();
+  }
+
   // apply replication/selection to population
   // --------------------------------------------------------------------------
   population.do_generation();
@@ -653,6 +776,11 @@ task cycleTask() void {
 
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
+  // partner send goes first, so neighbor sends can't starve it of threads
+  const p2pSendProbability = rtc_p2pSendProbability[0];
+  if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
+    if (dispatchSend_P()) { sendFlag_P = 0; }
+  }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
     const numBusy = (
@@ -754,8 +882,25 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     if (xOffset == 0) sendFlag_W = 0;
   }
 
+  // set up point-to-point exchange with partner, if any
+  if (p2pEnabled) {
+    mp.init();
+    busyThreads[p2pRecvThread] = 1;  // reserve microthread for partner recv
+    if (rtc_p2pPartner[0] != 0xFFFFFFFF) {
+      sendBuf_P[0] = mp.encode_header(
+        @as(u16, rtc_p2pPartner[0]),
+        @as(u16, rtc_p2pPartner[1]),
+        p2pMsgSize - 1
+      );
+      sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet;
+      sendFlag_P = 1;
+    }
+  }
+
   //  how many active neighbors?
-  closeoutRemaining = sendFlag_N + sendFlag_S + sendFlag_E + sendFlag_W;
+  closeoutRemaining = (
+    sendFlag_N + sendFlag_S + sendFlag_E + sendFlag_W + sendFlag_P
+  );
 
   const globalSeed = rtc_globalSeed[0];
   // + 1 ensures nonzero local seed
@@ -775,6 +920,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   genomerefresh();
   // open initial recv requests, never-filled recv requests on edges ok
   dispatchRecv_N(); dispatchRecv_S(); dispatchRecv_E(); dispatchRecv_W();
+  if (p2pEnabled) dispatchRecv_P();
   @activate(cycleTaskID);  // trigger first cycle
   @ptrcast(*[3]u16, ptr_tscEndBuffer).*[0] = 507;
   @ptrcast(*[3]u16, ptr_tscEndBuffer).*[1] = 3;
@@ -800,6 +946,13 @@ comptime {
   @bind_data_task(ignRecvTask_S, ignRecvTaskID_S); @block(ignRecvTaskID_S);
   @bind_data_task(ignRecvTask_E, ignRecvTaskID_E); @block(ignRecvTaskID_E);
   @bind_data_task(ignRecvTask_W, ignRecvTaskID_W); @block(ignRecvTaskID_W);
+
+  if (p2pEnabled) {
+    @bind_local_task(sendFinalizeTask_P, sendFinalizeTaskID_P);
+    @bind_local_task(recvFinalizeTask_P, recvFinalizeTaskID_P);
+    @bind_data_task(ignRecvTask_P, ignRecvTaskID_P); @block(ignRecvTaskID_P);
+    @bind_control_task(padTask_P, padTaskID_P);
+  }
 
   @bind_local_task(cycleTask, cycleTaskID);
   @bind_local_task(closeoutTask, closeoutTaskID);
@@ -852,6 +1005,9 @@ comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_immCounter_S, "immCounter_S");
   @export_symbol(ptr_immCounter_E, "immCounter_E");
   @export_symbol(ptr_immCounter_W, "immCounter_W");
+  @export_symbol(ptr_immCounter_P, "immCounter_P");
+  @export_symbol(ptr_rtc_p2pPartner, "rtc_p2pPartner");
+  @export_symbol(ptr_rtc_p2pSendProbability, "rtc_p2pSendProbability");
   @export_symbol(ptr_recvCounter_N, "recvCounter_N");
   @export_symbol(ptr_recvCounter_S, "recvCounter_S");
   @export_symbol(ptr_recvCounter_E, "recvCounter_E");

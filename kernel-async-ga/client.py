@@ -726,6 +726,12 @@ tournSize = (
 with open("compconf.json", encoding="utf-8") as json_file:
     compconf_data = json.load(json_file)
 
+p2pSendProbability = float(
+    compconf_data.get("ASYNC_GA_P2P_SEND_PROBABILITY:f32", 0.0)
+)
+p2pEnabled = p2pSendProbability > 0.0  # compiled in?
+log(f" - {p2pSendProbability=} {p2pEnabled=}")
+
 log("- loading runtime config")
 dispatchSlug = pathlib.Path(args.runtime_config).stem
 log(f" - {dispatchSlug=}")
@@ -734,6 +740,7 @@ comptimeConfigJson = json.dumps(
         **{key: int(value) for key, value in compile_data["params"].items()},
         "nRow": nRow,
         "nCol": nCol,
+        "p2pSendProbability": p2pSendProbability,
     },
 )
 log(f" - running {args.runtime_config}")  # comptime to stdin, npz from stdout
@@ -797,6 +804,8 @@ if "rtc_nColSubgrid" in runtimeConfig:
 if "rtc_nCycleAtLeast" in runtimeConfig:
     nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
     log(f" - runtime config sets {nCycleAtLeast=}")
+if p2pEnabled and "rtc_p2pPartner" not in runtimeConfig:
+    warnings.warn("p2p is enabled, but runtime config has no rtc_p2pPartner")
 
 log(f" - applying globalSeed={globalSeed}")
 random.seed(globalSeed)
@@ -1150,6 +1159,7 @@ else:
 
 log("runtime config =============================================")
 runtimeConfigMismatches = []  # raise at end, so that outputs get saved
+runtimeConfigReadback = {}
 for symbol, data in runtimeConfig.items():
     log(f" - reading back {symbol}")
     out_tensors = np.zeros_like(data)
@@ -1167,6 +1177,7 @@ for symbol, data in runtimeConfig.items():
         nonblock=False,
     )
     log(f"{symbol} {out_tensors[:20, :20, 0]}")
+    runtimeConfigReadback[symbol] = out_tensors
     if not np.array_equal(out_tensors, data):
         runtimeConfigMismatches.append(symbol)
         warnings.warn(f"{symbol} on device differs from runtime config")
@@ -1781,6 +1792,67 @@ immSum = [
 log(immSum[:100])
 log(f"{np.mean(immSum)=} {np.std(immSum)=} {sps.sem(immSum)=}")
 log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
+
+if p2pEnabled:
+    log("imm counter P (point-to-point partner) ======================")
+    out_tensors = np.zeros((nRow, nCol), np.uint32)
+    runner.memcpy_d2h(
+        out_tensors.ravel(),
+        runner.get_id("immCounter_P"),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        1,  # num wavelets
+        streaming=False,
+        data_type=MemcpyDataType.MEMCPY_32BIT,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
+    immP = out_tensors.copy()
+    log(immP[:20, :20])
+    log(f"{np.mean(immP)=} {np.median(immP)=} {np.min(immP)=} {np.max(immP)=}")
+
+    # as read back from device with runtime config; unpaired if not set
+    p2pPartners = runtimeConfigReadback.get(
+        "rtc_p2pPartner",
+        np.full((nRow, nCol, 2), 0xFFFFFFFF, dtype=np.uint32),
+    )  # col, row
+
+    unpaired = p2pPartners[:, :, 0] == 0xFFFFFFFF
+    df = pl.DataFrame(
+        {
+            "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
+            "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
+            "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
+            "partner_row": pl.Series(
+                np.where(unpaired, 0, p2pPartners[:, :, 1]).ravel(),
+                dtype=pl.UInt16,
+            ),
+            "partner_col": pl.Series(
+                np.where(unpaired, 0, p2pPartners[:, :, 0]).ravel(),
+                dtype=pl.UInt16,
+            ),
+            "is_paired": pl.Series(~unpaired.ravel(), dtype=pl.Boolean),
+            "imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
+        }
+    )
+    df = with_subgrid_columns(df.lazy()).collect()
+    df = df.with_columns(
+        *(
+            pl.lit(value, dtype=dtype).alias(key)
+            for key, (value, dtype) in metadata.items()
+        ),
+    )
+    write_parquet_verbose(
+        df,
+        "a=p2p"
+        f"+flavor={genomeFlavor}"
+        f"+seed={globalSeed}"
+        f"+ncycle={nCycleAtLeast}"
+        "+ext=.pqt",
+    )
+    del df
 
 log("clobber counter ============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT

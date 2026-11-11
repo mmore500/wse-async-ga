@@ -94,6 +94,21 @@ jobs:
           - genome_mlsindiv_2026_10_18
           - genome_mlsindivspectra_2026_10_23
           - genome_mlsindivspectra_2026_11_03
+        p2p:
+          - 0
+        include:
+          - arch: wse3
+            nonBlock: 0
+            genome: genome_bitdrift
+            p2p: 1.0
+          - arch: wse3
+            nonBlock: 1
+            genome: genome_bitdrift
+            p2p: 0.5
+          - arch: wse3
+            nonBlock: 1
+            genome: genome_mlsindiv_2026_10_18
+            p2p: 0.5
     env:
       CSLC: cslc
       CS_PYTHON: cs_python
@@ -187,6 +202,14 @@ jobs:
         run: |
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
+          export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${{ matrix.p2p }}"
+          # before compile, so it is the only runtime config
+          if [ "${{ matrix.p2p }}" != "0" ]; then
+            echo '{"dispatch_slug": "ci-p2p-pairs", "p2pMode": "pairs"}' \
+              > runtime_config_p2p.jsonl
+            python3 ./kernel-async-ga/runtime_config_generate.py \
+              default.py.in runtime_config_p2p.jsonl
+          fi
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/compile.sh \
@@ -197,7 +220,7 @@ jobs:
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
           # exercise dispatch of several runtime configs from one compile
-          if [ "${{ matrix.genome }}+${{ matrix.nonBlock }}" == "genome_bitdrift+1" ]; then
+          if [ "${{ matrix.genome }}+${{ matrix.nonBlock }}+${{ matrix.p2p }}" == "genome_bitdrift+1+0" ]; then
             printf '%s\n' \
               '{"dispatch_slug": "ci-sweep-globalSeed=1", "globalSeed": 1}' \
               '{"dispatch_slug": "ci-sweep-globalSeed=2", "globalSeed": 2}' \
@@ -211,7 +234,7 @@ jobs:
             ./kernel-async-ga/execute.sh
 
       - name: Check runtime config dispatch
-        if: matrix.genome == 'genome_bitdrift' && matrix.nonBlock == 1
+        if: matrix.genome == 'genome_bitdrift' && matrix.nonBlock == 1 && matrix.p2p == 0
         run: |
           python3 -c "
           import glob, polars as pl
@@ -230,6 +253,22 @@ jobs:
               for df in dfs:
                   assert (df['dispatchSlug'] == name).all(), name
                   assert (df['globalSeed'] == seed).all(), name
+          "
+
+      - name: Check point-to-point exchange
+        if: matrix.p2p != 0
+        run: |
+          python3 -c "
+          import glob, polars as pl
+          (path,) = glob.glob(
+              './kernel-async-ga/dispatch=ci-p2p-pairs/a=p2p+*.pqt'
+          )
+          df = pl.read_parquet(path)
+          print(df)
+          assert len(df) == 3 * 3, len(df)
+          assert df['is_paired'].sum() == 8  # 9 PEs, one left unpaired
+          paired = df.filter(pl.col('is_paired'))
+          assert (paired['imm_count'] > 0).all(), paired['imm_count']
           "
 
   test-sample-populations:
