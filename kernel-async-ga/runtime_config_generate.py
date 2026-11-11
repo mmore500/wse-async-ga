@@ -2,7 +2,7 @@
 """Generate a runtime config for each line of a jsonl file, from templates.
 
 Each line is a JSON object with a `dispatch_slug` and, optionally,
-comptime configs to override, e.g.
+comptime configs to override, e.g.,
 {"dispatch_slug": "seed=1", "globalSeed": 1}. Writes
 runtime_config_dispatch/<dispatch_slug>.py from the template for each.
 """
