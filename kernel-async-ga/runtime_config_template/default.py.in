@@ -10,15 +10,20 @@ import sys
 import numpy as np
 
 if __name__ == "__main__":
-    comptime = json.load(sys.stdin)
-    comptime.update(${overrides})  # from jsonl
-    print(f"runtime config ${dispatch_slug} {comptime=}", file=sys.stderr)
+    comptime_config = json.load(sys.stdin)
+    runtime_config = ${runtime_config}  # from jsonl
+    print("dispatch_slug ${dispatch_slug}", file=sys.stderr)
+    print(f"{comptime_config=}", file=sys.stderr)
+    print(f"{runtime_config=}", file=sys.stderr)
 
-    shape = (comptime["nRow"], comptime["nCol"], 1)
+    def get(key: str) -> int:  # runtime config, with comptime fallback
+        return runtime_config.get(key, comptime_config[key])
+
+    shape = (comptime_config["nRow"], comptime_config["nCol"], 1)
     np.savez(
         sys.stdout.buffer,
-        rtc_globalSeed=np.full(shape, comptime["globalSeed"], np.uint32),
-        rtc_nRowSubgrid=np.full(shape, comptime["nRowSubgrid"], np.uint32),
-        rtc_nColSubgrid=np.full(shape, comptime["nColSubgrid"], np.uint32),
-        rtc_nCycleAtLeast=np.full(shape, comptime["nCycleAtLeast"], np.uint32),
+        rtc_globalSeed=np.full(shape, get("globalSeed"), np.uint32),
+        rtc_nRowSubgrid=np.full(shape, get("nRowSubgrid"), np.uint32),
+        rtc_nColSubgrid=np.full(shape, get("nColSubgrid"), np.uint32),
+        rtc_nCycleAtLeast=np.full(shape, get("nCycleAtLeast"), np.uint32),
     )

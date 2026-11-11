@@ -16,6 +16,7 @@ import string
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
     here = pathlib.Path(__file__).resolve().parent
+    logging.info(f"{here=}")
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -33,17 +34,19 @@ if __name__ == "__main__":
     outdir = here / "runtime_config_dispatch"
     outdir.mkdir(exist_ok=True)
     for line in pathlib.Path(args.jsonl).read_text().splitlines():
-        overrides = json.loads(line)
-        dispatch_slug = overrides.pop("dispatch_slug")
+        runtime_config = json.loads(line)
+        dispatch_slug = runtime_config.pop("dispatch_slug")
         outpath = outdir / f"{dispatch_slug}.py"
         content = string.Template(text).substitute(
-            dispatch_slug=dispatch_slug, overrides=overrides
+            dispatch_slug=dispatch_slug, runtime_config=runtime_config
         )
         if not outpath.exists():
-            logging.info(f"- writing {outpath} with {overrides}")
+            logging.info(f"- writing {outpath} with {runtime_config}")
         elif outpath.read_text() == content:
             logging.info(f"- keeping {outpath}, already up to date")
         else:
-            logging.warning(f"- overwriting {outpath} with {overrides}; was")
+            logging.warning(
+                f"- overwriting {outpath} with {runtime_config}; was"
+            )
             logging.warning(outpath.read_text())
         outpath.write_text(content)
