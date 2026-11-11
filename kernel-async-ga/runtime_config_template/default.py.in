@@ -36,7 +36,9 @@ if __name__ == "__main__":
         ),
         rtc_nCycleAtLeast=np.full(
             shape,
-            runtime_config.get("nCycleAtLeast", comptime_config["nCycleAtLeast"]),
+            runtime_config.get(
+                "nCycleAtLeast", comptime_config["nCycleAtLeast"]
+            ),
             np.uint32,
         ),
     )
