@@ -600,7 +600,7 @@ task sendFinalizeTask_P() void {
   sendFlag_P = 1; busyThreads[sendThread_P] = 0;
 }
 
-// open async uthread to send from sendBuf, header is set at launch
+// open async uthread to send from sendBuf, header & pad emplaced at launch
 // (not mp.send_message: as of SDK v2.10.0, it sends the header with a
 // synchronous move and doesn't allow microthread
 // selection)
