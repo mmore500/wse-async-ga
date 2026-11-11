@@ -35,17 +35,17 @@ layout {
         x, y,
         "kernel.csl",
         .{
-          .nCycleAtLeast = nCycleAtLeast,
           .msecAtLeast = msecAtLeast,
           .tscAtLeast = tscAtLeast,
           .nRow = nRow,
           .nCol = nCol,
-          .nRowSubgrid = nRowSubgrid,
-          .nColSubgrid = nColSubgrid,
           .nonBlock = nonBlock,
           .popSize = popSize,
           .tournSize = tournSize,
-          .globalSeed = globalSeed,
+          .ctc_globalSeed = globalSeed,
+          .ctc_nCycleAtLeast = nCycleAtLeast,
+          .ctc_nRowSubgrid = nRowSubgrid,
+          .ctc_nColSubgrid = nColSubgrid,
           .memcpy_params = memcpy.get_params(x),
           .colorSwapParity = (x % 2 == y % 2),
         }
@@ -76,6 +76,10 @@ layout {
   @export_name("whoami", [*]u32, true);
   @export_name("whereami_x", [*]u32, true);
   @export_name("whereami_y", [*]u32, true);
+  @export_name("rtc_globalSeed", [*]u32, true);
+  @export_name("rtc_nRowSubgrid", [*]u32, true);
+  @export_name("rtc_nColSubgrid", [*]u32, true);
+  @export_name("rtc_nCycleAtLeast", [*]u32, true);
   @export_name("tscControlBuffer", [*]u32, true);
   @export_name("tscEndBuffer", [*]u32, true);
   @export_name("tscStartBuffer", [*]u32, true);

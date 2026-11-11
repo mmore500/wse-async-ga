@@ -3,8 +3,10 @@ print("######################################################################")
 import argparse
 import atexit
 from collections import Counter
+import fnmatch
 import functools
 import gc
+import io
 import itertools as it
 import json
 import logging
@@ -29,6 +31,45 @@ def log(msg: str, *args, **kwargs) -> None:
     msg = str(msg).replace("\n", "\n" + " " * 29)
     logging.info(msg, *args, **kwargs)
 
+
+# adapted from https://stackoverflow.com/a/31347222/17332200
+def add_bool_arg(parser, name, default=False):
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument(
+        "--" + name, dest=name.replace("-", "_"), action="store_true"
+    )
+    group.add_argument(
+        "--no-" + name, dest=name.replace("-", "_"), action="store_false"
+    )
+    parser.set_defaults(**{name.replace("-", "_"): default})
+
+
+log("- configuring argparse")
+parser = argparse.ArgumentParser()
+parser.add_argument("--name", help="the test compile output dir", default="out")
+add_bool_arg(parser, "suptrace", default=True)
+add_bool_arg(parser, "process-fossils", default=None)
+parser.add_argument("--cmaddr", help="IP:port for CS system")
+parser.add_argument(
+    "--runtime-config",
+    help="py file that generates per-PE values to copy to rtc_* device symbols"
+    " before launch; if not given, runs once for each such file in"
+    " runtime_config_dispatch/, in directory dispatch=<slug> unless"
+    " the only one is default.py",
+)
+parser.add_argument(
+    "--runtime-config-validate-lax",
+    action="append",
+    default=[],
+    metavar="SYMBOL/VALIDATOR",
+    help="only warn if this runtime config validator fails, instead of raising"
+    " error; takes wildcards (e.g. 'rtc_globalSeed/*') and can be repeated",
+)
+log("- parsing arguments")
+args = parser.parse_args()
+
+log("args =======================================================")
+log(args)
 
 @functools.lru_cache(maxsize=None)
 def log_once(msg: str, *args, **kwargs) -> bool:
@@ -490,35 +531,100 @@ os.makedirs(temp_dir, exist_ok=True)
 atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
 log(f"  - {temp_dir=}")
 
-log("- installing dependencies from wheelhouse")
-wheelhouse = pathlib.Path(
-    os.getenv(
-        "ASYNC_GA_WHEELHOUSE_PATH",
-        pathlib.Path(__file__).resolve().parent / "wheelhouse",
+# dispatched runs reuse wheels installed by the run that dispatched them
+wheelhouseTarget = os.getenv("ASYNC_GA_WHEELHOUSE_TARGET")
+if wheelhouseTarget is not None:
+    log(f"- reusing dependencies installed to {wheelhouseTarget=}")
+else:
+    log("- installing dependencies from wheelhouse")
+    wheelhouse = pathlib.Path(
+        os.getenv(
+            "ASYNC_GA_WHEELHOUSE_PATH",
+            pathlib.Path(__file__).resolve().parent / "wheelhouse",
+        )
     )
-)
-log(f"  - {wheelhouse=}")
-try:
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--no-index",  # offline: wheels only from wheelhouse
-            f"--find-links={wheelhouse}",
-            "--no-deps",  # prevent numpy from being reinstalled
-            f"--target={temp_dir}",
-            f"--requirement={wheelhouse / 'requirements.txt'}",
-        ],
-    )
-except subprocess.CalledProcessError as e:
-    raise RuntimeError(
-        f"could not install pinned wheels from {wheelhouse}",
-    ) from e
+    log(f"  - {wheelhouse=}")
+    wheelhouseTarget = os.path.abspath(temp_dir)
+    try:
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--no-index",  # offline: wheels only from wheelhouse
+                f"--find-links={wheelhouse}",
+                "--no-deps",  # prevent numpy from being reinstalled
+                f"--target={wheelhouseTarget}",
+                f"--requirement={wheelhouse / 'requirements.txt'}",
+            ],
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"could not install pinned wheels from {wheelhouse}",
+        ) from e
+    os.environ["ASYNC_GA_WHEELHOUSE_TARGET"] = wheelhouseTarget
 
-log(f"- prepending temp dir to sys path {temp_dir=}")
-sys.path.insert(0, temp_dir)
+log(f"- prepending to sys path {wheelhouseTarget=}")
+sys.path.insert(0, wheelhouseTarget)
+
+# each runtime config file (runtime_config_dispatch/*.py) defines one set of
+# per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
+if args.runtime_config is None:
+    log("- ls runtime_config_dispatch")
+    log(
+        subprocess.run(
+            ["ls", "-l", "runtime_config_dispatch"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ).stdout,
+    )
+    runtimeConfigPaths = sorted(
+        pathlib.Path("runtime_config_dispatch").glob("*.py")
+    )
+    log(f"- {runtimeConfigPaths=}")
+    if not runtimeConfigPaths:
+        raise ValueError("no runtime configs in runtime_config_dispatch")
+
+if args.runtime_config is not None:
+    log("- running runtime config given by --runtime-config")
+elif [path.stem for path in runtimeConfigPaths] == ["default"]:
+    log("- running default runtime config in place")  # backwards compatible
+    args.runtime_config = str(runtimeConfigPaths[0])
+else:
+    log(f"- dispatching {len(runtimeConfigPaths)} runtime configs")
+    returncodes = {}
+    for i, path in enumerate(runtimeConfigPaths, start=1):
+        rundir = pathlib.Path(f"dispatch={path.stem}")
+        log(
+            f" - running runtime config {path.stem} in {rundir}"
+            f" ({i} of {len(runtimeConfigPaths)})"
+        )
+        rundir.mkdir(exist_ok=True)
+        for compileOutput in {"cerebraslib", "compconf.json", "out", args.name}:
+            (rundir / compileOutput).unlink(missing_ok=True)
+            (rundir / compileOutput).symlink_to(
+                pathlib.Path(compileOutput).resolve()
+            )
+        returncodes[path.stem] = subprocess.run(
+            [
+                sys.executable,
+                pathlib.Path(__file__).resolve(),
+                *sys.argv[1:],
+                "--runtime-config",
+                path.resolve(),
+            ],
+            cwd=rundir,
+        ).returncode
+        log(f" - runtime config {path.stem} returned {returncodes[path.stem]}")
+    log(f"- runtime config {returncodes=}")
+    numFailed = sum(map(bool, returncodes.values()))
+    if numFailed:
+        log(f"- FAILURE! {numFailed} of {len(returncodes)} runtime configs")
+    else:
+        log(f"- SUCCESS! all {len(returncodes)} runtime configs")
+    sys.exit(numFailed > 0)
 
 import downstream  # type: ignore
 from downstream import dstream  # type: ignore
@@ -583,18 +689,6 @@ def write_parquet_verbose(df: pl.DataFrame, file_name: str) -> None:
     log("- verbose save complete!")
 
 
-# adapted from https://stackoverflow.com/a/31347222/17332200
-def add_bool_arg(parser, name, default=False):
-    group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument(
-        "--" + name, dest=name.replace("-", "_"), action="store_true"
-    )
-    group.add_argument(
-        "--no-" + name, dest=name.replace("-", "_"), action="store_false"
-    )
-    parser.set_defaults(**{name.replace("-", "_"): default})
-
-
 log("- reading env variables")
 # number of rows, columns, and genome words
 nCol = int(os.getenv("ASYNC_GA_NCOL", 3))
@@ -611,18 +705,6 @@ wavSize = 32  # number of bits in a wavelet
 tscSizeWords = 3  # number of 16-bit values in 48-bit timestamp values
 tscSizeWords += tscSizeWords % 2  # make even multiple of 32-bit words
 tscTicksPerSecond = 850 * 10**6  # 850 MHz
-
-log("- configuring argparse")
-parser = argparse.ArgumentParser()
-parser.add_argument("--name", help="the test compile output dir", default="out")
-add_bool_arg(parser, "suptrace", default=True)
-add_bool_arg(parser, "process-fossils", default=None)
-parser.add_argument("--cmaddr", help="IP:port for CS system")
-log("- parsing arguments")
-args = parser.parse_args()
-
-log("args =======================================================")
-log(args)
 
 log("metadata ===================================================")
 with open(f"{args.name}/out.json", encoding="utf-8") as json_file:
@@ -643,6 +725,78 @@ tournSize = (
 
 with open("compconf.json", encoding="utf-8") as json_file:
     compconf_data = json.load(json_file)
+
+log("- loading runtime config")
+dispatchSlug = pathlib.Path(args.runtime_config).stem
+log(f" - {dispatchSlug=}")
+comptimeConfigJson = json.dumps(
+    {
+        **{key: int(value) for key, value in compile_data["params"].items()},
+        "nRow": nRow,
+        "nCol": nCol,
+    },
+)
+log(f" - running {args.runtime_config}")  # comptime to stdin, npz from stdout
+runtimeConfigNpz = subprocess.run(
+    [sys.executable, args.runtime_config],
+    input=comptimeConfigJson.encode(),
+    stdout=subprocess.PIPE,
+    check=True,
+).stdout
+log(f" - runtime config npz is {len(runtimeConfigNpz)} bytes")
+with np.load(io.BytesIO(runtimeConfigNpz)) as npz_file:
+    runtimeConfig = dict(npz_file)
+log(f" - runtime config symbols {[*runtimeConfig]}")
+
+for i, (symbol, data) in enumerate(runtimeConfig.items(), start=1):
+    log(f" - {symbol} ({i} of {len(runtimeConfig)})")
+    log(f"   - {data.shape=} {data.dtype=}")
+    if data.ndim != 3 or data.shape[:2] != (nRow, nCol):
+        raise ValueError(f"{symbol} has bad {data.shape=}")
+    if data.dtype != np.uint32:
+        raise ValueError(f"{symbol} has bad {data.dtype=}")
+    log(f"   - {len(np.unique(data))=} {data.min()=} {data.max()=}")
+    log(f"   - head {data.ravel()[:8]} tail {data.ravel()[-8:]}")
+
+    validators = sorted(
+        pathlib.Path(__file__)
+        .resolve()
+        .parent.glob(f"runtime_config_validate/{symbol}/*.py")
+    )
+    log(f"   - {len(validators)} validators")
+    for j, validator in enumerate(validators, start=1):
+        log(f"   - running {validator} ({j} of {len(validators)})")
+        result = subprocess.run(
+            [sys.executable, validator, comptimeConfigJson],
+            input=runtimeConfigNpz,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        log(result.stdout.decode())
+        slug = f"{symbol}/{validator.stem}"
+        if result.returncode == 0:
+            pass
+        elif any(
+            fnmatch.fnmatch(slug, pattern)
+            for pattern in args.runtime_config_validate_lax
+        ):
+            warnings.warn(f"runtime config validator {slug} failed")
+        else:
+            raise ValueError(f"runtime config validator {slug} failed")
+
+# host treats these as global, so runtime config can't vary them between PEs
+if "rtc_globalSeed" in runtimeConfig:
+    globalSeed = np.unique(runtimeConfig["rtc_globalSeed"]).item()
+    log(f" - runtime config sets {globalSeed=}")
+if "rtc_nRowSubgrid" in runtimeConfig:
+    nRowSubgrid = np.unique(runtimeConfig["rtc_nRowSubgrid"]).item()
+    log(f" - runtime config sets {nRowSubgrid=}")
+if "rtc_nColSubgrid" in runtimeConfig:
+    nColSubgrid = np.unique(runtimeConfig["rtc_nColSubgrid"]).item()
+    log(f" - runtime config sets {nColSubgrid=}")
+if "rtc_nCycleAtLeast" in runtimeConfig:
+    nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
+    log(f" - runtime config sets {nCycleAtLeast=}")
 
 log(f" - applying globalSeed={globalSeed}")
 random.seed(globalSeed)
@@ -678,6 +832,7 @@ nWav = genomeData["nWav"][0]
 metadata = {
     "genomeFlavor": (genomeFlavor, pl.Categorical),
     "globalSeed": (globalSeed, pl.UInt32),
+    "dispatchSlug": (dispatchSlug, pl.Categorical),
     "populationFlavor": (populationFlavor, pl.Categorical),
     "memcpyMajor": (memcpyMajor, pl.Categorical),
     "nCol": (nCol, pl.UInt16),
@@ -765,6 +920,22 @@ log("- runner loaded")
 
 runner.run()
 log("- runner run ran")
+
+for symbol, data in runtimeConfig.items():
+    log(f" - copying {symbol} to device")
+    runner.memcpy_h2d(
+        runner.get_id(symbol),
+        np.ascontiguousarray(data).ravel(),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        data.shape[2],  # num wavelets
+        streaming=False,
+        data_type=MemcpyDataType.MEMCPY_32BIT,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
 
 runner.launch("dolaunch", nonblock=False)
 launch_ns = time.time_ns()
@@ -976,6 +1147,29 @@ if args.process_fossils is False:
 else:
     log(f" - processing fossils {nWav=}...")
     process_fossils(nWav)
+
+log("runtime config =============================================")
+runtimeConfigMismatches = []  # raise at end, so that outputs get saved
+for symbol, data in runtimeConfig.items():
+    log(f" - reading back {symbol}")
+    out_tensors = np.zeros_like(data)
+    runner.memcpy_d2h(
+        out_tensors.ravel(),
+        runner.get_id(symbol),
+        0,  # x0
+        0,  # y0
+        nCol,  # width
+        nRow,  # height
+        data.shape[2],  # num wavelets
+        streaming=False,
+        data_type=MemcpyDataType.MEMCPY_32BIT,
+        order=MemcpyOrder.ROW_MAJOR,
+        nonblock=False,
+    )
+    log(f"{symbol} {out_tensors[:20, :20, 0]}")
+    if not np.array_equal(out_tensors, data):
+        runtimeConfigMismatches.append(symbol)
+        warnings.warn(f"{symbol} on device differs from runtime config")
 
 log("whoami =====================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
@@ -1769,6 +1963,11 @@ del df, tsc_ticks, tsc_sec, tsc_cysec, tsc_cyhz, tsc_cyns, tscStart_ints, tscEnd
 
 # runner.dump("corefile.cs1")
 runner.stop()
+
+if runtimeConfigMismatches:
+    raise ValueError(
+        f"{runtimeConfigMismatches} on device differ from runtime config"
+    )
 
 # Ensure that the result matches our expectation
 log("SUCCESS!")

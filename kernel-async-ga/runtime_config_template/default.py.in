@@ -1,0 +1,26 @@
+"""Runtime config ${dispatch_slug}, from runtime_config_template/default.py.in.
+
+Reads comptime configs as JSON from stdin, and writes an npz file of per-PE
+values for rtc_* device symbols to stdout.
+"""
+
+import json
+import sys
+
+import numpy as np
+
+if __name__ == "__main__":
+    comptime_config = json.load(sys.stdin)
+    runtime_config = ${runtime_config}  # from jsonl
+    print("dispatch_slug ${dispatch_slug}", file=sys.stderr)
+    print(f"{comptime_config=}", file=sys.stderr)
+    print(f"{runtime_config=}", file=sys.stderr)
+
+    shape = (comptime_config["nRow"], comptime_config["nCol"], 1)
+    np.savez(  # only what runtime config sets, others keep comptime config
+        sys.stdout.buffer,
+        **{
+            f"rtc_{key}": np.full(shape, value, np.uint32)
+            for key, value in runtime_config.items()
+        },
+    )

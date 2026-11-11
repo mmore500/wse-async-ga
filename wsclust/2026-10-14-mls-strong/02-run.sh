@@ -174,6 +174,8 @@ for genome_flavor in genome_mls_2025_08_15; do
     cp -L "${CONFIG_COMPILE_WORKDIR}/client.py" .
     cp -rL "${CONFIG_COMPILE_WORKDIR}/wheelhouse" .
     cp -L "${CONFIG_COMPILE_WORKDIR}/compconf.json" .
+    cp -rL "${CONFIG_COMPILE_WORKDIR}/runtime_config_dispatch" .
+    cp -rL "${CONFIG_COMPILE_WORKDIR}/runtime_config_validate" .
     ls
     cat client.py
 

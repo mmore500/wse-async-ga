@@ -113,3 +113,17 @@ rsync -rI "$(readlink -f cerebraslib)" .
 # RuntimeError: Fabric dimension must be at least 9-by-4
 
 python3 -m compconf --compconf-jq ". += {\"ASYNC_GA_GENOME_FLAVOR:comptime_string\": \"${ASYNC_GA_GENOME_FLAVOR}\", \"ASYNC_GA_POPULATION_FLAVOR:comptime_string\": \"${ASYNC_GA_POPULATION_FLAVOR}\", \"ASYNC_GA_POPSIZE:u32\": ${ASYNC_GA_POPSIZE}}" --compconf-verbose --compconf-cslc "${CSLC}" layout.csl --arch=${ASYNC_GA_ARCH_FLAG} --import-path ./downstream/include --fabric-dims=${ASYNC_GA_FABRIC_DIMS} --fabric-offsets=${ASYNC_GA_FABRIC_OFFSETS_FLAG} --channels=${ASYNC_GA_CHANNELS_FLAG} --memcpy --params=globalSeed:${ASYNC_GA_GLOBAL_SEED},nCycleAtLeast:${ASYNC_GA_NCYCLE_AT_LEAST},msecAtLeast:${ASYNC_GA_MSEC_AT_LEAST},tscAtLeast:${ASYNC_GA_TSC_AT_LEAST},nRow:${ASYNC_GA_NROW},nCol:${ASYNC_GA_NCOL},nRowSubgrid:${ASYNC_GA_NROW_SUBGRID},nColSubgrid:${ASYNC_GA_NCOL_SUBGRID},nonBlock:${ASYNC_GA_NONBLOCK},popSize:${ASYNC_GA_POPSIZE},tournSizeNumerator:${ASYNC_GA_TOURNSIZE_NUMERATOR},tournSizeDenominator:${ASYNC_GA_TOURNSIZE_DENOMINATOR} -o out
+
+echo "make default runtime config ---------------------------------------------"
+# per-PE values copied to rtc_* device symbols before launch
+if [ "$(ls runtime_config_dispatch 2>/dev/null || :)" == "default.py" ]; then
+    echo "WARNING: overwriting runtime_config_dispatch/default.py" >&2
+    cat runtime_config_dispatch/default.py >&2
+    rm -rf runtime_config_dispatch
+fi
+if [ ! -d runtime_config_dispatch ]; then
+    python3 runtime_config_generate.py default.py.in
+else
+    echo "runtime_config_dispatch exists, keeping it"
+    ls runtime_config_dispatch
+fi

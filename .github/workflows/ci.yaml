@@ -196,9 +196,41 @@ jobs:
         run: |
           export ASYNC_GA_GENOME_FLAVOR="${{ matrix.genome }}"
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
+          # exercise dispatch of several runtime configs from one compile
+          if [ "${{ matrix.genome }}+${{ matrix.nonBlock }}" == "genome_bitdrift+1" ]; then
+            printf '%s\n' \
+              '{"dispatch_slug": "ci-sweep-globalSeed=1", "globalSeed": 1}' \
+              '{"dispatch_slug": "ci-sweep-globalSeed=2", "globalSeed": 2}' \
+              > runtime_config_sweep.jsonl
+            sudo env PATH=$PATH python3 \
+              ./kernel-async-ga/runtime_config_generate.py \
+              default.py.in runtime_config_sweep.jsonl
+          fi
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
           sudo -E env PATH=$PATH \
             ./kernel-async-ga/execute.sh
+
+      - name: Check runtime config dispatch
+        if: matrix.genome == 'genome_bitdrift' && matrix.nonBlock == 1
+        run: |
+          python3 -c "
+          import glob, polars as pl
+          seeds = {
+              'default': 0,
+              'ci-sweep-globalSeed=1': 1,
+              'ci-sweep-globalSeed=2': 2,
+          }
+          for name, seed in seeds.items():
+              paths = glob.glob(
+                  f'./kernel-async-ga/dispatch={name}/a=*+seed={seed}+*.pqt'
+              )
+              dfs = [*map(pl.read_parquet, paths)]
+              dfs = [df for df in dfs if 'dispatchSlug' in df.columns]
+              assert dfs, name
+              for df in dfs:
+                  assert (df['dispatchSlug'] == name).all(), name
+                  assert (df['globalSeed'] == seed).all(), name
+          "
 
   test-sample-populations:
     name: Test make sample population
