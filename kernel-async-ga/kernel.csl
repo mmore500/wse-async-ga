@@ -599,7 +599,8 @@ task sendFinalizeTask_P() void {
 
 // open async uthread to send from sendBuf, header is set at launch
 // (not mp.send_message: as of SDK v2.10.0, it sends the header
-// synchronously, which can stall the PE, and can't pin the microthread)
+// synchronously, which can stall the PE, and doesn't allow microthread
+// selection)
 fn doDispatchSend_P(comptime thread: u8) void {
   const sendDsd_P = @get_dsd(fabout_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = p2pMsgSize, .output_queue = mp.mp_output_queue, });
