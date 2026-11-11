@@ -568,8 +568,6 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // ============================================================================
 // exchange genomes with one partner PE anywhere on grid via message passing,
 // each message is a header wavelet, one genome, and a pad wavelet
-// (not mp.send_message/recv_message: they move the header synchronously,
-// which could stall the PE, and can't pin a microthread with ut_id)
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
 const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 2;
@@ -600,6 +598,8 @@ task sendFinalizeTask_P() void {
 }
 
 // open async uthread to send from sendBuf, header is set at launch
+// (not mp.send_message: it sends the header synchronously, which can stall
+// the PE, and can't pin the microthread)
 fn doDispatchSend_P(comptime thread: u8) void {
   const sendDsd_P = @get_dsd(fabout_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = p2pMsgSize, .output_queue = mp.mp_output_queue, });
@@ -640,6 +640,8 @@ task recvFinalizeTask_P() void { recvFlag_P = 1;
   if (closeoutRemaining == 0) { @unblock(ignRecvTaskID_P); }
 }
 
+// (not mp.recv_message: it reads the header synchronously, blocking the PE
+// until a message arrives)
 fn dispatchRecv_P() void {  // open async microthread to recv into recvBuf
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = p2pMsgSize, .input_queue = mp.mp_input_queue, });
