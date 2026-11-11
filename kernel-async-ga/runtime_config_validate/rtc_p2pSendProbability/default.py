@@ -21,7 +21,7 @@ def validate_rtc_p2pSendProbability_is_probability(
 def validate_rtc_p2pSendProbability_compiled_in(
     data: np.ndarray, comptime_config: dict
 ) -> None:
-    # kernel only has point-to-point exchange if compiled with nonzero send
+    # kernel only has p2p exchange if compiled with nonzero send
     # probability, otherwise runtime send probability has no effect
     probability = data.view(np.float32)
     assert (

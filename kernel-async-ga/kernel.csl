@@ -131,7 +131,7 @@ var ptr_sendCounter_E : [*]u32 = &sendCounter_E;
 var sendCounter_W = @zeros([1]u32);
 var ptr_sendCounter_W : [*]u32 = &sendCounter_W;
 
-var immCounter_P = @zeros([1]u32);  // point-to-point
+var immCounter_P = @zeros([1]u32);  // p2p
 var ptr_immCounter_P : [*]u32 = &immCounter_P;
 
 var traitCounts = @zeros([nTraitVals]u32);
@@ -564,9 +564,9 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 
 ///////////////////////////////////////////////////////////////////////////////
 // ============================================================================
-// point-to-point send/recv tasks
+// p2p send/recv tasks
 // ============================================================================
-// exchange genomes with another PE via point-to-point message passing,
+// exchange genomes with another PE via p2p message passing,
 // each message is a header wavelet, one genome, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
@@ -577,8 +577,8 @@ comptime {  // fixed-length message passing supports at most 31 wavelets
   if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
 }
 
-// runtime config: target col << 16 | row set by host; 0xFFFFFFFF means none
-var rtc_p2pTarget = [1]u32{ 0xFFFFFFFF };
+// runtime config: target col << 16 | row set by host
+var rtc_p2pTarget = [1]u32{ 0xFFFFFFFF };  // default none
 var ptr_rtc_p2pTarget : [*]u32 = &rtc_p2pTarget;
 var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
 var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
@@ -890,7 +890,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     if (xOffset == 0) sendFlag_W = 0;
   }
 
-  // set up point-to-point exchange, if any
+  // set up p2p exchange, if any
   if (p2pEnabled) {
     mp.init();
     busyThreads[p2pRecvThread] = 1;  // reserve microthread for p2p recv

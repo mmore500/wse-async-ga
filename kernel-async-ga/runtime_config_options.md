@@ -21,10 +21,10 @@ If no runtime config value is specified, symbols keep compile time default.
   - how many cycles to run for
   - sets `rtc_nCycleAtLeast`
 - `p2pSendProbability`
-  - chance per cycle to send to point-to-point target
+  - chance per cycle to send to p2p target
   - sets `rtc_p2pSendProbability`
 - `p2pMode`
-  - how point-to-point targets are assigned
+  - how p2p targets are assigned
   - `"none"`: no PE has a target, `rtc_p2pTarget` is not set
   - `"pairs"`: PEs target each other in random pairs within subgrid, one
     may be left unpaired; sets `rtc_p2pTarget`

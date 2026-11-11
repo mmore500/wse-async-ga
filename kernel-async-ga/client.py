@@ -1792,7 +1792,7 @@ log(f"{np.mean(immSum)=} {np.std(immSum)=} {sps.sem(immSum)=}")
 log(f"{np.median(immSum)=} {np.min(immSum)=} {np.max(immSum)=}")
 
 if p2pEnabled:
-    log("imm counter P (point-to-point) ======================")
+    log("imm counter P (p2p) ======================")
     out_tensors = np.zeros((nRow, nCol), np.uint32)
     runner.memcpy_d2h(
         out_tensors.ravel(),
@@ -1819,10 +1819,10 @@ if p2pEnabled:
             "tile": pl.Series(whoami_data.ravel(), dtype=pl.UInt32),
             "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
             "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
-            "target_row": pl.Series(p2pTarget & 0xFFFF, dtype=pl.UInt16),
-            "target_col": pl.Series(p2pTarget >> 16, dtype=pl.UInt16),
-            "has_target": pl.Series(p2pTarget != 0xFFFFFFFF),
-            "imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
+            "p2p_target_row": pl.Series(p2pTarget & 0xFFFF, dtype=pl.UInt16),
+            "p2p_target_col": pl.Series(p2pTarget >> 16, dtype=pl.UInt16),
+            "has_p2p_target": pl.Series(p2pTarget != 0xFFFFFFFF),
+            "p2p_imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
         }
     )
     df = with_subgrid_columns(df.lazy()).collect()

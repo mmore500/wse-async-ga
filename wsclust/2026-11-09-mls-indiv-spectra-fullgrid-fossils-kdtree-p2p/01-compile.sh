@@ -157,7 +157,7 @@ echo
 echo "compile configs --------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-# sweep point-to-point send probability on full grid (subgrid 0, i.e., no
+# sweep p2p send probability on full grid (subgrid 0, i.e., no
 # subgrids): off, then 1 in 200,000, 1 in 20,000, and 1 in 2,000 per cycle,
 # one fresh seed each
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
@@ -255,7 +255,7 @@ EOF
     echo "do compile: ${CONFIG_NAME} -------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
-    # runtime config sets point-to-point targets, if p2p enabled; otherwise,
+    # runtime config sets p2p targets, if p2p enabled; otherwise,
     # compile.sh generates default runtime config
     rm -rf "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch"
     if [ "${p2p}" != "0.0" ]; then
