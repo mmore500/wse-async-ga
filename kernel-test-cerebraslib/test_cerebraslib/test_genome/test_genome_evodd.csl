@@ -1,0 +1,214 @@
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const genome = @import_module(
+    "cerebraslib/genome/genome_evodd.csl", .{.rng = rng}
+);
+
+// reference values below are transcribed from a numpy float16 re-
+// implementation of `develop()`/`benefit()` from
+// https://github.com/mmore500/evodd/blob/main/bindle/2026-07-23-exploratory.py
+// (mirroring the CSL column-accumulation order for the matrix-vector
+// product), driven with a fixed embryo/dev-matrix fixture. Both embryo and
+// matrix fixture values are exact dyadic fractions (multiples of powers of
+// two), so there is no double-rounding ambiguity between numpy's float16
+// cast and CSL's f16 arithmetic. Empirically (verified on-simulator) CSL's
+// @fmach/tanh_f16 agree with the numpy reference to within ~0.001; the
+// tolerance below adds a safety margin on top of that for any remaining
+// hardware transcendental-approximation slack.
+const _tol_pa: f32 = 0.005;
+const _tol_fitness: f32 = 0.005;
+
+const _expected_pa = [genome.N]f32{
+    0.304199, -0.809570, -0.857910, 0.031128,
+    0.924316, 0.371338, -0.742188, -0.791016,
+    0.098267, 0.991211, 0.438232, -0.675293,
+    -0.723633, 0.165283, 1.058594, 0.505859,
+};
+
+// fitness for schedule block index (generation / _schedule_block_len) % 3
+// == 0, 1, 2 respectively (schedule dwells on each training pattern for
+// `_schedule_block_len` consecutive generations before advancing)
+const _expected_fitness = [3]f32{ 0.470630, 0.480907, 0.508790 };
+
+fn _assert_close(actual: f32, expected: f32, tol: f32) void {
+    @assert(math.abs(actual - expected) < tol);
+}
+
+// writes the fixed embryo/dev-matrix fixture (matching the reference
+// numpy script) into a genome's EMBRYO/DEV_MATRIX fields
+fn _write_fixture(g: genome.genomePtr_t) void {
+    const embryo_ptr = genome._ptr_embryo(g);
+    for (@range(u16, genome.N)) |i| {
+        embryo_ptr[i] = (@as(f16, i) / @as(f16, 8.0)) - @as(f16, 1.0);
+    }
+
+    const matrix_ptr = genome._ptr_matrix(g);
+    for (@range(u16, genome.N)) |i| {
+        for (@range(u16, genome.N)) |j| {
+            const raw = @as(i16, (i + j) % 5) - @as(i16, 2);
+            matrix_ptr[i * genome.N + j] = @as(f16, raw) * @as(f16, 0.0625);
+        }
+    }
+}
+
+fn test_calc_fitness_of() void {
+    var g = @zeros(genome.genome_t);
+    @assert(genome.calc_fitness_of(&g) == 0.0);
+}
+
+fn test_elapse_inheritance_of() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    const gp = @ptrcast([*]u32, &g);
+    const t0 = gp[1];
+    // the DSTREAM_T counter is a plain (unprotected, undilated) counter --
+    // confirm it advances by exactly 1 per generation regardless of
+    // whether a mutation happened to fire that generation
+    for (@range(u16, 20)) |i| {
+        genome.elapse_inheritance_of(&g);
+        @assert(gp[1] == t0 + @as(u32, i) + 1);
+    }
+}
+
+fn test_get_trait_value() void {
+    var g = @zeros(genome.genome_t);
+    @assert(genome.get_trait_value(&g) == 0);
+    @assert(genome.get_trait_value(&g) < @as(u32, genome.nTraitVals));
+}
+
+fn test_initialize_one() void {
+    var g = @zeros(genome.genome_t);
+    genome.initialize_one(&g);
+    // fitness is seeded with a real computed value at init (not a 0.0
+    // placeholder); with a freshly-zeroed dev matrix, regularization is 0
+    // and benefit (in [0, 1]) is the only contribution, regardless of the
+    // random embryo, so a loose range check suffices here.
+    const fitness = genome.calc_fitness_of(&g);
+    @assert(fitness >= 0.0);
+    @assert(fitness <= 1.0);
+
+    const embryo_ptr = genome._ptr_embryo(&g);
+    for (@range(u16, genome.N)) |i| {
+        @assert(embryo_ptr[i] >= @as(f16, -1.0));
+        @assert(embryo_ptr[i] <= @as(f16, 1.0));
+    }
+
+    const matrix_ptr = genome._ptr_matrix(&g);
+    for (@range(u16, genome.S_MATRIX)) |k| {
+        @assert(matrix_ptr[k] == @as(f16, 0.0));
+    }
+}
+
+// A schedule-block boundary must always force a fitness recompute,
+// regardless of whether the (probabilistic) mutation branch also fires
+// that same call -- deterministic, since crossing a block boundary is not
+// itself probabilistic.
+fn test_fitness_recomputes_on_schedule_boundary() void {
+    var g = @zeros(genome.genome_t);
+    _write_fixture(&g);
+    // isolate from whatever `_highest_seen_generation` prior tests left
+    // behind, so the boundary crossing below is deterministic
+    genome._highest_seen_generation = 0;
+    var gp = @ptrcast([*]u32, &g);
+    gp[1] = genome._schedule_block_len * 2; // exactly at a block boundary
+    var fp = @ptrcast(*f32, &g);
+    fp.* = -999.0; // obviously-stale sentinel
+
+    genome._apply_mutation(&g);
+
+    @assert(genome.calc_fitness_of(&g) != -999.0);
+}
+
+// Away from any schedule-block boundary, a call should skip the (expensive)
+// fitness recompute unless the probabilistic mutation branch fires --
+// statistical rather than strictly deterministic, but with mutation firing
+// at only ~1% per call, requiring a strong majority of 200 trials to leave
+// the cached value untouched is not expected to flake in practice.
+fn test_fitness_skips_when_unchanged() void {
+    var g = @zeros(genome.genome_t);
+    _write_fixture(&g);
+    // isolate from whatever `_highest_seen_generation` prior tests left
+    // behind, so gp[1] unambiguously determines the block below
+    genome._highest_seen_generation = 0;
+    var gp = @ptrcast([*]u32, &g);
+    gp[1] = genome._schedule_block_len / 2; // mid-block: never a boundary
+    const seeded = genome._compute_fitness(&g);
+    var fp = @ptrcast(*f32, &g);
+    fp.* = seeded;
+
+    var num_unchanged: u16 = 0;
+    for (@range(u16, 200)) |_| {
+        genome._apply_mutation(&g); // gp[1] held fixed: no boundary crossed
+        if (genome.calc_fitness_of(&g) == seeded) {
+            num_unchanged += 1;
+        } else {
+            fp.* = seeded; // reset the sentinel for the next trial
+        }
+    }
+    @assert(num_unchanged > 150);
+}
+
+// immigrant clobbering is disabled entirely for this genome (no parity
+// system to validate against), so clobber_immigrant should always decline
+// -- even when handed an obviously-corrupted-looking immigrant.
+fn test_clobber_immigrant_disabled() void {
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    genome.initialize_one(&resident);
+    genome.initialize_one(&immigrant);
+    @assert(!genome.clobber_immigrant(&resident, &immigrant));
+
+    var imm_ptr = @ptrcast([*]u32, &immigrant);
+    imm_ptr[1] = imm_ptr[1] ^ 1;
+    @assert(!genome.clobber_immigrant(&resident, &immigrant));
+}
+
+fn test_develop_matches_reference() void {
+    var g = @zeros(genome.genome_t);
+    _write_fixture(&g);
+
+    var out = @zeros([genome.N]f16);
+    genome._develop(
+        genome._ptr_embryo(&g), genome._ptr_matrix(&g), @ptrcast([*]f16, &out),
+    );
+
+    for (@range(u16, genome.N)) |i| {
+        _assert_close(@as(f32, out[i]), _expected_pa[i], _tol_pa);
+    }
+}
+
+fn test_calc_fitness_of_matches_reference() void {
+    // isolate from whatever `_highest_seen_generation` prior tests left
+    // behind; gen_mod * _schedule_block_len increases monotonically across
+    // iterations below, so a single reset up front suffices -- each
+    // iteration's gp[1] always exceeds the shared clock's prior value
+    genome._highest_seen_generation = 0;
+    for (@range(u16, 3)) |gen_mod| {
+        var g = @zeros(genome.genome_t);
+        _write_fixture(&g);
+        // encode a generation counter landing exactly at the start of the
+        // gen_mod'th schedule block, so the schedule (driven off the
+        // shared `_highest_seen_generation` PE-local clock, bumped up to
+        // this genome's counter here) selects the gen_mod'th training
+        // pattern
+        var gp = @ptrcast([*]u32, &g);
+        gp[1] = @as(u32, gen_mod) * genome._schedule_block_len;
+
+        const fitness = genome._compute_fitness(&g);
+        _assert_close(fitness, _expected_fitness[gen_mod], _tol_fitness);
+    }
+}
+
+fn do_test() void {
+    test_calc_fitness_of();
+    test_elapse_inheritance_of();
+    test_get_trait_value();
+    test_initialize_one();
+    test_fitness_recomputes_on_schedule_boundary();
+    test_fitness_skips_when_unchanged();
+    test_clobber_immigrant_disabled();
+    test_develop_matches_reference();
+    test_calc_fitness_of_matches_reference();
+}
