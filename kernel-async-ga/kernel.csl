@@ -598,8 +598,8 @@ task sendFinalizeTask_P() void {
 }
 
 // open async uthread to send from sendBuf, header is set at launch
-// (not mp.send_message: it sends the header synchronously, which can stall
-// the PE, and can't pin the microthread)
+// (not mp.send_message: as of SDK v2.10.0, it sends the header
+// synchronously, which can stall the PE, and can't pin the microthread)
 fn doDispatchSend_P(comptime thread: u8) void {
   const sendDsd_P = @get_dsd(fabout_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = p2pMsgSize, .output_queue = mp.mp_output_queue, });
@@ -640,8 +640,8 @@ task recvFinalizeTask_P() void { recvFlag_P = 1;
   if (closeoutRemaining == 0) { @unblock(ignRecvTaskID_P); }
 }
 
-// (not mp.recv_message: it reads the header with a synchronous move, which
-// blocks the PE until a message arrives)
+// (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
+// synchronous move, which blocks the PE until a message arrives)
 fn dispatchRecv_P() void {  // open async microthread to recv into recvBuf
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = p2pMsgSize, .input_queue = mp.mp_input_queue, });
