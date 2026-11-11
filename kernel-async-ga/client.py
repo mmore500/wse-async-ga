@@ -729,7 +729,7 @@ with open("compconf.json", encoding="utf-8") as json_file:
 p2pSendProbability = float(
     compconf_data.get("ASYNC_GA_P2P_SEND_PROBABILITY:f32", 0.0)
 )
-p2pEnabled = p2pSendProbability > 0.0  # compiled in?
+p2pEnabled = p2pSendProbability > 0.0. # p2p features available?
 log(f" - {p2pSendProbability=} {p2pEnabled=}")
 
 log("- loading runtime config")
