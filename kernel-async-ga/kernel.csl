@@ -888,9 +888,9 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
     busyThreads[p2pRecvThread] = 1;  // reserve microthread for partner recv
     if (rtc_p2pPartner[0] != 0xFFFFFFFF) {
       sendBuf_P[0] = mp.encode_header(
-        @as(u16, rtc_p2pPartner[0]),
-        @as(u16, rtc_p2pPartner[1]),
-        p2pMsgSize - 1
+        @as(u16, rtc_p2pPartner[0]),  // dest_col
+        @as(u16, rtc_p2pPartner[1]),  // dest_row
+        p2pMsgSize - 1  // length, wavelets after header: genome and pad
       );
       sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet;
       sendFlag_P = 1;

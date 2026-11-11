@@ -1159,7 +1159,6 @@ else:
 
 log("runtime config =============================================")
 runtimeConfigMismatches = []  # raise at end, so that outputs get saved
-runtimeConfigReadback = {}
 for symbol, data in runtimeConfig.items():
     log(f" - reading back {symbol}")
     out_tensors = np.zeros_like(data)
@@ -1177,7 +1176,6 @@ for symbol, data in runtimeConfig.items():
         nonblock=False,
     )
     log(f"{symbol} {out_tensors[:20, :20, 0]}")
-    runtimeConfigReadback[symbol] = out_tensors
     if not np.array_equal(out_tensors, data):
         runtimeConfigMismatches.append(symbol)
         warnings.warn(f"{symbol} on device differs from runtime config")
@@ -1813,8 +1811,8 @@ if p2pEnabled:
     log(immP[:20, :20])
     log(f"{np.mean(immP)=} {np.median(immP)=} {np.min(immP)=} {np.max(immP)=}")
 
-    # as read back from device with runtime config; unpaired if not set
-    p2pPartners = runtimeConfigReadback.get(
+    # checked against device by runtime config readback; unpaired if not set
+    p2pPartners = runtimeConfig.get(
         "rtc_p2pPartner",
         np.full((nRow, nCol, 2), 0xFFFFFFFF, dtype=np.uint32),
     )  # col, row

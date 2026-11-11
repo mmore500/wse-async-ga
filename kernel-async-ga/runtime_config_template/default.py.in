@@ -1,12 +1,7 @@
 """Runtime config ${dispatch_slug}, from runtime_config_template/default.py.in.
 
 Reads comptime configs as JSON from stdin, and writes an npz file of per-PE
-values for rtc_* device symbols to stdout.
-
-Besides comptime configs, jsonl may set `p2pMode` for point-to-point partners:
-"none" (default) leaves all PEs unpaired, and "pairs" pairs each PE with one
-random partner within its subgrid, leaving one PE per subgrid unpaired if their
-count is odd. `p2pSeed` seeds the pairing, defaulting to `globalSeed`.
+values for rtc_* device symbols to stdout. See runtime_config_options.md.
 """
 
 import itertools as it
@@ -27,8 +22,10 @@ if __name__ == "__main__":
     # only what runtime config sets, others keep comptime config
     symbols = {
         f"rtc_{key}": np.full(shape, runtime_config[key], np.uint32)
-        for key in ("globalSeed", "nRowSubgrid", "nColSubgrid", "nCycleAtLeast")
-        if key in runtime_config
+        for key in sorted(
+            {"globalSeed", "nRowSubgrid", "nColSubgrid", "nCycleAtLeast"}
+            & runtime_config.keys()
+        )
     }
     if "p2pSendProbability" in runtime_config:  # float32, copied as raw bits
         symbols["rtc_p2pSendProbability"] = np.full(
