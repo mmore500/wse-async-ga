@@ -568,6 +568,8 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // ============================================================================
 // exchange genomes with one partner PE anywhere on grid via message passing,
 // each message is a header wavelet, one genome, and a pad wavelet
+// (not mp.send_message/recv_message: they move the header synchronously,
+// which could stall the PE, and can't pin a microthread with ut_id)
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
 const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 2;
