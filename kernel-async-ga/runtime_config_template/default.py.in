@@ -17,28 +17,10 @@ if __name__ == "__main__":
     print(f"{runtime_config=}", file=sys.stderr)
 
     shape = (comptime_config["nRow"], comptime_config["nCol"], 1)
-    np.savez(
+    np.savez(  # only what runtime config sets, others keep comptime config
         sys.stdout.buffer,
-        rtc_globalSeed=np.full(
-            shape,
-            runtime_config.get("globalSeed", comptime_config["globalSeed"]),
-            np.uint32,
-        ),
-        rtc_nRowSubgrid=np.full(
-            shape,
-            runtime_config.get("nRowSubgrid", comptime_config["nRowSubgrid"]),
-            np.uint32,
-        ),
-        rtc_nColSubgrid=np.full(
-            shape,
-            runtime_config.get("nColSubgrid", comptime_config["nColSubgrid"]),
-            np.uint32,
-        ),
-        rtc_nCycleAtLeast=np.full(
-            shape,
-            runtime_config.get(
-                "nCycleAtLeast", comptime_config["nCycleAtLeast"]
-            ),
-            np.uint32,
-        ),
+        **{
+            f"rtc_{key}": np.full(shape, value, np.uint32)
+            for key, value in runtime_config.items()
+        },
     )
