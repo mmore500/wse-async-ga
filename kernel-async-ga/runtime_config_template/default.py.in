@@ -2,8 +2,11 @@
 
 Reads comptime configs as JSON from stdin, and writes an npz file of per-PE
 values for rtc_* device symbols to stdout.
+
+See `runtime_config_options.md`.
 """
 
+import itertools as it
 import json
 import sys
 
@@ -16,11 +19,54 @@ if __name__ == "__main__":
     print(f"{comptime_config=}", file=sys.stderr)
     print(f"{runtime_config=}", file=sys.stderr)
 
-    shape = (comptime_config["nRow"], comptime_config["nCol"], 1)
-    np.savez(  # only what runtime config sets, others keep comptime config
-        sys.stdout.buffer,
-        **{
-            f"rtc_{key}": np.full(shape, value, np.uint32)
-            for key, value in runtime_config.items()
-        },
-    )
+    nRow, nCol = comptime_config["nRow"], comptime_config["nCol"]
+    shape = (nRow, nCol, 1)
+    # only what runtime config sets, others keep comptime config
+    symbols = {
+        f"rtc_{key}": np.full(shape, runtime_config[key], np.uint32)
+        for key in sorted(
+            {"globalSeed", "nRowSubgrid", "nColSubgrid", "nCycleAtLeast"}
+            & runtime_config.keys()
+        )
+    }
+    if "p2pSendProbability" in runtime_config:  # float32, copied as raw bits
+        symbols["rtc_p2pSendProbability"] = np.full(
+            shape, runtime_config["p2pSendProbability"], np.float32
+        ).view(np.uint32)
+
+    p2pMode = runtime_config.get("p2pMode", "none")
+    if p2pMode == "none":
+        pass
+    elif p2pMode == "pairs":
+        globalSeed, nRowSubgrid, nColSubgrid = (
+            runtime_config.get(key, comptime_config[key])
+            for key in ("globalSeed", "nRowSubgrid", "nColSubgrid")
+        )
+        rng = np.random.default_rng(runtime_config.get("p2pSeed", globalSeed))
+        tile = np.arange(nRow * nCol).reshape(nRow, nCol)
+        target = np.full(nRow * nCol, -1)  # tile id, -1 for none
+        for row, col in it.product(
+            range(0, nRow, nRowSubgrid or nRow),
+            range(0, nCol, nColSubgrid or nCol),
+        ):
+            subgrid = tile[
+                row : row + (nRowSubgrid or nRow),
+                col : col + (nColSubgrid or nCol),
+            ]
+            tiles = rng.permutation(subgrid.ravel())
+            a, b = tiles[: len(tiles) // 2 * 2].reshape(-1, 2).T
+            target[a], target[b] = b, a
+
+        # check target's target is self, and not self
+        paired = np.flatnonzero(target != -1)
+        assert (target[paired] != paired).all()
+        assert (target[target[paired]] == paired).all()
+        symbols["rtc_p2pTarget"] = np.where(
+            target != -1,
+            (target % nCol) << 16 | (target // nCol),  # col << 16 | row
+            0xFFFFFFFF,
+        ).astype(np.uint32).reshape(shape)
+    else:
+        raise ValueError(f"unknown {p2pMode=}")
+
+    np.savez(sys.stdout.buffer, **symbols)
