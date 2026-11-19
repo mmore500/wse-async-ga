@@ -1031,9 +1031,6 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
         print("|", end="", flush=True)
         continue
 
-# wait until cycleCounter exceeds nCycleAtLeast, which PEs only do once
-# closeout is done; it reaches nCycleAtLeast before end-state telemetry is
-# written in final cycle
 log(f"- {nonBlock=}, if True waiting for last kernel to finish...")
 for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     elapsed_ns = time.time_ns() - launch_ns
