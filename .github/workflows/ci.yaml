@@ -23,7 +23,7 @@ jobs:
       - name: Set up Python
         id: setup-python-1
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -33,7 +33,7 @@ jobs:
         id: setup-python-2
         if: steps.setup-python-1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -41,7 +41,7 @@ jobs:
         run: sleep 10
       - name: Set up Python (retry 2)
         if: steps.setup-python-2.outcome == 'failure'
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -67,7 +67,7 @@ jobs:
       - name: Set up Python
         id: setup-python-1
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Wait before retrying Python setup
@@ -77,7 +77,7 @@ jobs:
         id: setup-python-2
         if: steps.setup-python-1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Wait before retrying Python setup
@@ -85,7 +85,7 @@ jobs:
         run: sleep 10
       - name: Set up Python (retry 2)
         if: steps.setup-python-2.outcome == 'failure'
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -167,7 +167,7 @@ jobs:
       - name: Set up Python
         id: setup-python-1
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -177,7 +177,7 @@ jobs:
         id: setup-python-2
         if: steps.setup-python-1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -185,7 +185,7 @@ jobs:
         run: sleep 10
       - name: Set up Python (retry 2)
         if: steps.setup-python-2.outcome == 'failure'
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -361,7 +361,7 @@ jobs:
       - name: Set up Python
         id: setup-python-1
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -371,7 +371,7 @@ jobs:
         id: setup-python-2
         if: steps.setup-python-1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -379,7 +379,7 @@ jobs:
         run: sleep 10
       - name: Set up Python (retry 2)
         if: steps.setup-python-2.outcome == 'failure'
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -557,7 +557,7 @@ jobs:
       - name: Set up Python
         id: setup-python-1
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -567,7 +567,7 @@ jobs:
         id: setup-python-2
         if: steps.setup-python-1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -575,7 +575,7 @@ jobs:
         run: sleep 10
       - name: Set up Python (retry 2)
         if: steps.setup-python-2.outcome == 'failure'
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -764,7 +764,7 @@ jobs:
       - name: Set up Python
         id: setup-python-1
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -774,7 +774,7 @@ jobs:
         id: setup-python-2
         if: steps.setup-python-1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Wait before retrying Python setup
@@ -782,7 +782,7 @@ jobs:
         run: sleep 10
       - name: Set up Python (retry 2)
         if: steps.setup-python-2.outcome == 'failure'
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
