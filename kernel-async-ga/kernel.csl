@@ -111,7 +111,7 @@ var ptr_immCounter_W : [*]u32 = &immCounter_W;
 var clobberCounter = @zeros([1]u32);  // how many immigrant clobbers occur?
 var ptr_clobberCounter : [*]u32 = &clobberCounter;
 // how many self-activation cycles elapse?
-// final cycle, then nCycleAtLeast + 1 once final cycle and closeout are done
+// set to nCycleAtLeast + 1 after final cycle and closeout complete
 var cycleCounter = @zeros([1]u32);
 var ptr_cycleCounter : [*]u32 = &cycleCounter;
 
