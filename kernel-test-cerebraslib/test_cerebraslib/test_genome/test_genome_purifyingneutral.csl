@@ -5,11 +5,14 @@ const genome = @import_module(
 );
 
 fn _check_parity(g: *genome.genome_t) void {
-    const gp = @ptrcast([*]u32, g);
-    @assert(!opscalar.parity32(gp[1])); // even parity over whole T word
-    @assert(@as(u32, opscalar.parity32(gp[2])) == ((gp[1] >> 1) & 1));
-    @assert(@as(u32, opscalar.parity32(gp[3])) == ((gp[1] >> 2) & 1));
-    @assert(@as(u32, opscalar.parity32(gp[4])) == ((gp[1] >> 3) & 1));
+    const f = genome._cast_fields(@ptrcast(genome.genomePtr_t, g));
+    @assert(!opscalar.parity32(f.*.hstrat_T)); // even parity over whole T word
+    for (@range(u16, 3)) |i| {
+        @assert(
+            @as(u32, opscalar.parity32(f.*.hstrat_storage[i]))
+            == ((f.*.hstrat_T >> (i + 1)) & 1)
+        );
+    }
 }
 
 fn test_elapse_inheritance_of() void {

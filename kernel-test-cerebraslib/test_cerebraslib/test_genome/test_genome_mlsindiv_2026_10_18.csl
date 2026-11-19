@@ -3,6 +3,11 @@ const random = @import_module("<random>");
 
 const genome_mls = @import_module("cerebraslib/genome/genome_mlsindiv_2026_10_18.csl");
 
+/// View genome words through memory layout struct.
+fn _fields(g: *genome_mls.genome_t) *genome_mls.fields_t {
+    return genome_mls._cast_fields(g);
+}
+
 
 fn test_builtin_random_seeding() void {
     random.set_global_prng_seed(1);
@@ -159,9 +164,9 @@ fn test_elapse_inheritance_of() void {
     }
 
     // hstrat bitfield
-    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
-        var genome_i = genome[i];
-        while (genome_i == genome[i]) {
+    for (@range(u16, 4)) |i| {
+        var storage_i = _fields(&genome).*.hstrat_storage[i];
+        while (storage_i == _fields(&genome).*.hstrat_storage[i]) {
             genome_mls.elapse_inheritance_of(genome_ptr);
         }
     }
@@ -193,10 +198,10 @@ fn test_get_trait_value() void {
 
     // neutral sites don't affect trait value
     genome[0] ^= 0xFF000000;
-    genome[1] ^= 0xFFFFFFFF;
+    _fields(&genome).*.hstrat_storage[0] ^= 0xFFFFFFFF;
     @assert(genome_mls.get_trait_value(genome_ptr) == 1);
     genome[0] ^= 0xFF000000;
-    genome[1] ^= 0xFFFFFFFF;
+    _fields(&genome).*.hstrat_storage[0] ^= 0xFFFFFFFF;
 
     genome[0] |= 0x00010000;
     @assert(genome_mls.get_trait_value(genome_ptr) == 2);
@@ -219,14 +224,14 @@ fn test_initialize_one() void {
     genome_mls.initialize_one(genome_ptr);
     @assert(genome[0] == 0x0F000080);
     @assert(genome_mls._get_counter(genome_ptr) == 128);
-    @assert(genome[1] != 0);
-    @assert(genome[2] != 0);
-    @assert(genome[3] != 0);
-    @assert(genome[4] != 0);
-    @assert(genome[1] != genome[2]);
-    @assert(genome[2] != genome[3]);
-    @assert(genome[3] != genome[4]);
-    @assert(genome[4] != genome[1]);
+    @assert(_fields(&genome).*.hstrat_storage[0] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[1] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[2] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[3] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[0] != _fields(&genome).*.hstrat_storage[1]);
+    @assert(_fields(&genome).*.hstrat_storage[1] != _fields(&genome).*.hstrat_storage[2]);
+    @assert(_fields(&genome).*.hstrat_storage[2] != _fields(&genome).*.hstrat_storage[3]);
+    @assert(_fields(&genome).*.hstrat_storage[3] != _fields(&genome).*.hstrat_storage[0]);
     @assert(!genome_mls._is_clear(genome_ptr));
 }
 
@@ -267,7 +272,7 @@ fn test_clobber_immigrant() void {
     for (@range(u16, 32)) |_| {
         genome_mls.initialize_one(imm_ptr);
         imm[0] ^= 0xFF000000;
-        imm[1] ^= 0xFFFFFFFF;
+        _fields(&imm).*.hstrat_storage[0] ^= 0xFFFFFFFF;
         @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
         @assert(!genome_mls._is_clear(imm_ptr));
     }

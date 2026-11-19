@@ -2,6 +2,11 @@ const random = @import_module("<random>");
 
 const genome_mls = @import_module("cerebraslib/genome/genome_mls_2025_08_15.csl");
 
+/// View genome words through memory layout struct.
+fn _fields(g: *genome_mls.genome_t) *genome_mls.fields_t {
+    return genome_mls._cast_fields(g);
+}
+
 
 fn test_builtin_random_seeding() void {
     random.set_global_prng_seed(1);
@@ -15,30 +20,30 @@ fn test_elapse_inheritance_of() void {
     var genome = @zeros(genome_mls.genome_t);
     var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
     genome_mls.initialize_one(genome_ptr);
-    @assert(genome[2] == 128);
+    @assert(_fields(&genome).*.hstrat_T == 128);
 
     genome_mls.elapse_inheritance_of(genome_ptr);
-    @assert(genome[2] == 130);
+    @assert(_fields(&genome).*.hstrat_T == 130);
 
     genome_mls.elapse_inheritance_of(genome_ptr);
-    @assert(genome[2] == 132);
+    @assert(_fields(&genome).*.hstrat_T == 132);
 
     // genome flags
     for (@range(u16, 2)) |i| {
-        var genome_i = genome[i];
-        while (genome_i == genome[i]) {
+        var genome_i = _fields(&genome).*.flag_sites[i];
+        while (genome_i == _fields(&genome).*.flag_sites[i]) {
             genome_mls._apply_mutation(genome_ptr, 8);
         }
-        genome_i = genome[i];
-        while (genome_i != genome[i]) {
+        genome_i = _fields(&genome).*.flag_sites[i];
+        while (genome_i != _fields(&genome).*.flag_sites[i]) {
             genome_mls._apply_mutation(genome_ptr, 8);
         }
     }
 
     // genome
-    for (@range(u16, 3, 7, 1)) |i| {
-        var genome_i = genome[i];
-        while (genome_i == genome[i]) {
+    for (@range(u16, 4)) |i| {
+        var genome_i = _fields(&genome).*.hstrat_storage[i];
+        while (genome_i == _fields(&genome).*.hstrat_storage[i]) {
             genome_mls.elapse_inheritance_of(genome_ptr);
         }
     }
@@ -53,10 +58,10 @@ fn test_calc_fitness_of() void {
     genome_mls.initialize_one(genome_ptr);
     @assert(genome_mls.calc_fitness_of(genome_ptr) == 1.0);
 
-    genome[0] ^= 1;
+    _fields(&genome).*.flag_sites[0] ^= 1;
     @assert(genome_mls.calc_fitness_of(genome_ptr) == 2.0);
 
-    genome[0] ^= 1;
+    _fields(&genome).*.flag_sites[0] ^= 1;
     @assert(genome_mls.calc_fitness_of(genome_ptr) == 1.0);
 
     genome_mls._clear(genome_ptr);
@@ -77,13 +82,13 @@ fn test_get_trait_value() void {
         genome_mls.get_trait_value(genome_ptr) < @as(u32, genome_mls.nTraitVals)
     );
 
-    genome[0] ^= 1;
+    _fields(&genome).*.flag_sites[0] ^= 1;
     @assert(genome_mls.get_trait_value(genome_ptr) == 2);
     @assert(
         genome_mls.get_trait_value(genome_ptr) < @as(u32, genome_mls.nTraitVals)
     );
 
-    genome[0] ^= 1;
+    _fields(&genome).*.flag_sites[0] ^= 1;
     @assert(genome_mls.get_trait_value(genome_ptr) == 1);
     @assert(
         genome_mls.get_trait_value(genome_ptr) < @as(u32, genome_mls.nTraitVals)
@@ -100,17 +105,17 @@ fn test_initialize_one() void {
     var genome = @zeros(genome_mls.genome_t);
     var genome_ptr = @ptrcast(genome_mls.genomePtr_t, &genome[0]);
     genome_mls.initialize_one(genome_ptr);
-    @assert(genome[0] == 0x0F);
-    @assert(genome[1] == 0);
-    @assert(genome[2] == 128);
-    @assert(genome[3] != 0);
-    @assert(genome[4] != 0);
-    @assert(genome[5] != 0);
-    @assert(genome[6] != 0);
-    @assert(genome[3] != genome[4]);
-    @assert(genome[4] != genome[5]);
-    @assert(genome[5] != genome[6]);
-    @assert(genome[6] != genome[3]);
+    @assert(_fields(&genome).*.flag_sites[0] == 0x0F);
+    @assert(_fields(&genome).*.flag_sites[1] == 0);
+    @assert(_fields(&genome).*.hstrat_T == 128);
+    @assert(_fields(&genome).*.hstrat_storage[0] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[1] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[2] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[3] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[0] != _fields(&genome).*.hstrat_storage[1]);
+    @assert(_fields(&genome).*.hstrat_storage[1] != _fields(&genome).*.hstrat_storage[2]);
+    @assert(_fields(&genome).*.hstrat_storage[2] != _fields(&genome).*.hstrat_storage[3]);
+    @assert(_fields(&genome).*.hstrat_storage[3] != _fields(&genome).*.hstrat_storage[0]);
 }
 
 fn test_clobber_immigrant() void {
@@ -136,7 +141,7 @@ fn test_clobber_immigrant() void {
 
     for (@range(u8, 255)) |_| {
         genome_mls.initialize_one(imm_ptr);
-        imm[0] ^= 1; // set focal mutation
+        _fields(&imm).*.flag_sites[0] ^= 1; // set focal mutation
         @assert(genome_mls.get_trait_value(imm_ptr) == 2);
         genome_mls.clobber_immigrant(resident_ptr, imm_ptr);
         @assert(genome_mls._is_clear(imm_ptr));
@@ -157,7 +162,7 @@ fn test_clobber_immigrant() void {
         @assert(!genome_mls._is_clear(imm_ptr));
     }
 
-    imm[0] ^= 1; // set focal mutation
+    _fields(&imm).*.flag_sites[0] ^= 1; // set focal mutation
     @assert(genome_mls.get_trait_value(imm_ptr) == 2);
 
     @assert(genome_mls._is_clear(empty_resident_ptr));
@@ -169,7 +174,7 @@ fn test_clobber_immigrant() void {
     @assert(genome_mls._is_clear(imm_ptr));
     while (genome_mls._is_clear(imm_ptr)) {
         genome_mls.initialize_one(imm_ptr);
-        imm[0] ^= 1; // set focal mutation
+        _fields(&imm).*.flag_sites[0] ^= 1; // set focal mutation
         @assert(genome_mls.get_trait_value(imm_ptr) == 2);
         genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr);
     }
