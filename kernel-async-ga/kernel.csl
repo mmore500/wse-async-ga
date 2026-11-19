@@ -690,7 +690,7 @@ fn closeoutRecv() void {
 }
 
 task closeoutTask() void {
-  const isComplete = closeoutSend();
+  const closeoutComplete = closeoutSend();
   if (isComplete) {
     if (nonBlock == 0) memcpy.unblock_cmd_stream();  // terminate
   } else { @activate(closeoutTaskID); }  // trigger next cycle
@@ -698,7 +698,7 @@ task closeoutTask() void {
 
   // count final cycle to signal closeout completion
   // after end-state telemetry is ready
-  if (isComplete) cycleCounter[0] += 1;
+  if (closeoutComplete) cycleCounter[0] += 1;
 }
 ///////////////////////////////////////////////////////////////////////////////
 
