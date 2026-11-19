@@ -110,14 +110,10 @@ var immCounter_W = @zeros([1]u32);
 var ptr_immCounter_W : [*]u32 = &immCounter_W;
 var clobberCounter = @zeros([1]u32);  // how many immigrant clobbers occur?
 var ptr_clobberCounter : [*]u32 = &clobberCounter;
-var cycleCounter = @zeros([1]u32);  // how many self-activation cycles elapse?
+// how many self-activation cycles elapse? reaches nCycleAtLeast before the
+// final cycle, then nCycleAtLeast + 1 once final cycle and closeout are done
+var cycleCounter = @zeros([1]u32);
 var ptr_cycleCounter : [*]u32 = &cycleCounter;
-// set once PE's closeout is done, i.e., after its last-cycle telemetry is
-// written and its sends complete; nonBlock host waits on it before reading
-// end-state telemetry, as cycleCounter reaches its final value one cycle
-// before that telemetry is written
-var closeoutComplete = @zeros([1]u32);
-var ptr_closeoutComplete : [*]u32 = &closeoutComplete;
 
 var recvCounter_N = @zeros([1]u32);  // number recv's opened + number filled
 var ptr_recvCounter_N : [*]u32 = &recvCounter_N;
@@ -698,8 +694,10 @@ task closeoutTask() void {
   if (isComplete) {
     if (nonBlock == 0) memcpy.unblock_cmd_stream();  // terminate
   } else { @activate(closeoutTaskID); }  // trigger next cycle
-  closeoutRecv();  // run LAST in either case, except for completion flag
-  if (isComplete) closeoutComplete[0] = 1;  // for host, in nonBlock mode
+  closeoutRecv();  // run LAST in either case, except for cycle count
+  // count final cycle once closeout is done, so nonBlock host can tell when
+  // end-state telemetry (written in final cycle) is ready
+  if (isComplete) cycleCounter[0] += 1;
 }
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1017,7 +1015,6 @@ comptime {
 comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_clobberCounter, "clobberCounter");
   @export_symbol(ptr_cycleCounter, "cycleCounter");
-  @export_symbol(ptr_closeoutComplete, "closeoutComplete");
   @export_symbol(ptr_immCounter_N, "immCounter_N");
   @export_symbol(ptr_immCounter_S, "immCounter_S");
   @export_symbol(ptr_immCounter_E, "immCounter_E");

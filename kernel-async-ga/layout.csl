@@ -55,7 +55,6 @@ layout {
 
   @export_name("clobberCounter", [*]u32, true);
   @export_name("cycleCounter", [*]u32, true);
-  @export_name("closeoutComplete", [*]u32, true);
   @export_name("immCounter_N", [*]u32, true);
   @export_name("immCounter_S", [*]u32, true);
   @export_name("immCounter_E", [*]u32, true);
