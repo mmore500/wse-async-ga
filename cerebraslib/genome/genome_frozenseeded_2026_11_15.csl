@@ -1,0 +1,90 @@
+// memory layout ===============================================================
+// byte 0 BITFIELD (4 bytes)
+// byte 1
+// byte 2
+// byte 3
+// TOTAL: 1 word -> 4 bytes
+//
+// Frozen genomes, seeded at one PE ============================================
+// Genomes never mutate, and are either "full" (the literal valFull) or
+// "empty" (all zero).
+//
+// Init rule: genomes are initialized empty everywhere, except on the PE at
+// col 0, row 0 of the PE array, where they are initialized full.
+//
+// Full genomes have fitness 1 and empty genomes fitness 0, so full genomes
+// displace empty genomes wherever they arrive. All full genomes thus descend
+// from the PE 0, 0 seed population, and can only reach other PEs by
+// migration, which makes their spread a direct readout of migration
+// (neighbor exchange and p2p).
+//
+// Trait values are 0 for full genomes and 1 for empty genomes. The kernel's
+// trait logger records whether trait value 0 is present, so its time series
+// tracks presence/absence of full genomes.
+
+//! {
+//!     "nWav": (1, pl.UInt8),
+//! }
+
+// module imports =============================================================
+const layout_module = @import_module("<layout>");
+
+// module config specs ========================================================
+const gSize: u16 = 1;
+const genome_t = [gSize]u32;
+const genomePtr_t = [*]u32;
+const nTraitVals: u16 = 2;
+const hasImmClobber: bool = false;
+const hasNotifyExtinct: bool = false;
+
+const valFull: u32 = 1692398096;
+const valEmpty: u32 = 0;
+
+const traitFull: u32 = 0;
+const traitEmpty: u32 = 1;
+
+// internal functions =========================================================
+fn _is_full(genome: genomePtr_t) bool { return genome[0] == valFull; }
+
+fn _is_empty(genome: genomePtr_t) bool { return genome[0] == valEmpty; }
+
+fn _validate(genome: genomePtr_t) bool {
+    return _is_full(genome) or _is_empty(genome);
+}
+
+/// Init rule: is the PE at col x, row y seeded with full genomes?
+fn _is_seeded_pe(x: u16, y: u16) bool { return x == 0 and y == 0; }
+
+/// Helper function for testability.
+fn _initialize_one_at(genome: genomePtr_t, x: u16, y: u16) void {
+    genome[0] = if (_is_seeded_pe(x, y)) valFull else valEmpty;
+}
+
+// public API =================================================================
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    @assert(_validate(genome));
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    @assert(_validate(genome));
+    return if (_is_full(genome)) 1.0 else 0.0;
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    return if (_is_full(genome)) traitFull else traitEmpty;
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    _initialize_one_at(
+        genome, layout_module.get_x_coord(), layout_module.get_y_coord()
+    );
+    @assert(_validate(genome));
+}
+
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
+}
+
+fn notify_extinct() void {}

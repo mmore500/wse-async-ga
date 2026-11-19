@@ -1,0 +1,129 @@
+const genome_frozenseeded = @import_module("cerebraslib/genome/genome_frozenseeded_2026_11_15.csl");
+
+fn test_initialize_one_at() void {
+    var genome = @zeros(genome_frozenseeded.genome_t);
+
+    // init rule: full only on PE at col 0, row 0
+    genome_frozenseeded._initialize_one_at(&genome, 0, 0);
+    @assert(genome_frozenseeded._is_full(&genome));
+    @assert(!genome_frozenseeded._is_empty(&genome));
+    @assert(genome_frozenseeded._validate(&genome));
+
+    // empty everywhere else, overwriting prior content
+    genome_frozenseeded._initialize_one_at(&genome, 1, 0);
+    @assert(genome_frozenseeded._is_empty(&genome));
+    @assert(!genome_frozenseeded._is_full(&genome));
+    @assert(genome_frozenseeded._validate(&genome));
+
+    genome[0] = genome_frozenseeded.valFull;
+    genome_frozenseeded._initialize_one_at(&genome, 0, 1);
+    @assert(genome_frozenseeded._is_empty(&genome));
+
+    genome[0] = genome_frozenseeded.valFull;
+    genome_frozenseeded._initialize_one_at(&genome, 754, 1169);
+    @assert(genome_frozenseeded._is_empty(&genome));
+}
+
+fn test_is_seeded_pe() void {
+    @assert(genome_frozenseeded._is_seeded_pe(0, 0));
+    @assert(!genome_frozenseeded._is_seeded_pe(1, 0));
+    @assert(!genome_frozenseeded._is_seeded_pe(0, 1));
+    @assert(!genome_frozenseeded._is_seeded_pe(1, 1));
+    @assert(!genome_frozenseeded._is_seeded_pe(754, 1169));
+}
+
+fn test_initialize_one() void {
+    // test layout is a single PE, at col 0, row 0, so it is seeded
+    var genome = @zeros(genome_frozenseeded.genome_t);
+    genome_frozenseeded.initialize_one(&genome);
+    @assert(genome_frozenseeded._is_full(&genome));
+    @assert(genome_frozenseeded._validate(&genome));
+}
+
+fn test_validate() void {
+    var genome = @zeros(genome_frozenseeded.genome_t);
+    @assert(genome_frozenseeded._validate(&genome));
+    genome[0] = genome_frozenseeded.valFull;
+    @assert(genome_frozenseeded._validate(&genome));
+    genome[0] = genome_frozenseeded.valFull ^ 1;
+    @assert(!genome_frozenseeded._validate(&genome));
+}
+
+fn test_elapse_inheritance_of() void {
+    // genomes are frozen, whether full or empty
+    var genome = @zeros(genome_frozenseeded.genome_t);
+    genome_frozenseeded._initialize_one_at(&genome, 0, 0);
+    for (@range(u16, 8)) |_| {
+        genome_frozenseeded.elapse_inheritance_of(&genome);
+        @assert(genome_frozenseeded._is_full(&genome));
+    }
+    genome_frozenseeded._initialize_one_at(&genome, 1, 1);
+    for (@range(u16, 8)) |_| {
+        genome_frozenseeded.elapse_inheritance_of(&genome);
+        @assert(genome_frozenseeded._is_empty(&genome));
+    }
+}
+
+fn test_calc_fitness_of() void {
+    // empty genomes have lower fitness than full genomes
+    var full = @zeros(genome_frozenseeded.genome_t);
+    var empty = @zeros(genome_frozenseeded.genome_t);
+    genome_frozenseeded._initialize_one_at(&full, 0, 0);
+    genome_frozenseeded._initialize_one_at(&empty, 1, 1);
+    @assert(genome_frozenseeded.calc_fitness_of(&full) == 1.0);
+    @assert(genome_frozenseeded.calc_fitness_of(&empty) == 0.0);
+    @assert(
+        genome_frozenseeded.calc_fitness_of(&empty)
+        < genome_frozenseeded.calc_fitness_of(&full)
+    );
+}
+
+fn test_get_trait_value() void {
+    // full is trait value 0, which kernel trait logger tracks presence of
+    var full = @zeros(genome_frozenseeded.genome_t);
+    var empty = @zeros(genome_frozenseeded.genome_t);
+    genome_frozenseeded._initialize_one_at(&full, 0, 0);
+    genome_frozenseeded._initialize_one_at(&empty, 1, 1);
+    @assert(genome_frozenseeded.get_trait_value(&full) == 0);
+    @assert(genome_frozenseeded.get_trait_value(&empty) == 1);
+    @assert(
+        genome_frozenseeded.get_trait_value(&full)
+        < @as(u32, genome_frozenseeded.nTraitVals)
+    );
+    @assert(
+        genome_frozenseeded.get_trait_value(&empty)
+        < @as(u32, genome_frozenseeded.nTraitVals)
+    );
+}
+
+fn test_trample_resident() void {
+    // full spawn takes over empty resident, leaving spawn intact
+    var resident = @zeros(genome_frozenseeded.genome_t);
+    var spawn = @zeros(genome_frozenseeded.genome_t);
+    genome_frozenseeded._initialize_one_at(&resident, 1, 1);
+    genome_frozenseeded._initialize_one_at(&spawn, 0, 0);
+    genome_frozenseeded.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
+    );
+    @assert(genome_frozenseeded._is_full(&resident));
+    @assert(genome_frozenseeded._is_full(&spawn));
+
+    // and vice versa
+    genome_frozenseeded._initialize_one_at(&spawn, 1, 1);
+    genome_frozenseeded.trample_resident(
+        @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
+    );
+    @assert(genome_frozenseeded._is_empty(&resident));
+    @assert(genome_frozenseeded._is_empty(&spawn));
+}
+
+fn do_test() void {
+    test_initialize_one_at();
+    test_is_seeded_pe();
+    test_initialize_one();
+    test_validate();
+    test_elapse_inheritance_of();
+    test_calc_fitness_of();
+    test_get_trait_value();
+    test_trample_resident();
+}
