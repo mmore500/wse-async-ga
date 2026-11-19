@@ -152,6 +152,22 @@ const nTraitVals: u16 = nMlsSites + 2; // clear, or 1 + number of MLS sites
 const hasImmClobber: bool = true;
 const hasNotifyExtinct: bool = true;
 
+// memory layout struct =======================================================
+// fields follow memory layout above; extern struct fixes C ABI layout
+// note: flag site masks (e.g., mlsMask) are defined over word 0, i.e.,
+// hstrat_T in its low half and flag_sites in its high half, matching
+// host-side decoding, so flag site bit operations address word 0
+const fields_t = extern struct {
+    hstrat_T: u16, // byte 0
+    flag_sites: u16, // byte 2
+    hstrat_storage: [4]u32, // byte 4
+};
+
+/// View genome words through memory layout struct.
+fn _fields(genome: genomePtr_t) *fields_t {
+    return @ptrcast(*fields_t, genome);
+}
+
 const mlsMask: u32 = 0x000F0000;
 const deleteriousMask: u32 = 0x00F00000;
 const beneficialMask: u32 = 0x0F000000;
@@ -278,8 +294,7 @@ fn _sample_clobber(levelBits: u32) bool {
 }
 
 fn _get_counter(genome: genomePtr_t) u16 {
-    const genome_halfwords = @ptrcast([*]u16, genome);
-    return genome_halfwords[0];
+    return _fields(genome).*.hstrat_T;
 }
 
 fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
@@ -298,20 +313,18 @@ fn _step_instrumentation(genome: genomePtr_t) void {
         const T = @as(u32, _get_counter(genome));
         const site = dstream_algo.assign_storage_site(S, T);
 
-        const offset_bits: u16 = 4 * 8;
-        const target_bit = @as(u16, site) + offset_bits;
+        const target_bit = @as(u16, site);
 
-        const genome_bytes = @ptrcast([*]u8, genome);
+        const storage_bytes = @ptrcast([*]u8, &_fields(genome).*.hstrat_storage);
         if (site != S) bitmanip.flip_nth_bit_with_swaps(
-            genome_bytes,
+            storage_bytes,
             target_bit,
             .{ .byteSwap = true, .bitSwap = true },
         );
     }
 
     // elapse generation in counter
-    const genome_halfwords = @ptrcast([*]u16, genome);
-    genome_halfwords[0] += 1;
+    _fields(genome).*.hstrat_T += 1;
 }
 
 inline fn _clear(genome: genomePtr_t) void {
@@ -360,9 +373,9 @@ fn initialize_one(genome: genomePtr_t) void {
     _clear(genome);
     genome[0] |= neutralMask; // initialize 4 neutral sites as 1's
     // (to hint for testing endianness when decoding)
-    genome[0] |= S; // initialize counter to S
+    _fields(genome).*.hstrat_T |= S; // initialize counter to S
     // randomize hstrat bitfield
-    bitmanip.randomize(@ptrcast([*]u16, &genome[1]), 8);
+    bitmanip.randomize(@ptrcast([*]u16, &_fields(genome).*.hstrat_storage), 8);
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {

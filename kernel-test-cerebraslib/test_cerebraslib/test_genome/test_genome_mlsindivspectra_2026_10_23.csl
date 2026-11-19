@@ -379,7 +379,31 @@ fn test_trample_resident() void {
     }
 }
 
+fn test_fields_layout() void {
+    // memory layout struct fields sit at their documented byte offsets,
+    // and together exactly cover the genome
+    var g = @zeros(genome_mls.genome_t);
+    const f = genome_mls._fields(&g);
+    {
+        const field_bytes = @ptrcast([*]u8, &f.*.hstrat_T);
+        for (@range(u16, 2)) |k| { field_bytes[k] = @as(u8, 1 + k); }
+    }
+    {
+        const field_bytes = @ptrcast([*]u8, &f.*.flag_sites);
+        for (@range(u16, 2)) |k| { field_bytes[k] = @as(u8, 3 + k); }
+    }
+    {
+        const field_bytes = @ptrcast([*]u8, &f.*.hstrat_storage);
+        for (@range(u16, 16)) |k| { field_bytes[k] = @as(u8, 5 + k); }
+    }
+    const genome_bytes = @ptrcast([*]u8, &g);
+    for (@range(u16, 4 * genome_mls.gSize)) |i| {
+        @assert(genome_bytes[i] == @as(u8, i + 1));
+    }
+}
+
 fn do_test() void {
+    test_fields_layout();
     test_builtin_random_seeding();
     test_masks();
     test_mls_withinhost_p();

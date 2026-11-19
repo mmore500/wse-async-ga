@@ -23,6 +23,18 @@ const nTraitVals: u16 = 2;
 const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
+// memory layout struct =======================================================
+// fields follow memory layout above; extern struct fixes C ABI layout
+const fields_t = extern struct {
+    net_ben_count: i16, // byte 0
+    mutator_del_count: u16, // byte 2: mutator (u8), byte 3: delcount (u8)
+};
+
+/// View genome words through memory layout struct.
+fn _fields(genome: genomePtr_t) *fields_t {
+    return @ptrcast(*fields_t, genome);
+}
+
 const sb = 0.1;
 const sd = 0.1;
 const Ub = 0.000001;
@@ -57,18 +69,17 @@ fn _apply_mutation(genome: genomePtr_t) void {
 }
 
 fn _ptr_netbencount(genome: genomePtr_t) *i16 {
-    const genome_ptr = @ptrcast([*]i16, genome);
-    return &genome_ptr[0];
+    return &_fields(genome).*.net_ben_count;
 }
 
 fn _ptr_delcount(genome: genomePtr_t) *u8 {
-    const genome_ptr = @ptrcast([*]u8, genome);
-    return &genome_ptr[3];
+    const field_bytes = @ptrcast([*]u8, &_fields(genome).*.mutator_del_count);
+    return &field_bytes[1];
 }
 
 fn _ptr_mutator(genome: genomePtr_t) *u8 {
-    const genome_ptr = @ptrcast([*]u8, genome);
-    return &genome_ptr[2];
+    const field_bytes = @ptrcast([*]u8, &_fields(genome).*.mutator_del_count);
+    return &field_bytes[0];
 }
 
 // public API =================================================================

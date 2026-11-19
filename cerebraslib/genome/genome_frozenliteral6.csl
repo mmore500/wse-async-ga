@@ -37,6 +37,17 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
+// memory layout struct =======================================================
+// fields follow memory layout above; extern struct fixes C ABI layout
+const fields_t = extern struct {
+    literal: [gSize]u32, // byte 0
+};
+
+/// View genome words through memory layout struct.
+fn _fields(genome: genomePtr_t) *fields_t {
+    return @ptrcast(*fields_t, genome);
+}
+
 const val1: u32 = 1692398096;
 const val2: u32 = 2816128869;
 const val3: u32 = 2428220313;
@@ -46,12 +57,12 @@ const val6: u32 = 3010301098;
 
 fn _validate(genome: genomePtr_t) bool {
     return (
-        (genome[0] == val1)
-        and (genome[1] == val2)
-        and (genome[2] == val3)
-        and (genome[3] == val4)
-        and (genome[4] == val5)
-        and (genome[5] == val6)
+        (_fields(genome).*.literal[0] == val1)
+        and (_fields(genome).*.literal[1] == val2)
+        and (_fields(genome).*.literal[2] == val3)
+        and (_fields(genome).*.literal[3] == val4)
+        and (_fields(genome).*.literal[4] == val5)
+        and (_fields(genome).*.literal[5] == val6)
     );
 }
 
@@ -68,12 +79,12 @@ fn calc_fitness_of(genome: genomePtr_t) f32 {
 fn get_trait_value(genome: genomePtr_t) u32 { return 0; }
 
 fn initialize_one(genome: genomePtr_t) void {
-    genome[0] = val1;
-    genome[1] = val2;
-    genome[2] = val3;
-    genome[3] = val4;
-    genome[4] = val5;
-    genome[5] = val6;
+    _fields(genome).*.literal[0] = val1;
+    _fields(genome).*.literal[1] = val2;
+    _fields(genome).*.literal[2] = val3;
+    _fields(genome).*.literal[3] = val4;
+    _fields(genome).*.literal[4] = val5;
+    _fields(genome).*.literal[5] = val6;
     @assert(_validate(genome));
 }
 

@@ -31,20 +31,32 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
+// memory layout struct =======================================================
+// fields follow memory layout above; extern struct fixes C ABI layout
+const fields_t = extern struct {
+    fitness: f16, // byte 0
+    bitfield: [5]u16, // byte 2
+};
+
+/// View genome words through memory layout struct.
+fn _fields(genome: genomePtr_t) *fields_t {
+    return @ptrcast(*fields_t, genome);
+}
+
 // internal functions =========================================================
 fn _apply_mutation(genome: genomePtr_t) void {
     // mutate fitness value
-    const fitness = @ptrcast(*f16, genome).*;
+    const fitness = _fields(genome).*.fitness;
     const mutated = fitness + @as(f16, random.random_normal_f32());
-    @ptrcast(*f16, genome).* = mutated;
+    _fields(genome).*.fitness = mutated;
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
-    const offset_bits: u16 = 2 * 8;
     const bitfield_bits: u16 = 10 * 8;
-    const target_bit = opscalar.unif16(bitfield_bits) + offset_bits;
-    bitmanip.flip_nth_bit(@ptrcast([*]u8, genome), target_bit);
+    const target_bit = opscalar.unif16(bitfield_bits);
+    const bitfield_bytes = @ptrcast([*]u8, &_fields(genome).*.bitfield);
+    bitmanip.flip_nth_bit(bitfield_bytes, target_bit);
 }
 
 // public API =================================================================
@@ -53,7 +65,7 @@ fn elapse_inheritance_of(genome: genomePtr_t) void {
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
-    return @as(f32, @ptrcast(*f16, genome).*);
+    return @as(f32, _fields(genome).*.fitness);
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 { return 0; }
@@ -61,7 +73,7 @@ fn get_trait_value(genome: genomePtr_t) u32 { return 0; }
 fn initialize_one(genome: genomePtr_t) void {
     const gHalfWords: u16 = gSize * 2;
     bitmanip.randomize(@ptrcast([*]u16, genome), gHalfWords);
-    @ptrcast(*f16, genome).* = 0.0;
+    _fields(genome).*.fitness = 0.0;
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
