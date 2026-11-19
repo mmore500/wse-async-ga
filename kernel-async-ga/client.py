@@ -1031,6 +1031,8 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
         print("|", end="", flush=True)
         continue
 
+# wait on closeoutComplete, not cycleCounter, which reaches its final value
+# one cycle before end-state telemetry is written
 log(f"- {nonBlock=}, if True waiting for last kernel to finish...")
 for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     elapsed_ns = time.time_ns() - launch_ns
@@ -1044,7 +1046,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     out_tensors = np.zeros((nRow, nCol, 1), np.uint32)
     runner.memcpy_d2h(
         out_tensors.ravel(),
-        runner.get_id("cycleCounter"),
+        runner.get_id("closeoutComplete"),
         0,  # x0
         0,  # y0
         nCol,  # width
@@ -1057,11 +1059,11 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     )
     print("2", end="", flush=True)
 
-    cycle_counts = out_tensors.ravel().copy()
-    num_complete = np.sum(cycle_counts >= nCycleAtLeast)
+    closeout_flags = out_tensors.ravel().copy()
+    num_complete = np.sum(closeout_flags != 0)
     print("3", end="", flush=True)
-    should_break = num_complete == cycle_counts.size
-    print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)
+    should_break = num_complete == closeout_flags.size
+    print(f"({num_complete/closeout_flags.size * 100}%)", end="", flush=True)
     if should_break:
         phase2_elapsed_ns = time.time_ns() - launch_ns
         phase2_elapsed_cycles = cycle + 1

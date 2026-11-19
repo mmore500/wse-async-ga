@@ -112,6 +112,12 @@ var clobberCounter = @zeros([1]u32);  // how many immigrant clobbers occur?
 var ptr_clobberCounter : [*]u32 = &clobberCounter;
 var cycleCounter = @zeros([1]u32);  // how many self-activation cycles elapse?
 var ptr_cycleCounter : [*]u32 = &cycleCounter;
+// set once PE's closeout is done, i.e., after its last-cycle telemetry is
+// written and its sends complete; nonBlock host waits on it before reading
+// end-state telemetry, as cycleCounter reaches its final value one cycle
+// before that telemetry is written
+var closeoutComplete = @zeros([1]u32);
+var ptr_closeoutComplete : [*]u32 = &closeoutComplete;
 
 var recvCounter_N = @zeros([1]u32);  // number recv's opened + number filled
 var ptr_recvCounter_N : [*]u32 = &recvCounter_N;
@@ -688,10 +694,12 @@ fn closeoutRecv() void {
 }
 
 task closeoutTask() void {
-  if (closeoutSend()) {
+  const isComplete = closeoutSend();
+  if (isComplete) {
     if (nonBlock == 0) memcpy.unblock_cmd_stream();  // terminate
   } else { @activate(closeoutTaskID); }  // trigger next cycle
-  closeoutRecv();  // run LAST in either case
+  closeoutRecv();  // run LAST in either case, except for completion flag
+  if (isComplete) closeoutComplete[0] = 1;  // for host, in nonBlock mode
 }
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1009,6 +1017,7 @@ comptime {
 comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_clobberCounter, "clobberCounter");
   @export_symbol(ptr_cycleCounter, "cycleCounter");
+  @export_symbol(ptr_closeoutComplete, "closeoutComplete");
   @export_symbol(ptr_immCounter_N, "immCounter_N");
   @export_symbol(ptr_immCounter_S, "immCounter_S");
   @export_symbol(ptr_immCounter_E, "immCounter_E");
