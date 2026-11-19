@@ -99,7 +99,6 @@ const hasImmClobber: bool = true;
 const hasNotifyExtinct: bool = false;
 
 // memory layout struct =======================================================
-// fields follow memory layout above; extern struct fixes C ABI layout
 const fields_t = extern struct {
     flag_sites: [2]u32, // byte 0
     hstrat_T: u32, // byte 8
@@ -107,24 +106,24 @@ const fields_t = extern struct {
 };
 
 /// View genome words through memory layout struct.
-fn _fields(genome: genomePtr_t) *fields_t {
+fn _cast_fields(genome: genomePtr_t) *fields_t {
     return @ptrcast(*fields_t, genome);
 }
 
 // internal functions =========================================================
 fn _apply_mutation(genome: genomePtr_t, log2p: u8) void {
-    bitmanip.mutate_log2p(@ptrcast([*]u16, &_fields(genome).*.flag_sites), 4, log2p);
+    bitmanip.mutate_log2p(@ptrcast([*]u16, &_cast_fields(genome).*.flag_sites), 4, log2p);
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     if (opscalar.unifbool()) {
-        const T = _fields(genome).*.hstrat_T;
+        const T = _cast_fields(genome).*.hstrat_T;
         const site = dstream_algo.assign_storage_site(S, T);
 
         const target_bit = @as(u16, site);
 
-        const storage_bytes = @ptrcast([*]u8, &_fields(genome).*.hstrat_storage);
+        const storage_bytes = @ptrcast([*]u8, &_cast_fields(genome).*.hstrat_storage);
         if (site != S) bitmanip.flip_nth_bit_with_swaps(
             storage_bytes,
             target_bit,
@@ -133,7 +132,7 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     }
 
     // elapse generation in counter
-    _fields(genome).*.hstrat_T += 1;
+    _cast_fields(genome).*.hstrat_T += 1;
 }
 
 inline fn _clear(genome: genomePtr_t) void {
@@ -147,7 +146,7 @@ inline fn _clear(genome: genomePtr_t) void {
 }
 
 inline fn _is_clear(genome: genomePtr_t) bool {
-    const res: bool = _fields(genome).*.hstrat_T == 0;
+    const res: bool = _cast_fields(genome).*.hstrat_T == 0;
     return res;
 }
 
@@ -185,7 +184,7 @@ fn calc_fitness_of(genome: genomePtr_t) f32 {
 fn get_trait_value(genome: genomePtr_t) u32 {
     // note: bottom 8 sites initialized as 1's
     const is_not_clear: u32 = @as(u32, !_is_clear(genome));
-    const has_focal_mut: u32 = (_fields(genome).*.flag_sites[0] & 1) ^ is_not_clear;
+    const has_focal_mut: u32 = (_cast_fields(genome).*.flag_sites[0] & 1) ^ is_not_clear;
     // 0: is_clear
     // 1: not clear, no focal mutation
     // 2: not clear, has focal mutation
@@ -194,11 +193,11 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 
 fn initialize_one(genome: genomePtr_t) void {
     _clear(genome);
-    _fields(genome).*.flag_sites[0] |= 0x0F; // initialize bottom 4 sites as 1's
+    _cast_fields(genome).*.flag_sites[0] |= 0x0F; // initialize bottom 4 sites as 1's
     // (to hint for testing endianness when decoding)
-    _fields(genome).*.hstrat_T = S; // initialize counter to S
+    _cast_fields(genome).*.hstrat_T = S; // initialize counter to S
     // randomize hstrat bitfield
-    bitmanip.randomize(@ptrcast([*]u16, &_fields(genome).*.hstrat_storage), 8);
+    bitmanip.randomize(@ptrcast([*]u16, &_cast_fields(genome).*.hstrat_storage), 8);
 }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {

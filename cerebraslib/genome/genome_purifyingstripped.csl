@@ -24,13 +24,12 @@ const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
 // memory layout struct =======================================================
-// fields follow memory layout above; extern struct fixes C ABI layout
 const fields_t = extern struct {
     fitness: f32, // byte 0
 };
 
 /// View genome words through memory layout struct.
-fn _fields(genome: genomePtr_t) *fields_t {
+fn _cast_fields(genome: genomePtr_t) *fields_t {
     return @ptrcast(*fields_t, genome);
 }
 
@@ -43,17 +42,17 @@ fn _apply_mutation(genome: genomePtr_t) void {
         mutated -= math.abs(random.random_normal_f32()) * scale;
     }
     // mutate fitness value
-    _fields(genome).*.fitness = mutated;
+    _cast_fields(genome).*.fitness = mutated;
 }
 
 // public API =================================================================
 fn elapse_inheritance_of(genome: genomePtr_t) void { _apply_mutation(genome); }
 
-fn calc_fitness_of(genome: genomePtr_t) f32 { return _fields(genome).*.fitness; }
+fn calc_fitness_of(genome: genomePtr_t) f32 { return _cast_fields(genome).*.fitness; }
 
 fn get_trait_value(genome: genomePtr_t) u32 { return 0; }
 
-fn initialize_one(genome: genomePtr_t) void { _fields(genome).*.fitness = 0.0; }
+fn initialize_one(genome: genomePtr_t) void { _cast_fields(genome).*.fitness = 0.0; }
 
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
 

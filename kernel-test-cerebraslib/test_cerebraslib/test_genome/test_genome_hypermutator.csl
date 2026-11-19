@@ -67,7 +67,7 @@ fn test_fields_layout() void {
     // memory layout struct fields sit at their documented byte offsets,
     // and together exactly cover the genome
     var g = @zeros(genome.genome_t);
-    const f = genome._fields(&g);
+    const f = genome._cast_fields(&g);
     {
         const field_bytes = @ptrcast([*]u8, &f.*.net_ben_count);
         for (@range(u16, 4)) |k| { field_bytes[k] = @as(u8, 1 + k); }

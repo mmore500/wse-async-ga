@@ -83,7 +83,7 @@ fn test_fields_layout() void {
     // memory layout struct fields sit at their documented byte offsets,
     // and together exactly cover the genome
     var g = @zeros(genome_bitdrift_clobber.genome_t);
-    const f = genome_bitdrift_clobber._fields(&g);
+    const f = genome_bitdrift_clobber._cast_fields(&g);
     {
         const field_bytes = @ptrcast([*]u8, &f.*.fitness);
         for (@range(u16, 2)) |k| { field_bytes[k] = @as(u8, 1 + k); }

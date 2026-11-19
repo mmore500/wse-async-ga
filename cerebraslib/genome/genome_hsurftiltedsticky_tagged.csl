@@ -31,7 +31,6 @@ const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
 // memory layout struct =======================================================
-// fields follow memory layout above; extern struct fixes C ABI layout
 const fields_t = extern struct {
     tag: u16, // byte 0
     hstrat_T: u16, // byte 2
@@ -39,7 +38,7 @@ const fields_t = extern struct {
 };
 
 /// View genome words through memory layout struct.
-fn _fields(genome: genomePtr_t) *fields_t {
+fn _cast_fields(genome: genomePtr_t) *fields_t {
     return @ptrcast(*fields_t, genome);
 }
 
@@ -47,17 +46,17 @@ fn _fields(genome: genomePtr_t) *fields_t {
 fn _step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     if (opscalar.unifbool()) {
-        const rank = @as(u32, _fields(genome).*.hstrat_T);
+        const rank = @as(u32, _cast_fields(genome).*.hstrat_T);
         const site = tilted.pick_deposition_site(rank, 64);
 
         const target_bit = @as(u16, site);
 
-        const storage_bytes = @ptrcast([*]u8, &_fields(genome).*.hstrat_storage);
+        const storage_bytes = @ptrcast([*]u8, &_cast_fields(genome).*.hstrat_storage);
         bitmanip.flip_nth_bit(storage_bytes, target_bit);
     }
 
     // elapse generation in counter
-    _fields(genome).*.hstrat_T += 1;
+    _cast_fields(genome).*.hstrat_T += 1;
 }
 
 // public API =================================================================
@@ -76,7 +75,7 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 fn initialize_one(genome: genomePtr_t) void {
     const gHalfWords: u16 = gSize * 2;
     bitmanip.randomize(@ptrcast([*]u16, genome), gHalfWords);
-    _fields(genome).*.hstrat_T = 0;
+    _cast_fields(genome).*.hstrat_T = 0;
     // tag bits left randomized
 }
 

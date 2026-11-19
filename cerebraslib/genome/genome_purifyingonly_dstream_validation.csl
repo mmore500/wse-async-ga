@@ -120,7 +120,6 @@ const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
 // memory layout struct =======================================================
-// fields follow memory layout above; extern struct fixes C ABI layout
 const fields_t = extern struct {
     fitness: f32, // byte 0
     hstrat_T: u32, // byte 4
@@ -128,7 +127,7 @@ const fields_t = extern struct {
 };
 
 /// View genome words through memory layout struct.
-fn _fields(genome: genomePtr_t) *fields_t {
+fn _cast_fields(genome: genomePtr_t) *fields_t {
     return @ptrcast(*fields_t, genome);
 }
 
@@ -141,12 +140,12 @@ fn _apply_mutation(genome: genomePtr_t) void {
         mutated -= math.abs(random.random_normal_f32()) * scale;
     }
     // mutate fitness value
-    _fields(genome).*.fitness = mutated;
+    _cast_fields(genome).*.fitness = mutated;
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
-    const T = _fields(genome).*.hstrat_T;
+    const T = _cast_fields(genome).*.hstrat_T;
     const site = dstream_algo.assign_storage_site(S, T);
     @assert(site <= S);
 
@@ -161,7 +160,7 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     else
         false;
 
-    const storage_bytes = @ptrcast([*]u8, &_fields(genome).*.hstrat_storage);
+    const storage_bytes = @ptrcast([*]u8, &_cast_fields(genome).*.hstrat_storage);
     if (site != S) bitmanip.set_nth_bit_with_swaps(
         storage_bytes,
         target_bit,
@@ -170,7 +169,7 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     );
 
     // elapse generation in counter
-    _fields(genome).*.hstrat_T += 1;
+    _cast_fields(genome).*.hstrat_T += 1;
 }
 
 // public API =================================================================
@@ -179,7 +178,7 @@ fn elapse_inheritance_of(genome: genomePtr_t) void {
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
-    return _fields(genome).*.fitness;
+    return _cast_fields(genome).*.fitness;
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 {
@@ -187,10 +186,10 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 }
 
 fn initialize_one(genome: genomePtr_t) void {
-    _fields(genome).*.fitness = 0.0;
-    _fields(genome).*.hstrat_T = 0;
-    _fields(genome).*.hstrat_storage[0] = 0;
-    _fields(genome).*.hstrat_storage[1] = 0;
+    _cast_fields(genome).*.fitness = 0.0;
+    _cast_fields(genome).*.hstrat_T = 0;
+    _cast_fields(genome).*.hstrat_storage[0] = 0;
+    _cast_fields(genome).*.hstrat_storage[1] = 0;
     for (@range(u32, dstream_expected_T)) |_| {
         _step_instrumentation(genome);
     }

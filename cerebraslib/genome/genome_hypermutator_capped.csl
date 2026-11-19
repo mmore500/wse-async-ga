@@ -41,7 +41,6 @@ const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
 // memory layout struct =======================================================
-// fields follow memory layout above; extern struct fixes C ABI layout
 const fields_t = extern struct {
     net_ben_count: i32, // byte 0
     del_count: u16, // byte 4
@@ -51,7 +50,7 @@ const fields_t = extern struct {
 };
 
 /// View genome words through memory layout struct.
-fn _fields(genome: genomePtr_t) *fields_t {
+fn _cast_fields(genome: genomePtr_t) *fields_t {
     return @ptrcast(*fields_t, genome);
 }
 
@@ -71,20 +70,20 @@ fn _apply_mutation(genome: genomePtr_t) void {
 }
 
 fn _ptr_netbencount(genome: genomePtr_t) *i32 {
-    return &_fields(genome).*.net_ben_count;
+    return &_cast_fields(genome).*.net_ben_count;
 }
 
 fn _ptr_delcount(genome: genomePtr_t) *u16 {
-    return &_fields(genome).*.del_count;
+    return &_cast_fields(genome).*.del_count;
 }
 
 fn _ptr_mutator(genome: genomePtr_t) *u8 {
-    const field_bytes = @ptrcast([*]u8, &_fields(genome).*.mutator_tag);
+    const field_bytes = @ptrcast([*]u8, &_cast_fields(genome).*.mutator_tag);
     return &field_bytes[0];
 }
 
 fn _ptr_counter(genome: genomePtr_t) *u32 {
-    return &_fields(genome).*.hstrat_T;
+    return &_cast_fields(genome).*.hstrat_T;
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
@@ -95,7 +94,7 @@ fn _step_instrumentation(genome: genomePtr_t) void {
 
         const target_bit = @as(u16, site);
 
-        const storage_bytes = @ptrcast([*]u8, &_fields(genome).*.hstrat_storage);
+        const storage_bytes = @ptrcast([*]u8, &_cast_fields(genome).*.hstrat_storage);
         bitmanip.flip_nth_bit(storage_bytes, target_bit);
     }
 
