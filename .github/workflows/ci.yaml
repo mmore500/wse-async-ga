@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -124,7 +124,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -235,8 +235,9 @@ jobs:
               default.py.in runtime_config_sweep.jsonl
           fi
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
-          sudo -E env PATH=$PATH \
-            ./kernel-async-ga/execute.sh
+          # retry up to 2 times on simulator kernel stall
+          ./.github/scripts/retry_on_kernel_stall.sh \
+            sudo -E env PATH=$PATH ./kernel-async-ga/execute.sh
 
       - name: Check runtime config dispatch
         if: matrix.genome == 'genome_bitdrift' && matrix.nonBlock == 1 && matrix.p2p == 0
@@ -295,7 +296,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -377,9 +378,10 @@ jobs:
       - name: Generate sample tagged populations
         run: |
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
-          sudo -E env PATH=$PATH \
-            ./kernel-async-ga/generate_sample_tagged_populations.sh \
-            # >/dev/null 2>&1
+          # retry up to 2 times on simulator kernel stall
+          ./.github/scripts/retry_on_kernel_stall.sh \
+            sudo -E env PATH=$PATH \
+            ./kernel-async-ga/generate_sample_tagged_populations.sh
 
       - name: Upload output as artifact
         uses: actions/upload-artifact@v4
@@ -468,7 +470,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -569,8 +571,9 @@ jobs:
           export COMPCONFENV_CEREBRASLIB_DSTREAM_VALIDATOR__comptime_string="${{ matrix.dstream_validator }}"
           export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
           export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
-          sudo -E env PATH=$PATH \
-            ./kernel-async-ga/execute.sh
+          # retry up to 2 times on simulator kernel stall
+          ./.github/scripts/retry_on_kernel_stall.sh \
+            sudo -E env PATH=$PATH ./kernel-async-ga/execute.sh
 
       - name: Build tree from end-state genomes
         run: |
@@ -652,7 +655,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
