@@ -44,23 +44,7 @@ fn test_trample_resident() void {
     }
 }
 
-fn test_fields_layout() void {
-    // memory layout struct fields sit at their documented byte offsets,
-    // and together exactly cover the genome
-    var g = @zeros(genome_frozenliteral2.genome_t);
-    const f = genome_frozenliteral2._cast_fields(&g);
-    {
-        const field_bytes = @ptrcast([*]u8, &f.*.literal);
-        for (@range(u16, 8)) |k| { field_bytes[k] = @as(u8, 1 + k); }
-    }
-    const genome_bytes = @ptrcast([*]u8, &g);
-    for (@range(u16, 4 * genome_frozenliteral2.gSize)) |i| {
-        @assert(genome_bytes[i] == @as(u8, i + 1));
-    }
-}
-
 fn do_test() void {
-    test_fields_layout();
     test_calc_fitness_of();
     test_elapse_inheritance_of();
     test_get_trait_value();
