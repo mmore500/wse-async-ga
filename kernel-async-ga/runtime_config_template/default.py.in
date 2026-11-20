@@ -29,6 +29,21 @@ if __name__ == "__main__":
         )
     }
 
+    # named runtime configs, constant across device, from "rtc_<name>:<type>"
+    # keys, e.g., "rtc_foo:f32": 0.5; 32-bit values, as raw bits
+    dtypes = {"f32": np.float32, "i32": np.int32, "u32": np.uint32}
+    for key in sorted(runtime_config):
+        name, _, dtype = key.partition(":")
+        if not name.startswith("rtc_"):
+            continue
+        if dtype not in dtypes:
+            raise ValueError(f"{key=} needs a type suffix, one of {[*dtypes]}")
+        if name in symbols:
+            raise ValueError(f"{key=} sets {name} twice")
+        symbols[name] = np.full(
+            shape, runtime_config[key], dtypes[dtype]
+        ).view(np.uint32)
+
     # per-PE subgrid sizes, 0 for no partitioning along that axis
     nRowSubgrid, nColSubgrid = (
         runtime_config.get(key, comptime_config[key])

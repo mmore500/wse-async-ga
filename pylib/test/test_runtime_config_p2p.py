@@ -314,3 +314,36 @@ def test_subgrid_validators_reject() -> None:
         assert not _validate_subgrid(
             axis, _to_npz(**{f"rtc_n{axis}Subgrid": mixed}), comptime
         )
+
+
+def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 3,
+        "nCol": 2,
+        "nRowSubgrid": 0,
+        "nColSubgrid": 0,
+        "globalSeed": 0,
+    }
+    runtime_config = {
+        "rtc_foo:f32": 2.0**-20,
+        "rtc_bar:i32": -3,
+        "rtc_baz:u32": 7,
+    }
+    data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
+    assert sorted(data.files) == ["rtc_bar", "rtc_baz", "rtc_foo"]
+    for symbol, dtype, value in (
+        ("rtc_foo", np.float32, 2.0**-20),
+        ("rtc_bar", np.int32, -3),
+        ("rtc_baz", np.uint32, 7),
+    ):
+        assert data[symbol].shape == (3, 2, 1)
+        assert data[symbol].dtype == np.uint32  # raw bits, as client copies
+        assert (data[symbol].view(dtype) == value).all()
+
+    for bad in (
+        {"rtc_foo": 1.0},  # no type
+        {"rtc_foo:f64": 1.0},  # unsupported type
+        {"nRowSubgrid": 2, "rtc_nRowSubgrid:u32": 2},  # set twice
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)

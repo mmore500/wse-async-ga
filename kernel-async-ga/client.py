@@ -861,7 +861,16 @@ genomeDataRaw = "".join(
     for line in pathlib.Path(genomePath).read_text().split("\n")
     if line.startswith("//!")
 ) or "{}"
-genomeData = eval(genomeDataRaw, {"compconf_data": compconf_data, "pl": pl})
+# genome metadata may read named runtime configs (runtime_config_options.md)
+genomeData = eval(
+    genomeDataRaw,
+    {
+        "compconf_data": compconf_data,
+        "np": np,
+        "pl": pl,
+        "runtimeConfig": runtimeConfig,
+    },
+)
 log(f" - {genomeData=}")
 
 populationFlavor = compconf_data["ASYNC_GA_POPULATION_FLAVOR:comptime_string"]

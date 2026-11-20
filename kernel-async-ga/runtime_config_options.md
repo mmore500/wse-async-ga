@@ -39,3 +39,15 @@ If no runtime config value is specified, symbols keep compile time default.
 - `p2pSeed`
   - seeds random choice of targets
   - if not specified, `globalSeed`
+- `rtc_<name>:<type>`
+  - named runtime config, constant across device: sets device symbol
+    `rtc_<name>` on every PE to the value, as `<type>` (`f32`, `i32`, or
+    `u32`), e.g., `"rtc_foo:f32": 0.5`
+  - the symbol keeps its compiled-in default unless set
+  - for any module (e.g., a genome) to read one, it declares, exports, and
+    reads the symbol, and lists its name in
+    `cerebraslib/rtc_named_exports.csl`; validators for it can go in
+    `runtime_config_validate/rtc_<name>/`
+  - modules' client metadata (genome `//!` lines) can read `runtimeConfig`
+    (symbol name to per-PE `uint32` array) and `np`, to report runtime
+    values, e.g., `runtimeConfig["rtc_foo"].view(np.float32).flat[0]`

@@ -5,6 +5,8 @@ const memcpy = @import_module("<memcpy/get_params>", .{
   .height = 1,
 });
 
+const rtc_named_exports = @import_module("cerebraslib/rtc_named_exports.csl");
+
 layout {
   // how many PE?
   @set_rectangle(1, 1);
@@ -15,4 +17,5 @@ layout {
   });
 
   @export_name("dolaunch", fn()void);
+  rtc_named_exports.export_names();
 }
