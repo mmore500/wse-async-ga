@@ -1342,7 +1342,7 @@ del df, traitCounts_data, traitCycles_data, traitValues_data
 log("wildtype traitlogs ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
 # each PE holds multiplexed records back to back, then one
-# dstream_T shared by all records (+1); downstream demultiplexes records
+# dstream_T shared by all records (hence +1)
 traitLoggerNumWavs = (
     traitLoggerNumMultiplex * traitLoggerNumBits // wavSize + 1
 )
@@ -1387,7 +1387,6 @@ df = df.with_columns(
     dstream_algo=pl.lit(
         f"dstream.{traitLoggerDstreamAlgoName}", dtype=pl.Categorical
     ),
-    # bit offset of first multiplexed record; each record's bits follow
     dstream_storage_bitoffset=pl.lit(0, dtype=pl.UInt32),
     dstream_storage_bitwidth=pl.lit(traitLoggerNumBits, dtype=pl.UInt32),
     dstream_S=pl.lit(traitLoggerNumBits, dtype=pl.UInt16),
