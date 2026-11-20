@@ -281,10 +281,12 @@ fn test_calc_fitness_and_trait() void {
     _make(&g, 0x00, false, 0xFFFF);
     @assert(genome.calc_fitness_of(&g) == 0.0);
     @assert(genome.get_trait_value(&g) == 0);
+    @assert(genome.is_empty(&g));  // uninfected hosts aren't sent by p2p
     // infected: bit 0 set, then bit 1 + i holds site i's allele
     _make(&g, 0x00, true, 0);
     @assert(genome.calc_fitness_of(&g) == 1.0);
     @assert(genome.get_trait_value(&g) == 1);
+    @assert(!genome.is_empty(&g));
     _make(&g, 0x01, true, 0);
     @assert(genome.get_trait_value(&g) == 3);
     _make(&g, 0x02, true, 0);
