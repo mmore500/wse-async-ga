@@ -46,7 +46,7 @@ fn update(sample: u32) void {
     const site = @as(u16, dstream_algo.assign_storage_site(numBits, dstream_T));
 
     const dstream_S = numBits;
-    if (sample != 0 and site != dstream_S) {  // seen
+    if (sample != 0) {  // seen
         // mask out any pending zeros, in all multiplexed records...
         var record_i: u16 = 0;
         for (@range(u16, numMultiplex)) |_| {
@@ -58,22 +58,24 @@ fn update(sample: u32) void {
         @mov16(pendingDsd, 0);
 
         // ... and write each multiplexed record's bit, set or not
-        var remaining = sample;  // shifted down as records are written
-        for (@range(u16, numMultiplex)) |record| {
-            const record_bytes = @ptrcast(
-                [*]u8, &recordBuffer[record * numHalfWords]
-            );
-            bitmanip.set_nth_bit_with_swaps(
-                record_bytes,
-                site,
-                (remaining & 1) != 0,
-                .{ .byteSwap = true, .bitSwap = true },
-            );
-            remaining >>= 1;
+        if (site != dstream_S) {
+            var remaining = sample;  // shifted down as records are written
+            for (@range(u16, numMultiplex)) |record| {
+                const record_bytes = @ptrcast(
+                    [*]u8, &recordBuffer[record * numHalfWords]
+                );
+                bitmanip.set_nth_bit_with_swaps(
+                    record_bytes,
+                    site,
+                    (remaining & 1) != 0,
+                    .{ .byteSwap = true, .bitSwap = true },
+                );
+                remaining >>= 1;
+            }
         }
         const last_seen_T_ptr = _last_seen_T_ptr();
         last_seen_T_ptr.* = dstream_T + 1;
-    } else {  // unseen (or not stored), zeros written lazily on next seen
+    } else {  // all multiplexed records zero, write lazily on next seen sample
         const pending_bytes = @ptrcast([*]u8, &pendingBuffer[0]);
         if (site != dstream_S) bitmanip.set_nth_bit_with_swaps(
             pending_bytes,
