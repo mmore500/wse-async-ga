@@ -61,6 +61,22 @@ fn test_tables() void {
     @assert(_is_close(genome._get_mutation_p(2), 7.370657955e-04));
 }
 
+fn test_rtc_mutation_rate() void {
+    // named runtime config overrides compconf mutation rate, scaling
+    // mutation probabilities, which cap at 1
+    const default = genome.rtc_evoepi_mutationRate[0];
+    @assert(_is_close(default, 1e-6));
+    genome.rtc_evoepi_mutationRate[0] = 1e-3;
+    @assert(_is_close(genome._get_mutation_p(0), 4.966310265e-03));
+    @assert(_is_close(genome._get_mutation_p(1), 2.500031250e-02));
+    @assert(_is_close(genome._get_mutation_p(2), 7.370657955e-01));
+    genome.rtc_evoepi_mutationRate[0] = 1e-2;
+    @assert(genome._get_mutation_p(2) == 1.0);
+    genome.rtc_evoepi_mutationRate[0] = 0.0;
+    @assert(genome._get_mutation_p(2) == 0.0);
+    genome.rtc_evoepi_mutationRate[0] = default;
+}
+
 fn test_initialize_one_at() void {
     // default seed PE stride 0: every PE is seeded
     _check_seeded_at(0, 0);
@@ -284,6 +300,7 @@ fn do_test() void {
     test_enabled_sites();
     test_calc_allele_bits();
     test_tables();
+    test_rtc_mutation_rate();
     test_initialize_one_at();
     test_initialize_one();
     test_trample_resident();
