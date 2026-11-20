@@ -102,10 +102,10 @@ echo
 echo "closeout ---------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${RESULTDIR_STEP}"/*
+find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${RESULTDIR_STEP}"/* || :
 
-env > "${RESULTDIR_STEP}/env.txt"
+env > "${RESULTDIR_STEP}/env.txt" || :
 
 ###############################################################################
 echo
