@@ -355,12 +355,13 @@ EOF
             echo "running csctl get job ${WSJOB_ID}..."
             # Write yaml with timestamps
             date -u '+pre_timestamp: "%Y-%m-%dT%H:%M:%SZ"' > "${CONFIG_WORKDIR}/out/csctl-job.yaml"
-            csctl get job "${WSJOB_ID}" -oyaml >> "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
+            # best effort: csctl may wait at a login prompt, so give up after 20 s
+            timeout --kill-after=5 20 csctl get job "${WSJOB_ID}" -oyaml < /dev/null >> "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
             date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_WORKDIR}/out/csctl-job.yaml"
 
             # Write txt with timestamps as first and last lines
             date -u '+%Y-%m-%dT%H:%M:%SZ' > "${CONFIG_WORKDIR}/out/csctl-job.txt"
-            csctl get job "${WSJOB_ID}" >> "${CONFIG_WORKDIR}/out/csctl-job.txt" 2>&1 || :
+            timeout --kill-after=5 20 csctl get job "${WSJOB_ID}" < /dev/null >> "${CONFIG_WORKDIR}/out/csctl-job.txt" 2>&1 || :
             date -u '+%Y-%m-%dT%H:%M:%SZ' >> "${CONFIG_WORKDIR}/out/csctl-job.txt"
 
             echo "... done!"
