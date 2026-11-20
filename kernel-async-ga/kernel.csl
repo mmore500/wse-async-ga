@@ -261,7 +261,11 @@ const padTaskID_P: control_task_id = @get_control_task_id(38);
 // ============================================================================
 // asynchronously send genomes sampled from population to neighbors
 ///////////////////////////////////////////////////////////////////////////////
-const sendNumGenomes: u16 = 1;  // how many genomes to batch sending together?
+// how many genomes to batch sending together?
+const sendNumGenomes: u16 = comptime compconf.get_value_or(
+  "ASYNC_GA_SEND_NUM_GENOMES", @as(u16, 1)
+);
+comptime { @comptime_assert(sendNumGenomes >= 1); }
 const sendBufSize: u16 = sendNumGenomes * genome_.gSize;
 
 // send NORTH =================================================================
@@ -463,7 +467,11 @@ fn dispatchSend_W() bool {
 // asynchronously accept genomes from neighbors,
 // which are then harvested from buffer & immigrated into the population
 ///////////////////////////////////////////////////////////////////////////////
-const recvNumGenomes: u16 = 4;  // how many genomes to batch together?
+// how many genomes to batch together?
+const recvNumGenomes: u16 = comptime compconf.get_value_or(
+  "ASYNC_GA_RECV_NUM_GENOMES", @as(u16, 4)
+);
+comptime { @comptime_assert(recvNumGenomes >= 1); }
 const recvBufSize: u16 = recvNumGenomes * genome_.gSize;
 
 // recv NORTH =================================================================
