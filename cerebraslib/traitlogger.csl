@@ -9,6 +9,7 @@ comptime { // access via get_value for logging...
     );
 } // ... raw string works around sdk v1.0.0 limitation
 const compconf_raw = @import_module("<compconf_raw>");
+const math = @import_module("<math>");
 const dstream_algo_name = compconf_raw.CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME;
 
 const num_bits = comptime compconf.get_value(
@@ -19,10 +20,17 @@ const dilation = comptime compconf.get_value(
     "CEREBRASLIB_TRAITLOGGER_DILATION",
     u32,
 );
+const multiplex_lsb = comptime compconf.get_value_or(
+    "CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB",
+    @as(u16, 0),
+);
+comptime { @comptime_assert(multiplex_lsb <= 32); }
+const num_multiplex: u16 = comptime math.max(multiplex_lsb, 1);
 
 // configure implementation ===================================================
 const logger = @import_module("cerebraslib/bitlogger.csl", .{
     .numBits = num_bits,
+    .numMultiplex = num_multiplex,
     .dstreamAlgoName = dstream_algo_name,
     .symbolName = symbolName,
 });
@@ -31,7 +39,10 @@ const logger = @import_module("cerebraslib/bitlogger.csl", .{
 var _T: u32 = 0;
 
 // public API =================================================================
-fn update(sample: bool) void {
-    if (_T % dilation == 0) logger.update(sample);
+fn update(sample: u32) void {
+    if (_T % dilation == 0) {
+        const sample_truthy = @as(u32, sample == 0);  // if not taking single bits
+        logger.update(if (multiplex_lsb == 0) sample_truthy else sample);
+    }
     _T += 1;
 }

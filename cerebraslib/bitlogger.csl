@@ -1,5 +1,6 @@
 // module params ==============================================================
 param numBits: u16;
+param numMultiplex: u16;  // independent single-bit records packed back-to-back
 param dstreamAlgoName: comptime_string;
 param symbolName: comptime_string;
 
@@ -12,12 +13,17 @@ const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 
 // global state ===============================================================
 const numHalfWords = numBits >> 4;
+comptime { @comptime_assert(numMultiplex > 0 and numMultiplex <= 32); }
 
 var dstream_T: u32 = 0;
-var recordBuffer = @zeros([numHalfWords + 2]u16);  // +2 are u32 last seen T
-var pendingBuffer = @zeros([numHalfWords]u16);
+// record layout:
+// - each multiplexed record's numBits bits, back to back
+// - then one u32 last seen T, shared by all records (hence +2 halfwords)
+var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
+var pendingBuffer = @zeros([numHalfWords]u16);  // not multiplexed
 var ptr_recordBuffer : [*]u16 = &recordBuffer;
 
+// record 0, others use @increment_dsd_offset
 const recordDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{numHalfWords} -> recordBuffer[i],
 });
@@ -30,31 +36,44 @@ const pendingDsd = @get_dsd(mem1d_dsd, .{
 ///////////////////////////////////////////////////////////////////////////////
 
 fn _last_seen_T_ptr() *u32 {
-    return @ptrcast(*u32, &recordBuffer[numHalfWords]);
+    return @ptrcast(*u32, &recordBuffer[numMultiplex * numHalfWords]);
 }
 
 // public API =================================================================
-fn update(sample: bool) void {
+fn update(sample: u32) void {
     const site = @as(u16, dstream_algo.assign_storage_site(numBits, dstream_T));
 
     const dstream_S = numBits;
-    if (sample) {
-
-        // mask out any pending zeros...
-        @or16(recordDsd, recordDsd, pendingDsd);  // (x or y) xor y is same as
-        @xor16(recordDsd, recordDsd, pendingDsd); // x & (~y)
+    if (sample != 0) {  // seen
+        // mask out any pending zeros, in all multiplexed records...
+        for (@range(u16, numMultiplex)) |record| {
+            const dsd = @increment_dsd_offset(
+                recordDsd, @as(i16, record * numHalfWords), u16
+            );
+            @or16(dsd, dsd, pendingDsd);  // (x or y) xor y is same as
+            @xor16(dsd, dsd, pendingDsd); // x & (~y)
+        }
         @mov16(pendingDsd, 0);
 
-        const record_bytes = @ptrcast([*]u8, &recordBuffer[0]);
-        if (site != dstream_S) bitmanip.set_nth_bit_with_swaps(
-            record_bytes,
-            site,
-            true,
-            .{ .byteSwap = true, .bitSwap = true },
-        );
+        // ... and write each multiplexed record's bit, set or not
+        if (site != dstream_S) {
+            var remaining = sample;  // shifted down as records are written
+            for (@range(u16, numMultiplex)) |record| {
+                const record_bytes = @ptrcast(
+                    [*]u8, &recordBuffer[record * numHalfWords]
+                );
+                bitmanip.set_nth_bit_with_swaps(
+                    record_bytes,
+                    site,
+                    (remaining & 1) != 0,
+                    .{ .byteSwap = true, .bitSwap = true },
+                );
+                remaining >>= 1;
+            }
+        }
         const last_seen_T_ptr = _last_seen_T_ptr();
         last_seen_T_ptr.* = dstream_T + 1;
-    } else {
+    } else {  // all multiplexed writes zero, defer to next nonzero sample
         const pending_bytes = @ptrcast([*]u8, &pendingBuffer[0]);
         if (site != dstream_S) bitmanip.set_nth_bit_with_swaps(
             pending_bytes,
@@ -70,7 +89,14 @@ fn update(sample: bool) void {
 
 fn reset() void {
     @mov16(pendingDsd, 0);
-    @mov16(recordDsd, 0);
+    for (@range(u16, numMultiplex)) |record| {
+        @mov16(
+            @increment_dsd_offset(
+                recordDsd, @as(i16, record * numHalfWords), u16
+            ),
+            0,
+        );
+    }
     const last_seen_T_ptr = _last_seen_T_ptr();
     last_seen_T_ptr.* = 0;
     dstream_T = 0;

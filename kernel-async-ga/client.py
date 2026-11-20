@@ -819,6 +819,11 @@ traitLoggerDstreamAlgoName = compconf_data[
     "CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME:comptime_string"
 ]
 log(f" - {traitLoggerNumBits=} {traitLoggerDstreamAlgoName=}")
+traitLoggerMultiplexLsb = int(
+    compconf_data.get("CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB:u16", 0)
+)
+traitLoggerNumMultiplex = max(traitLoggerMultiplexLsb, 1)
+log(f" - {traitLoggerMultiplexLsb=} {traitLoggerNumMultiplex=}")
 
 genomeFlavor = compconf_data["ASYNC_GA_GENOME_FLAVOR:comptime_string"]
 log(f" - {genomeFlavor=}")
@@ -1336,7 +1341,9 @@ del df, traitCounts_data, traitCycles_data, traitValues_data
 
 log("wildtype traitlogs ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-traitLoggerNumWavs = traitLoggerNumBits // wavSize + 1  # +1 for dstream_T
+traitLoggerNumWavs = (  # +1 for dstream_T
+    traitLoggerNumMultiplex * traitLoggerNumBits // wavSize + 1
+)
 out_tensors = np.zeros((nRow, nCol, traitLoggerNumWavs), np.uint32)
 
 runner.memcpy_d2h(
@@ -1381,9 +1388,11 @@ df = df.with_columns(
     dstream_storage_bitoffset=pl.lit(0, dtype=pl.UInt16),
     dstream_storage_bitwidth=pl.lit(traitLoggerNumBits, dtype=pl.UInt16),
     dstream_S=pl.lit(traitLoggerNumBits, dtype=pl.UInt16),
-    dstream_T_bitoffset=pl.lit(traitLoggerNumBits, dtype=pl.UInt16),
+    dstream_T_bitoffset=pl.lit(
+        traitLoggerNumMultiplex * traitLoggerNumBits, dtype=pl.UInt32
+    ),
     dstream_T_bitwidth=pl.lit(32, dtype=pl.UInt16),
-    trait_value=pl.lit(0, dtype=pl.UInt16),
+    dstream_storage_multiplex=pl.lit(traitLoggerNumMultiplex, dtype=pl.UInt8),
 ).drop("data_raw")
 
 log(f" - data_hex: {df['data_hex'].head(3)}")

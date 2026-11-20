@@ -5,9 +5,27 @@ const traitlogger = @import_module(
 
 fn test_smoke() void {
     traitlogger.logger.reset();
-    traitlogger.logger.update(true);
+    traitlogger.logger.update(1);
+}
+
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+fn test_update() void {
+    // test config: dilation 1, and default one record recording presence of
+    // trait value 0
+    traitlogger.logger.reset();
+    for (@range(u32, 16)) |T| {
+        traitlogger.update(T % 2);
+    }
+    var popcnt: u32 = 0;
+    for (@range(u16, traitlogger.logger.numHalfWords)) |i| {
+        popcnt += opscalar.popcnt32(@as(u32, traitlogger.logger.recordBuffer[i]));
+    }
+    @assert(popcnt == 8);  // trait value 0 at even steps
+    @assert(traitlogger.logger._last_seen_T_ptr().* == 15);
 }
 
 fn do_test() void {
     test_smoke();
+    test_update();
 }

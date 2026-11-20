@@ -4,6 +4,17 @@ const bitlogger = @import_module(
     "cerebraslib/bitlogger.csl",
     .{
         .numBits = 64,
+        .numMultiplex = 1,
+        .dstreamAlgoName = "steady_algo",
+        .symbolName = "",
+    },
+);
+
+const bitlogger3 = @import_module(
+    "cerebraslib/bitlogger.csl",
+    .{
+        .numBits = 64,
+        .numMultiplex = 3,
         .dstreamAlgoName = "steady_algo",
         .symbolName = "",
     },
@@ -13,7 +24,7 @@ const opscalar = @import_module("cerebraslib/opscalar.csl");
 fn test_parity_even() void {
     bitlogger.reset();
     for (@range(u16, 64)) |T| {
-        bitlogger.update(T % 2 == 0);
+        bitlogger.update(@as(u32, T % 2 == 0));
     }
     @assert(bitlogger.dstream_T == 64);
     @assert(bitlogger._last_seen_T_ptr().* == 63);
@@ -30,7 +41,7 @@ fn test_parity_even() void {
 fn test_parity_rare() void {
     bitlogger.reset();
     for (@range(u16, 64)) |T| {
-        bitlogger.update(T % 4 == 0);
+        bitlogger.update(@as(u32, T % 4 == 0));
     }
     @assert(bitlogger.dstream_T == 64);
     @assert(bitlogger._last_seen_T_ptr().* == 61);
@@ -48,7 +59,7 @@ fn test_parity_rare() void {
 fn test_parity_common() void {
     bitlogger.reset();
     for (@range(u16, 64)) |T| {
-        bitlogger.update(T % 4 != 2);
+        bitlogger.update(@as(u32, T % 4 != 2));
     }
     @assert(bitlogger.dstream_T == 64);
     @assert(bitlogger._last_seen_T_ptr().* == 64);
@@ -65,7 +76,7 @@ fn test_parity_common() void {
 fn test_parity_never1() void {
     bitlogger.reset();
     for (@range(u16, 64)) |T| {
-        bitlogger.update(false);
+        bitlogger.update(0);
     }
     @assert(bitlogger.dstream_T == 64);
     @assert(bitlogger._last_seen_T_ptr().* == 0);
@@ -83,7 +94,7 @@ fn test_parity_never1() void {
 fn test_parity_never2() void {
     bitlogger.reset();
     for (@range(u16, 128)) |T| {
-        bitlogger.update(false);
+        bitlogger.update(0);
     }
     @assert(bitlogger.dstream_T == 128);
     @assert(bitlogger._last_seen_T_ptr().* == 0);
@@ -101,7 +112,7 @@ fn test_parity_never2() void {
 fn test_parity_always1() void {
     bitlogger.reset();
     for (@range(u16, 27)) |T| {
-        bitlogger.update(true);
+        bitlogger.update(1);
     }
     @assert(bitlogger.dstream_T == 27);
     @assert(bitlogger._last_seen_T_ptr().* == 27);
@@ -119,7 +130,7 @@ fn test_parity_always1() void {
 fn test_parity_always2() void {
     bitlogger.reset();
     for (@range(u16, 64)) |T| {
-        bitlogger.update(true);
+        bitlogger.update(1);
     }
     @assert(bitlogger.dstream_T == 64);
     @assert(bitlogger._last_seen_T_ptr().* == 64);
@@ -137,7 +148,7 @@ fn test_parity_always2() void {
 fn test_parity_always3() void {
     bitlogger.reset();
     for (@range(u16, 128)) |T| {
-        bitlogger.update(true);
+        bitlogger.update(1);
     }
     @assert(bitlogger.dstream_T == 128);
     @assert(bitlogger._last_seen_T_ptr().* == 128);
@@ -155,7 +166,7 @@ fn test_parity_always3() void {
 fn test_parity_long1() void {
     bitlogger.reset();
     for (@range(u16, 128)) |T| {
-        bitlogger.update(T % 2 == 0);
+        bitlogger.update(@as(u32, T % 2 == 0));
     }
     @assert(bitlogger.dstream_T == 128);
     @assert(bitlogger._last_seen_T_ptr().* == 127);
@@ -185,7 +196,7 @@ fn test_parity_long1() void {
 fn test_parity_long2() void {
     bitlogger.reset();
     for (@range(u16, 128)) |T| {
-        bitlogger.update(T % 2 == 1);
+        bitlogger.update(@as(u32, T % 2 == 1));
     }
     @assert(bitlogger.dstream_T == 128);
     @assert(bitlogger._last_seen_T_ptr().* == 128);
@@ -215,7 +226,7 @@ fn test_parity_long2() void {
 fn test_parity_long3() void {
     bitlogger.reset();
     for (@range(u16, 128)) |T| {
-        bitlogger.update(T % 4 < 2);
+        bitlogger.update(@as(u32, T % 4 < 2));
     }
     @assert(bitlogger.dstream_T == 128);
     @assert(bitlogger._last_seen_T_ptr().* == 126);
@@ -245,7 +256,7 @@ fn test_parity_long3() void {
 fn test_parity_long4() void {
     bitlogger.reset();
     for (@range(u16, 289)) |T| {
-        bitlogger.update(T % 3 == 2 and T < 123);
+        bitlogger.update(@as(u32, T % 3 == 2 and T < 123));
     }
     @assert(bitlogger.dstream_T == 289);
     @assert(bitlogger._last_seen_T_ptr().* == 123);
@@ -272,7 +283,81 @@ fn test_parity_long4() void {
     @assert(popcnt_actual == popcnt_expected);
 }
 
+/// Popcount of a multiplexed record's 64 record bits in bitlogger3.
+fn _multiplex_popcnt3(multiplex_idx: u16) u32 {
+    const base = multiplex_idx * bitlogger3.numHalfWords;
+    var popcnt: u32 = 0;
+    for (@range(u16, bitlogger3.numHalfWords)) |i| {
+        popcnt += opscalar.popcnt32(@as(u32, bitlogger3.recordBuffer[base + i]));
+    }
+    return popcnt;
+}
+
+/// Count sites where more than one record's bit is set in bitlogger3.
+fn _multiplex_overlaps3() u32 {
+    var overlaps: u32 = 0;
+    const n = bitlogger3.numHalfWords;
+    for (@range(u16, n)) |i| {
+        const a = @as(u32, bitlogger3.recordBuffer[i]);
+        const b = @as(u32, bitlogger3.recordBuffer[n + i]);
+        const c = @as(u32, bitlogger3.recordBuffer[2 * n + i]);
+        overlaps += opscalar.popcnt32((a & b) | (a & c) | (b & c));
+    }
+    return overlaps;
+}
+
+fn test_multiplex() void {
+    // one-hot samples cycling through records 0, 1, 2; records share time
+    bitlogger3.reset();
+    for (@range(u16, 63)) |T| {
+        bitlogger3.update(@as(u32, 1) << (T % 3));
+    }
+    @assert(bitlogger3.dstream_T == 63);
+    for (@range(u16, 3)) |multiplex_idx| {
+        @assert(_multiplex_popcnt3(multiplex_idx) == 21);
+    }
+    // one last seen T, shared by all multiplexed records
+    @assert(bitlogger3._last_seen_T_ptr().* == 63);
+    @assert(_multiplex_overlaps3() == 0);
+
+    // record never sampled stays clear, without affecting others
+    bitlogger3.reset();
+    for (@range(u16, 40)) |T| {
+        bitlogger3.update(if (T % 2 == 0) 1 else 4);
+    }
+    @assert(_multiplex_popcnt3(0) == 20);
+    @assert(_multiplex_popcnt3(1) == 0);
+    @assert(_multiplex_popcnt3(2) == 20);
+    @assert(bitlogger3._last_seen_T_ptr().* == 40);
+
+    // last seen T is last time any record is set
+    bitlogger3.reset();
+    for (@range(u16, 30)) |T| {
+        bitlogger3.update(if (T < 20) 2 else 0);
+    }
+    @assert(_multiplex_popcnt3(1) == 20);
+    @assert(bitlogger3._last_seen_T_ptr().* == 20);
+
+    // past capacity, sites are reused: pending zeros, from samples with no
+    // record set, and newly written records keep one-hot samples one-hot
+    bitlogger3.reset();
+    for (@range(u16, 300)) |T| {
+        const sample: u32 = if (T % 7 == 3) 0 else @as(u32, 1) << (T % 3);
+        bitlogger3.update(sample);
+    }
+    @assert(_multiplex_overlaps3() == 0);
+    @assert(bitlogger3._last_seen_T_ptr().* == 300);
+
+    // reset clears all multiplexed records
+    bitlogger3.reset();
+    for (@range(u16, 3)) |multiplex_idx| {
+        @assert(_multiplex_popcnt3(multiplex_idx) == 0);
+    }
+    @assert(bitlogger3._last_seen_T_ptr().* == 0);
+}
+
 fn do_test() void {
+    test_multiplex();
     test_parity_even();
     test_parity_rare();
     test_parity_common();
