@@ -330,7 +330,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     logging.info("... done!")
 
     logging.info("recording sha256sum values...")
-    launcher.run("find . -type f -exec sha256sum {} + | tee sha256sums-worker.txt")
+    launcher.run("find . -type f -exec sha256sum {} + | tee sha256sums-worker.txt || :")
 
     logging.info("finding output files...")
     response = launcher.run(
@@ -414,7 +414,7 @@ EOF
         ls -l "${CONFIG_WORKDIR}/out/dispatch=${slug}"/a=p2p+*.pqt
     done
 
-    find "${CONFIG_WORKDIR}/out" -type f -exec sha256sum {} + | tee "${CONFIG_WORKDIR}/out/sha256sums-host.txt"
+    find "${CONFIG_WORKDIR}/out" -type f -exec sha256sum {} + | tee "${CONFIG_WORKDIR}/out/sha256sums-host.txt" || :
     find "${CONFIG_WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
     du -ah "${CONFIG_WORKDIR}"/out/*
 
