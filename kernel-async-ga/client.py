@@ -6,6 +6,7 @@ from collections import Counter
 import fnmatch
 import functools
 import gc
+import inspect
 import io
 import itertools as it
 import json
@@ -145,21 +146,24 @@ def assemble_genome_bookend_data(
 
 
 def with_subgrid_columns(df: "pl.LazyFrame") -> "pl.LazyFrame":
-    """Add subgrid identity columns, computed from `row` and `col` columns.
+    """Add subgrid identity columns, joined on `row` and `col` columns.
 
     Subgrids are the blocks of PEs between which migration is disabled, with
     per-PE sizes `subgrid_nrow` x `subgrid_ncol` (0 means no partitioning along
-    that axis; sizes may vary between PEs, e.g., runtime config nestedSubgridSizeFactor).
-    Adds `subgrid_row` and `subgrid_col` (coordinates of the subgrid's top-left
-    PE, in units of the smallest subgrid size) and `subgrid` (flat, row-major
-    index from those coordinates, unique within a run).
+    that axis; sizes may vary between PEs, e.g., runtime config
+    nestedSubgridSizeFactor). Adds `subgrid_row` and `subgrid_col`
+    (coordinates of the subgrid's top-left PE, in units of the smallest
+    subgrid size) and `subgrid` (flat, row-major index from those
+    coordinates, unique within a run).
     """
-    tile = pl.col("row").cast(pl.UInt32) * nCol + pl.col("col").cast(pl.UInt32)
-    return df.with_columns(
-        **{
-            key: pl.lit(pl.Series(value.ravel())).gather(tile)
-            for key, value in subgridColumns.items()
-        },
+    # join, rather than gather by tile id, so that streaming sinks work
+    joinKwargs = (  # polars < 1.19 left joins keep left order without asking
+        {"maintain_order": "left"}
+        if "maintain_order" in inspect.signature(pl.LazyFrame.join).parameters
+        else {}
+    )
+    return df.join(
+        subgridFrame.lazy(), on=["row", "col"], how="left", **joinKwargs
     )
 
 
@@ -812,15 +816,20 @@ _subgridRow = _rows - _rows % np.where(rowSubgrid, rowSubgrid, nRow)
 _subgridRow //= _rowUnit  # top-left PE, in units of smallest subgrid
 _subgridCol = _cols - _cols % np.where(colSubgrid, colSubgrid, nCol)
 _subgridCol //= _colUnit
-subgridColumns = {  # per-PE values, by tile id, for with_subgrid_columns
-    "subgrid_row": _subgridRow.astype(np.uint16),
-    "subgrid_col": _subgridCol.astype(np.uint16),
-    "subgrid": (
-        _subgridRow * -(-nCol // _colUnit) + _subgridCol
-    ).astype(np.uint32),
-    "subgrid_nrow": rowSubgrid.astype(np.uint16),
-    "subgrid_ncol": colSubgrid.astype(np.uint16),
-}
+subgridFrame = pl.DataFrame(  # per-PE values, for with_subgrid_columns
+    {
+        "row": pl.Series(_rows.ravel(), dtype=pl.UInt16),
+        "col": pl.Series(_cols.ravel(), dtype=pl.UInt16),
+        "subgrid_row": pl.Series(_subgridRow.ravel(), dtype=pl.UInt16),
+        "subgrid_col": pl.Series(_subgridCol.ravel(), dtype=pl.UInt16),
+        "subgrid": pl.Series(
+            (_subgridRow * -(-nCol // _colUnit) + _subgridCol).ravel(),
+            dtype=pl.UInt32,
+        ),
+        "subgrid_nrow": pl.Series(rowSubgrid.ravel(), dtype=pl.UInt16),
+        "subgrid_ncol": pl.Series(colSubgrid.ravel(), dtype=pl.UInt16),
+    },
+)
 del _rows, _cols, _rowUnit, _colUnit, _subgridRow, _subgridCol
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
