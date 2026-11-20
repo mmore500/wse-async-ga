@@ -61,20 +61,37 @@ fn test_tables() void {
     @assert(_is_close(genome._get_mutation_p(2), 7.370657955e-04));
 }
 
-fn test_initialize_one() void {
-    random.set_global_prng_seed(1);
+fn test_initialize_one_at() void {
     var g = @zeros(genome.genome_t);
-    var nInfected: u32 = 0;
-    const nTrials: u16 = 4000;
-    for (@range(u16, nTrials)) |_| {
+    // corner PE: infected with wildtype pathogen, no immunity
+    g[0] = 0xFFFFFFFF;
+    genome._initialize_one_at(&g, 0, 0);
+    @assert(genome._is_infected(&g));
+    @assert(genome._get_sites(&g) == 0);  // wildtype
+    @assert(genome._cast_fields(&g).*.pathogen == genome.infectedFlag);
+    @assert(genome._cast_fields(&g).*.immunity == 0);
+    // all other PEs: uninfected, no immunity
+    _check_unseeded_at(1, 0);
+    _check_unseeded_at(0, 1);
+    _check_unseeded_at(754, 1169);
+}
+
+fn _check_unseeded_at(x: u16, y: u16) void {
+    var g = @zeros(genome.genome_t);
+    g[0] = 0xFFFFFFFF;
+    genome._initialize_one_at(&g, x, y);
+    @assert(g[0] == 0);
+}
+
+fn test_initialize_one() void {
+    // test layout is a single PE, at col 0, row 0, so it is seeded
+    var g = @zeros(genome.genome_t);
+    for (@range(u16, 16)) |_| {
         g[0] = 0xFFFFFFFF;
         genome.initialize_one(&g);
+        @assert(genome._cast_fields(&g).*.pathogen == genome.infectedFlag);
         @assert(genome._cast_fields(&g).*.immunity == 0);
-        @assert(genome._get_sites(&g) == 0);  // wildtype
-        nInfected += @as(u32, genome._is_infected(&g));
     }
-    // default seed p 0.01: expect 40, standard deviation ~6.3
-    @assert(nInfected > 15 and nInfected < 65);
 }
 
 fn test_trample_resident() void {
@@ -270,6 +287,7 @@ fn do_test() void {
     test_enabled_sites();
     test_calc_allele_bits();
     test_tables();
+    test_initialize_one_at();
     test_initialize_one();
     test_trample_resident();
     test_clobber_immigrant();

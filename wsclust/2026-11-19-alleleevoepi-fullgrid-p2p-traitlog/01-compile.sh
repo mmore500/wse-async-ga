@@ -169,8 +169,10 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1, for 5 possible values (0, or 1,
 # 3, 5, 7 for the 4 strains)
-# tournament size 1, so each host's update samples one random contact, as in
-# the ABM
+# infection starts only on the corner PE (col 0, row 0), where all hosts start
+# infected with the wildtype strain, and spreads from there by migration
+# tournament size 2, so each host's update samples two random contacts, with
+# an infected contact winning over an uninfected one
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
 # as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_19
@@ -212,7 +214,7 @@ export ASYNC_GA_MSEC_AT_LEAST=0
 export ASYNC_GA_NCYCLE_AT_LEAST=50000
 export ASYNC_GA_POPSIZE=1133
 export ASYNC_GA_POPULATION_FLAVOR="population_tournamentsteadystate"
-export ASYNC_GA_TOURNSIZE_NUMERATOR=1
+export ASYNC_GA_TOURNSIZE_NUMERATOR=2
 export ASYNC_GA_TOURNSIZE_DENOMINATOR=1
 export ASYNC_GA_GLOBAL_SEED=${seed}
 export COMPCONFENV_CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY__f32="0.0"
