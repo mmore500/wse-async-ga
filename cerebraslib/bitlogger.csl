@@ -24,8 +24,8 @@ var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
 var pendingBuffer = @zeros([numHalfWords]u16);  // shared by all records
 var ptr_recordBuffer : [*]u16 = &recordBuffer;
 
-const recordDsd = @get_dsd(mem1d_dsd, .{
-    .tensor_access = |i|{numMultiplex * numHalfWords} -> recordBuffer[i],
+const recordDsd = @get_dsd(mem1d_dsd, .{  // offset for other records
+    .tensor_access = |i|{numHalfWords} -> recordBuffer[i],
 });
 const pendingDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{numHalfWords} -> pendingBuffer[i],
@@ -48,12 +48,12 @@ fn update(sample: u32) void {
     const dstream_S = numBits;
     if (sample != 0) {  // seen
         // mask out any pending zeros, in all multiplexed records...
-        var record_i: u16 = 0;
-        for (@range(u16, numMultiplex)) |_| {
-            for (@range(u16, numHalfWords)) |i| {
-                recordBuffer[record_i] &= ~pendingBuffer[i];
-                record_i += 1;
-            }
+        for (@range(u16, numMultiplex)) |record| {
+            const dsd = @increment_dsd_offset(
+                recordDsd, @as(i16, record * numHalfWords), u16
+            );
+            @or16(dsd, dsd, pendingDsd);  // (x or y) xor y is same as
+            @xor16(dsd, dsd, pendingDsd); // x & (~y)
         }
         @mov16(pendingDsd, 0);
 
@@ -91,7 +91,14 @@ fn update(sample: u32) void {
 
 fn reset() void {
     @mov16(pendingDsd, 0);
-    @mov16(recordDsd, 0);
+    for (@range(u16, numMultiplex)) |record| {
+        @mov16(
+            @increment_dsd_offset(
+                recordDsd, @as(i16, record * numHalfWords), u16
+            ),
+            0,
+        );
+    }
     const last_seen_T_ptr = _last_seen_T_ptr();
     last_seen_T_ptr.* = 0;
     dstream_T = 0;
