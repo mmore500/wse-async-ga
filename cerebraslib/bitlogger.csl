@@ -17,18 +17,15 @@ const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 // - then one u32 last seen T, shared by all records (+2 halfwords)
 // a sample is seen if any record's bit is set
 const numHalfWords = numBits >> 4;
-comptime {
-    @comptime_assert(numMultiplex > 0 and numMultiplex <= 32);
-    // keeps each record's bits word-aligned, so byte swaps stay in words
-    @comptime_assert(numHalfWords % 2 == 0);
-}
+comptime { @comptime_assert(numMultiplex > 0 and numMultiplex <= 32); }
+
 var dstream_T: u32 = 0;
 var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
 var pendingBuffer = @zeros([numHalfWords]u16);  // shared by all records
 var ptr_recordBuffer : [*]u16 = &recordBuffer;
 
-const recordDsd = @get_dsd(mem1d_dsd, .{  // all records, and last seen T
-    .tensor_access = |i|{numMultiplex * numHalfWords + 2} -> recordBuffer[i],
+const recordDsd = @get_dsd(mem1d_dsd, .{
+    .tensor_access = |i|{numMultiplex * numHalfWords} -> recordBuffer[i],
 });
 const pendingDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{numHalfWords} -> pendingBuffer[i],
@@ -42,29 +39,6 @@ fn _last_seen_T_ptr() *u32 {
     return @ptrcast(*u32, &recordBuffer[numMultiplex * numHalfWords]);
 }
 
-const multiplexBytes = numHalfWords * 2;  // stride between records' bits
-
-/// Write bits of sample, bit i into record i, at site in every record.
-fn _write_multiplex_at(site: u16, sample: u32) void {
-    // site's byte and bit, same in every record; byte and bit swapped as by
-    // bitmanip.set_nth_bit_with_swaps(..., .{ .byteSwap = true, .bitSwap = true })
-    const byteIndex = (site >> 3) ^ 3;
-    const bitMask = @as(u8, 0b10000000) >> @as(u8, site & 7);
-
-    const record_bytes = @ptrcast([*]u8, &recordBuffer[0]);
-    var remaining = sample;  // shifted down as records are written
-    var multiplexByte: u16 = byteIndex;
-    for (@range(u16, numMultiplex)) |_| {
-        if ((remaining & 1) != 0) {
-            record_bytes[multiplexByte] |= bitMask;
-        } else {
-            record_bytes[multiplexByte] &= ~bitMask;
-        }
-        remaining >>= 1;
-        multiplexByte += multiplexBytes;
-    }
-}
-
 // public API =================================================================
 /// Record one sample per multiplexed record, record i's from bit i of sample.
 /// Bits of sample above numMultiplex must be zero.
@@ -72,7 +46,7 @@ fn update(sample: u32) void {
     const site = @as(u16, dstream_algo.assign_storage_site(numBits, dstream_T));
 
     const dstream_S = numBits;
-    if (sample != 0) {  // seen
+    if (sample != 0 and site != dstream_S) {  // seen
         // mask out any pending zeros, in all multiplexed records...
         var record_i: u16 = 0;
         for (@range(u16, numMultiplex)) |_| {
@@ -84,10 +58,22 @@ fn update(sample: u32) void {
         @mov16(pendingDsd, 0);
 
         // ... and write each multiplexed record's bit, set or not
-        if (site != dstream_S) _write_multiplex_at(site, sample);
+        var remaining = sample;  // shifted down as records are written
+        for (@range(u16, numMultiplex)) |record| {
+            const record_bytes = @ptrcast(
+                [*]u8, &recordBuffer[record * numHalfWords]
+            );
+            bitmanip.set_nth_bit_with_swaps(
+                record_bytes,
+                site,
+                (remaining & 1) != 0,
+                .{ .byteSwap = true, .bitSwap = true },
+            );
+            remaining >>= 1;
+        }
         const last_seen_T_ptr = _last_seen_T_ptr();
         last_seen_T_ptr.* = dstream_T + 1;
-    } else {  // all multiplexed records zero, write lazily on next seen sample
+    } else {  // unseen (or not stored), zeros written lazily on next seen
         const pending_bytes = @ptrcast([*]u8, &pendingBuffer[0]);
         if (site != dstream_S) bitmanip.set_nth_bit_with_swaps(
             pending_bytes,
@@ -103,7 +89,9 @@ fn update(sample: u32) void {
 
 fn reset() void {
     @mov16(pendingDsd, 0);
-    @mov16(recordDsd, 0);  // also clears last seen T
+    @mov16(recordDsd, 0);
+    const last_seen_T_ptr = _last_seen_T_ptr();
+    last_seen_T_ptr.* = 0;
     dstream_T = 0;
 }
 
