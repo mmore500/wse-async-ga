@@ -168,7 +168,8 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # migration between neighbors is 10x the default: 10 genomes per neighbor
 # send (default 1), received in batches of 40 (default 4)
 # vs. 2026-11-19 workflow, immunity waning is 5x slower (0.002, down from
-# 0.01) and within-host mutation rate is 2x lower (5e-7, down from 1e-6)
+# 0.01); six runs sweep within-host mutation rate by factors of 4, from
+# 2^-16 (~1.5e-5) down to 2^-26 (~1.5e-8), bracketing the 1e-6 default
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1
@@ -183,7 +184,6 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 genome_flavor=genome_alleleevoepi_2026_11_19
 p2p=0.05
 waning=0.002
-mutation=5e-7
 sendgenomes=10
 recvgenomes=40
 subgrid=9
@@ -191,10 +191,12 @@ nestfactor=2
 nrow=1170
 ncol=755
 seedstride=9
-seed=1124
+seed=1123
 p2pMode=pairs
-for _ in once; do
-    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+nestfactor=${nestfactor}+p2p=${p2p}+p2pmode=${p2pMode}+waning=${waning}+mutation=${mutation}+sendgenomes=${sendgenomes}+seed=${seed}"
+for mutexp in 16 18 20 22 24 26; do
+    mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact in f32
+    seed=$((seed + 1))
+    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+nestfactor=${nestfactor}+p2p=${p2p}+p2pmode=${p2pMode}+waning=${waning}+mutationlog2=-${mutexp}+sendgenomes=${sendgenomes}+seed=${seed}"
     echo
     echo "====== Compiling config: ${CONFIG_NAME} ======"
 
