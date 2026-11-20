@@ -73,7 +73,7 @@ fn update(sample: u32) void {
         }
         const last_seen_T_ptr = _last_seen_T_ptr();
         last_seen_T_ptr.* = dstream_T + 1;
-    } else {  // all multiplexed records zero, write lazily on next seen sample
+    } else {  // all multiplexed writes zero, defer to next nonzero sample
         const pending_bytes = @ptrcast([*]u8, &pendingBuffer[0]);
         if (site != dstream_S) bitmanip.set_nth_bit_with_swaps(
             pending_bytes,
