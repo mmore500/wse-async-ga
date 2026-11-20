@@ -41,8 +41,6 @@ fn _last_seen_T_ptr() *u32 {
 }
 
 // public API =================================================================
-/// Record one sample per multiplexed record, record i's from bit i of sample.
-/// Bits of sample above numMultiplex must be zero.
 fn update(sample: u32) void {
     const site = @as(u16, dstream_algo.assign_storage_site(numBits, dstream_T));
 
