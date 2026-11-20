@@ -33,7 +33,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade uv
 python3 -m uv pip install -r "requirements_cs.txt"
 python3 -m uv pip install ./pylib_cs
-python3 -m uv pip freeze | tee "${WORKDIR}/pip-freeze.txt"
+python3 -m uv pip freeze | tee "${WORKDIR}/pip-freeze.txt" || :
 python3 -m pylib_cs.cslc_wsclust_shim  # test install
 
 rsync -a "${PWD}/" "${WORKDIR}/source/"

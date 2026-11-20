@@ -40,7 +40,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade uv
 python3 -m uv pip install -r "requirements_cs.txt"
 python3 -m uv pip install ./pylib_cs
-python3 -m uv pip freeze | tee "${WORKDIR}/pip-freeze.txt"
+python3 -m uv pip freeze | tee "${WORKDIR}/pip-freeze.txt" || :
 python3 -m pylib_cs.cslc_wsclust_shim  # test install
 
 rsync -a "${PWD}/" "${WORKDIR}/source/"
@@ -95,7 +95,7 @@ ls
 
 cd "${WORKDIR}"
 echo "PWD ${PWD}"
-find "./run" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
+find "./run" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
 
 python3 - << EOF
 import logging
@@ -155,8 +155,8 @@ with SdkLauncher("./run", disable_version_check=True) as launcher:
 logging.info("exited SdkLauncher")
 EOF
 
-find "${WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${WORKDIR}"/out/*
+find "${WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${WORKDIR}"/out/* || :
 
 ###############################################################################
 echo "done! ------------------------------------------------------------------"
