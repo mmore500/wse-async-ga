@@ -1341,7 +1341,7 @@ del df, traitCounts_data, traitCycles_data, traitValues_data
 
 log("wildtype traitlogs ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-# each PE holds every multiplexed record's bits back to back, then one
+# each PE holds multiplexed records back to back, then one
 # dstream_T shared by all records (+1); downstream demultiplexes records
 traitLoggerNumWavs = (
     traitLoggerNumMultiplex * traitLoggerNumBits // wavSize + 1

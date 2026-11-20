@@ -20,6 +20,7 @@ const numHalfWords = numBits >> 4;
 comptime { @comptime_assert(numMultiplex > 0 and numMultiplex <= 32); }
 
 var dstream_T: u32 = 0;
+// +2 are u32 last seen T
 var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
 var pendingBuffer = @zeros([numHalfWords]u16);  // shared by all records
 var ptr_recordBuffer : [*]u16 = &recordBuffer;

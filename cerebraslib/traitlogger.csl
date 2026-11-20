@@ -20,8 +20,6 @@ const dilation = comptime compconf.get_value(
     "CEREBRASLIB_TRAITLOGGER_DILATION",
     u32,
 );
-// 0 (default): one record, recording whether trait value is 0
-// n > 0: n multiplexed records, record i recording bit i of trait value
 const multiplex_lsb = comptime compconf.get_value_or(
     "CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB",
     @as(u16, 0),
@@ -41,12 +39,12 @@ const logger = @import_module("cerebraslib/bitlogger.csl", .{
 var _T: u32 = 0;
 
 // public API =================================================================
-/// Record trait value: by default, whether it is 0; with multiplex_lsb n > 0,
-/// its n bits, bit i in record i (trait value must be less than 2^n).
-fn update(trait: u32) void {
+/// Record sample: by default, whether it is 0; with multiplex_lsb n > 0,
+/// its n bits, bit i in record i (sample must be less than 2^n).
+fn update(sample: u32) void {
     if (_T % dilation == 0) {
-        const sample = if (multiplex_lsb == 0) @as(u32, trait == 0) else trait;
-        logger.update(sample);
+        const sample_value = if (multiplex_lsb == 0) @as(u32, sample == 0) else sample;
+        logger.update(sample_value);
     }
     _T += 1;
 }
