@@ -170,6 +170,8 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # vs. 2026-11-19 workflow, immunity waning is 5x slower (0.002, down from
 # 0.01); six runs sweep within-host mutation rate by factors of 4, from
 # 2^-16 (~1.5e-5) down to 2^-26 (~1.5e-8), bracketing the 1e-6 default
+# all six runs share one compile, with mutation rate and seed set per run by
+# runtime config (named runtime config rtc_evoepi_mutationRate, globalSeed)
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1
@@ -191,14 +193,16 @@ nestfactor=2
 nrow=1170
 ncol=755
 seedstride=9
+compileseed=1124  # runs override with runtime config globalSeed
 seed=1123
 p2pMode=pairs
+compiled=0
 for mutexp in 16 18 20 22 24 26; do
     mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact in f32
     seed=$((seed + 1))
     CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+nestfactor=${nestfactor}+p2p=${p2p}+p2pmode=${p2pMode}+waning=${waning}+mutationlog2=-${mutexp}+sendgenomes=${sendgenomes}+seed=${seed}"
     echo
-    echo "====== Compiling config: ${CONFIG_NAME} ======"
+    echo "====== Configuring run: ${CONFIG_NAME} ======"
 
     CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
     CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
@@ -229,7 +233,7 @@ export ASYNC_GA_POPSIZE=6500  # below 6649 limit of PE memory with 10x neighbor 
 export ASYNC_GA_POPULATION_FLAVOR="population_tournamentsteadystate"
 export ASYNC_GA_TOURNSIZE_NUMERATOR=2
 export ASYNC_GA_TOURNSIZE_DENOMINATOR=1
-export ASYNC_GA_GLOBAL_SEED=${seed}
+export ASYNC_GA_GLOBAL_SEED=${compileseed}
 export COMPCONFENV_CEREBRASLIB_POPULATION_EXTINCTION_PROBABILITY__f32="0.0"
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME__comptime_string="hybrid_0_steady_1_stretched_2_algo"
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_NUM_BITS__u32=1024
@@ -238,7 +242,6 @@ export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB__u16=3
 export COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16=2
 export COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16=${seedstride}
 export COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32="${waning}"
-export COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32="${mutation}"
 export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${p2p}"
 export COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16=${sendgenomes}
 export COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16=${recvgenomes}
@@ -268,7 +271,6 @@ echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB__u16 \${COMPCONFENV_CERE
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16 \${COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16 \${COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32}"
-echo "COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32}"
 echo "COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32 \${COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32}"
 echo "COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16}"
 echo "COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16}"
@@ -283,15 +285,19 @@ EOF
     echo "do compile: ${CONFIG_NAME} -------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
-    # runtime config sets nested subgrid sizes, and p2p targets (random pairs
-    # within subgrids)
+    # runtime config sets nested subgrid sizes, p2p targets (random pairs
+    # within subgrids), mutation rate, and seed
     rm -rf "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch"
-    echo "{\"dispatch_slug\": \"p2p-${p2pMode}-nest${nestfactor}\", \"p2pMode\": \"${p2pMode}\", \"nestedSubgridSizeFactor\": ${nestfactor}}" \
+    echo "{\"dispatch_slug\": \"p2p-${p2pMode}-nest${nestfactor}-mutlog2-${mutexp}\", \"p2pMode\": \"${p2pMode}\", \"nestedSubgridSizeFactor\": ${nestfactor}, \"globalSeed\": ${seed}, \"rtc_evoepi_mutationRate:f32\": ${mutation}}" \
         | tee "${CONFIG_WORKDIR}/runtime_config.jsonl"
     python3 "${WORKDIR}/src/kernel-async-ga/runtime_config_generate.py" \
         default.py.in "${CONFIG_WORKDIR}/runtime_config.jsonl"
 
-    "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${CONFIG_RESULTDIR}/compile.log"
+    # compile once, shared by all runs
+    if [ "${compiled}" -eq 0 ]; then
+        "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${RESULTDIR_STEP}/compile.log"
+        compiled=1
+    fi
 
     # Copy compiled artifacts to config workdir for run step
     cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" "${CONFIG_WORKDIR}/"
@@ -303,7 +309,7 @@ EOF
     cp -rL "${WORKDIR}/src/kernel-async-ga/runtime_config_validate" "${CONFIG_WORKDIR}/"
     cp -rL "${CONFIG_WORKDIR}/runtime_config_dispatch" "${CONFIG_RESULTDIR}/"
 
-    echo "Config ${CONFIG_NAME} compile complete!"
+    echo "Config ${CONFIG_NAME} setup complete!"
 done
 
 ###############################################################################
