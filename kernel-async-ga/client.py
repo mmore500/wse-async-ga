@@ -1394,7 +1394,7 @@ df = df.with_columns(
         traitLoggerNumMultiplex * traitLoggerNumBits, dtype=pl.UInt32
     ),
     dstream_T_bitwidth=pl.lit(32, dtype=pl.UInt16),
-    dstream_storage_multiplex=pl.lit(traitLoggerMultiplexLsb, dtype=pl.UInt8),
+    dstream_storage_multiplex=pl.lit(traitLoggerNumMultiplex, dtype=pl.UInt8),
 ).drop("data_raw")
 
 log(f" - data_hex: {df['data_hex'].head(3)}")
