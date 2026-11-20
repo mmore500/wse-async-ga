@@ -43,8 +43,8 @@ var _T: u32 = 0;
 /// its n bits, bit i in record i (sample must be less than 2^n).
 fn update(sample: u32) void {
     if (_T % dilation == 0) {
-        const sample_value = if (multiplex_lsb == 0) @as(u32, sample == 0) else sample;
-        logger.update(sample_value);
+        const sample_truthy = @as(u32, sample == 0);
+        logger.update(if (multiplex_lsb == 0) sample_truthy else sample);
     }
     _T += 1;
 }
