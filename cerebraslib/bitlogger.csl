@@ -24,7 +24,7 @@ var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
 var pendingBuffer = @zeros([numHalfWords]u16);  // shared by all records
 var ptr_recordBuffer : [*]u16 = &recordBuffer;
 
-// record 0's bits; other records use @increment_dsd_offset of it
+// record 0, others use @increment_dsd_offset
 const recordDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{numHalfWords} -> recordBuffer[i],
 });
