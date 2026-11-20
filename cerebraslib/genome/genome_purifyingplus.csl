@@ -99,23 +99,37 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = true;
 const hasNotifyExtinct: bool = false;
 
+// memory layout struct =======================================================
+const fields_t = extern struct {
+    fitness: f32, // byte 0
+    hstrat_T: u32, // byte 4
+    hstrat_storage: [3]u32, // byte 8
+};
+
+/// View genome words through memory layout struct.
+fn _cast_fields(genome: genomePtr_t) *fields_t {
+    return @ptrcast(*fields_t, genome);
+}
+
 // internal functions =========================================================
 const _parity_T_dilation: u32 = 16;
 
 fn _check_parity(genome: genomePtr_t) bool {
-    const t_ok = !opscalar.parity32(genome[1]); // even parity over whole T word
-    const s0_ok = opscalar.parity32(genome[2]) == ((genome[1] & 2) == 2);
-    const s1_ok = opscalar.parity32(genome[3]) == ((genome[1] & 4) == 4);
-    const s2_ok = opscalar.parity32(genome[4]) == ((genome[1] & 8) == 8);
+    const f = _cast_fields(genome);
+    const t_ok = !opscalar.parity32(f.*.hstrat_T); // even parity over whole T word
+    const s0_ok = opscalar.parity32(f.*.hstrat_storage[0]) == ((f.*.hstrat_T & 2) == 2);
+    const s1_ok = opscalar.parity32(f.*.hstrat_storage[1]) == ((f.*.hstrat_T & 4) == 4);
+    const s2_ok = opscalar.parity32(f.*.hstrat_storage[2]) == ((f.*.hstrat_T & 8) == 8);
     return t_ok and s0_ok and s1_ok and s2_ok;
 }
 
 fn _set_parity_bits(genome: genomePtr_t) void {
-    genome[1] = genome[1] & 0xFFFFFFF0; // clear parity bits
-    genome[1] |= @as(u32, opscalar.parity32(genome[2])) << 1; // bit 1: storage[0] parity
-    genome[1] |= @as(u32, opscalar.parity32(genome[3])) << 2; // bit 2: storage[1] parity
-    genome[1] |= @as(u32, opscalar.parity32(genome[4])) << 3; // bit 3: storage[2] parity
-    genome[1] |= @as(u32, opscalar.parity32(genome[1])); // bit 0: T parity (must be last)
+    const f = _cast_fields(genome);
+    f.*.hstrat_T = f.*.hstrat_T & 0xFFFFFFF0; // clear parity bits
+    f.*.hstrat_T |= @as(u32, opscalar.parity32(f.*.hstrat_storage[0])) << 1; // bit 1: storage[0] parity
+    f.*.hstrat_T |= @as(u32, opscalar.parity32(f.*.hstrat_storage[1])) << 2; // bit 2: storage[1] parity
+    f.*.hstrat_T |= @as(u32, opscalar.parity32(f.*.hstrat_storage[2])) << 3; // bit 3: storage[2] parity
+    f.*.hstrat_T |= @as(u32, opscalar.parity32(f.*.hstrat_T)); // bit 0: T parity (must be last)
 }
 
 fn _apply_mutation(genome: genomePtr_t) void {
@@ -131,29 +145,28 @@ fn _apply_mutation(genome: genomePtr_t) void {
         mutated -= math.abs(random.random_normal_f32());
     }
     // mutate fitness value
-    @ptrcast(*f32, genome).* = mutated;
+    _cast_fields(genome).*.fitness = mutated;
 }
 
 fn _do_step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
     if (rng.next_bit()) {
-        const T = @ptrcast([*]u32, genome)[1] / (_parity_T_dilation * hstrat_T_dilation);
+        const T = _cast_fields(genome).*.hstrat_T / (_parity_T_dilation * hstrat_T_dilation);
         const site = dstream_algo.assign_storage_site(S, T);
         @assert(site <= S);
 
-        const offset_bits: u16 = (4 + 4) * 8;
-        const target_bit = @as(u16, site) + offset_bits;
+        const target_bit = @as(u16, site);
 
-        const genome_bytes = @ptrcast([*]u8, genome);
-        if (site != S) bitmanip.flip_nth_bit_with_swaps(genome_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true });
+        const storage_bytes = @ptrcast([*]u8, &_cast_fields(genome).*.hstrat_storage);
+        if (site != S) bitmanip.flip_nth_bit_with_swaps(storage_bytes, target_bit, .{ .byteSwap = true, .bitSwap = true });
     }
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
-    if ((@ptrcast([*]u32, genome)[1] / _parity_T_dilation) % hstrat_T_dilation == 0) {
+    if ((_cast_fields(genome).*.hstrat_T / _parity_T_dilation) % hstrat_T_dilation == 0) {
         _do_step_instrumentation(genome);
     }
-    @ptrcast([*]u32, genome)[1] += _parity_T_dilation;
+    _cast_fields(genome).*.hstrat_T += _parity_T_dilation;
     _set_parity_bits(genome);
 }
 
@@ -164,7 +177,7 @@ fn elapse_inheritance_of(genome: genomePtr_t) void {
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
-    return @ptrcast(*f32, genome).*;
+    return _cast_fields(genome).*.fitness;
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 {
@@ -172,11 +185,11 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 }
 
 fn initialize_one(genome: genomePtr_t) void {
-    @ptrcast(*f32, genome).* = 0.0;
-    @ptrcast([*]u32, genome)[1] = S * hstrat_T_dilation * _parity_T_dilation;
-    @ptrcast([*]u32, genome)[2] = rng.next();
-    @ptrcast([*]u32, genome)[3] = rng.next();
-    @ptrcast([*]u32, genome)[4] = rng.next();
+    _cast_fields(genome).*.fitness = 0.0;
+    _cast_fields(genome).*.hstrat_T = S * hstrat_T_dilation * _parity_T_dilation;
+    _cast_fields(genome).*.hstrat_storage[0] = rng.next();
+    _cast_fields(genome).*.hstrat_storage[1] = rng.next();
+    _cast_fields(genome).*.hstrat_storage[2] = rng.next();
     _set_parity_bits(genome);
 }
 

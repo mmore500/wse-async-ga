@@ -3,6 +3,11 @@ const random = @import_module("<random>");
 
 const genome_mls = @import_module("cerebraslib/genome/genome_mlsspectrum_2026_10_25.csl");
 
+/// View genome words through memory layout struct.
+fn _fields(g: *genome_mls.genome_t) *genome_mls.fields_t {
+    return genome_mls._cast_fields(g);
+}
+
 
 fn test_builtin_random_seeding() void {
     random.set_global_prng_seed(1);
@@ -69,26 +74,25 @@ fn test_elapse_inheritance_of() void {
 
     // mutation does not touch counter or hstrat bitfield
     const counter = genome_mls._get_counter(genome_ptr);
-    const genome1 = genome[1];
+    const genome1 = _fields(&genome).*.hstrat_storage[0];
     for (@range(u16, 64)) |_| { genome_mls._apply_mutation(genome_ptr, 1); }
     @assert(genome_mls._get_counter(genome_ptr) == counter);
-    @assert(genome[1] == genome1);
+    @assert(_fields(&genome).*.hstrat_storage[0] == genome1);
 
     // hstrat bitfield
-    for (@range(u16, 1, 5, 1)) |i| {
-        var genome_i = genome[i];
-        while (genome_i == genome[i]) {
+    for (@range(u16, 4)) |i| {
+        var storage_i = _fields(&genome).*.hstrat_storage[i];
+        while (storage_i == _fields(&genome).*.hstrat_storage[i]) {
             genome_mls.elapse_inheritance_of(genome_ptr);
         }
     }
 
     // saturated counter stops instrumentation
-    const halfwords = @ptrcast([*]u16, genome_ptr);
-    halfwords[0] = genome_mls.counterMax;
-    const hstrat1 = genome[1];
+    _fields(&genome).*.hstrat_T = genome_mls.counterMax;
+    const hstrat1 = _fields(&genome).*.hstrat_storage[0];
     for (@range(u16, 32)) |_| { genome_mls._step_instrumentation(genome_ptr); }
     @assert(genome_mls._get_counter(genome_ptr) == genome_mls.counterMax);
-    @assert(genome[1] == hstrat1);
+    @assert(_fields(&genome).*.hstrat_storage[0] == hstrat1);
 }
 
 fn test_calc_fitness_of() void {
@@ -182,7 +186,7 @@ fn test_get_trait_value() void {
         | genome_mls.beneficialMask
         | genome_mls.neutralMask
     );
-    genome[1] ^= 0xFFFFFFFF;
+    _fields(&genome).*.hstrat_storage[0] ^= 0xFFFFFFFF;
     @assert(genome_mls.get_trait_value(genome_ptr) == 1);
 
     // each MLS site set adds one
@@ -205,14 +209,14 @@ fn test_initialize_one() void {
     genome_mls.initialize_one(genome_ptr);
     @assert(genome[0] == 0xF0000080);
     @assert(genome_mls._get_counter(genome_ptr) == 128);
-    @assert(genome[1] != 0);
-    @assert(genome[2] != 0);
-    @assert(genome[3] != 0);
-    @assert(genome[4] != 0);
-    @assert(genome[1] != genome[2]);
-    @assert(genome[2] != genome[3]);
-    @assert(genome[3] != genome[4]);
-    @assert(genome[4] != genome[1]);
+    @assert(_fields(&genome).*.hstrat_storage[0] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[1] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[2] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[3] != 0);
+    @assert(_fields(&genome).*.hstrat_storage[0] != _fields(&genome).*.hstrat_storage[1]);
+    @assert(_fields(&genome).*.hstrat_storage[1] != _fields(&genome).*.hstrat_storage[2]);
+    @assert(_fields(&genome).*.hstrat_storage[2] != _fields(&genome).*.hstrat_storage[3]);
+    @assert(_fields(&genome).*.hstrat_storage[3] != _fields(&genome).*.hstrat_storage[0]);
     @assert(!genome_mls._is_clear(genome_ptr));
 }
 

@@ -119,6 +119,18 @@ const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
 const hasNotifyExtinct: bool = false;
 
+// memory layout struct =======================================================
+const fields_t = extern struct {
+    fitness: f32, // byte 0
+    hstrat_T: u32, // byte 4
+    hstrat_storage: [3]u32, // byte 8
+};
+
+/// View genome words through memory layout struct.
+fn _cast_fields(genome: genomePtr_t) *fields_t {
+    return @ptrcast(*fields_t, genome);
+}
+
 // internal functions =========================================================
 fn _apply_mutation(genome: genomePtr_t) void {
     var mutated = calc_fitness_of(genome);
@@ -128,17 +140,16 @@ fn _apply_mutation(genome: genomePtr_t) void {
         mutated -= math.abs(random.random_normal_f32()) * scale;
     }
     // mutate fitness value
-    @ptrcast(*f32, genome).* = mutated;
+    _cast_fields(genome).*.fitness = mutated;
 }
 
 fn _step_instrumentation(genome: genomePtr_t) void {
     // elapse generation in bitfield
-    const T = @ptrcast([*]u32, genome)[1];
+    const T = _cast_fields(genome).*.hstrat_T;
     const site = dstream_algo.assign_storage_site(S, T);
     @assert(site <= S);
 
-    const offset_bits: u16 = (4 + 4) * 8;
-    const target_bit = @as(u16, site) + offset_bits;
+    const target_bit = @as(u16, site);
 
     const value = if (validator == "block")
         T / (S / 2 + 1) == 1
@@ -149,16 +160,16 @@ fn _step_instrumentation(genome: genomePtr_t) void {
     else
         false;
 
-    const genome_bytes = @ptrcast([*]u8, genome);
+    const storage_bytes = @ptrcast([*]u8, &_cast_fields(genome).*.hstrat_storage);
     if (site != S) bitmanip.set_nth_bit_with_swaps(
-        genome_bytes,
+        storage_bytes,
         target_bit,
         value,
         .{ .byteSwap = true, .bitSwap = true },
     );
 
     // elapse generation in counter
-    @ptrcast([*]u32, genome)[1] += 1;
+    _cast_fields(genome).*.hstrat_T += 1;
 }
 
 // public API =================================================================
@@ -167,7 +178,7 @@ fn elapse_inheritance_of(genome: genomePtr_t) void {
 }
 
 fn calc_fitness_of(genome: genomePtr_t) f32 {
-    return @ptrcast(*f32, genome).*;
+    return _cast_fields(genome).*.fitness;
 }
 
 fn get_trait_value(genome: genomePtr_t) u32 {
@@ -175,10 +186,10 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 }
 
 fn initialize_one(genome: genomePtr_t) void {
-    @ptrcast(*f32, genome).* = 0.0;
-    @ptrcast([*]u32, genome)[1] = 0;
-    @ptrcast([*]u32, genome)[2] = 0;
-    @ptrcast([*]u32, genome)[3] = 0;
+    _cast_fields(genome).*.fitness = 0.0;
+    _cast_fields(genome).*.hstrat_T = 0;
+    _cast_fields(genome).*.hstrat_storage[0] = 0;
+    _cast_fields(genome).*.hstrat_storage[1] = 0;
     for (@range(u32, dstream_expected_T)) |_| {
         _step_instrumentation(genome);
     }
