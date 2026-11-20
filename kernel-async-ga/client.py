@@ -831,6 +831,16 @@ subgridFrame = pl.DataFrame(  # per-PE values, for with_subgrid_columns
     },
 )
 del _rows, _cols, _rowUnit, _colUnit, _subgridRow, _subgridCol
+# runtime config may set p2p send probability, e.g., uniformly; NaN if varied
+runtimeP2pSendProbability = p2pSendProbability
+if "rtc_p2pSendProbability" in runtimeConfig:
+    _values = np.unique(
+        runtimeConfig["rtc_p2pSendProbability"].view(np.float32),
+    )
+    runtimeP2pSendProbability = float(
+        _values.item() if len(_values) == 1 else np.nan,
+    )
+    log(f" - runtime config sets {runtimeP2pSendProbability=}")
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 
@@ -893,6 +903,7 @@ metadata = {
     "nColSubgrid": (nColSubgrid, pl.UInt16),
     "nRowSubgrid": (nRowSubgrid, pl.UInt16),
     "nonBlock": (nonBlock, pl.Boolean),
+    "p2pSendProbability": (runtimeP2pSendProbability, pl.Float32),
     "tilePopSize": (tilePopSize, pl.UInt16),
     "tournSize": (tournSize, pl.Float32),
     "msec": (msecAtLeast, pl.Float32),
