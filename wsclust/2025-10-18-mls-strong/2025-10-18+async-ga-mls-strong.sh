@@ -48,7 +48,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade uv
 python3 -m uv pip install -r "requirements_cs.txt"
 python3 -m uv pip install ./pylib_cs
-python3 -m uv pip freeze | tee "${WORKDIR}/pip-freeze.txt"
+python3 -m uv pip freeze | tee "${WORKDIR}/pip-freeze.txt" || :
 python3 -m pylib_cs.cslc_wsclust_shim  # test install
 
 rsync -a "${PWD}/" "${WORKDIR}/source/"
@@ -145,7 +145,7 @@ ls
 
 cd "${WORKDIR}"
 echo "PWD ${PWD}"
-find "./run" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
+find "./run" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
 
 ###############################################################################
 echo "do run -----------------------------------------------------------------"
@@ -214,14 +214,14 @@ EOF
 echo "handle output ----------------------------------------------------------"
 echo "SECONDS ${SECONDS}"
 ###############################################################################
-find "${WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${WORKDIR}"/out/*
+find "${WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${WORKDIR}"/out/* || :
 
 cp "${WORKDIR}/compile.log" "${SCRATCHDIR}/compile.log"
 cp "${WORKDIR}"/out/* "${SCRATCHDIR}"
 
-find "${SCRATCHDIR}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${SCRATCHDIR}"/*
+find "${SCRATCHDIR}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${SCRATCHDIR}"/* || :
 
 ###############################################################################
 echo "build phylogeny --------------------------------------------------------"

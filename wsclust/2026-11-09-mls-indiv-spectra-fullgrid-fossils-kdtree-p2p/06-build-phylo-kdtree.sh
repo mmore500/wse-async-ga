@@ -103,7 +103,7 @@ echo "VENVDIR ${VENVDIR}"
 
 echo "creating venv"
 source "${VENVDIR}/bin/activate"
-python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt"
+python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt" || :
 
 ###############################################################################
 echo
@@ -111,12 +111,12 @@ echo "log source -------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 echo "log revision"
-git -C "${FLOWDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/git-revision.txt"
+git -C "${FLOWDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/git-revision.txt" || :
 echo "log remote"
-git -C "${FLOWDIR}" remote -v > "${RESULTDIR_STEP}/git-remote.txt"
+git -C "${FLOWDIR}" remote -v > "${RESULTDIR_STEP}/git-remote.txt" || :
 echo "log status"
 git -C "$(git -C "${FLOWDIR}" rev-parse --show-toplevel)" status \
-    > "${RESULTDIR_STEP}/git-status.txt"
+    > "${RESULTDIR_STEP}/git-status.txt" || :
 echo "log diff"
 git -C "${FLOWDIR}" --no-pager diff > "${RESULTDIR_STEP}/git-status.diff" || :
 git -C "${FLOWDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git -C "${FLOWDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/git-status.diff" || :
@@ -124,12 +124,12 @@ git -C "${FLOWDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git
 SRCDIR="${WORKDIR}/src"
 echo "SRCDIR ${SRCDIR}"
 echo "log revision"
-git -C "${SRCDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/src-revision.txt"
+git -C "${SRCDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/src-revision.txt" || :
 echo "log remote"
-git -C "${SRCDIR}" remote -v > "${RESULTDIR_STEP}/src-remote.txt"
+git -C "${SRCDIR}" remote -v > "${RESULTDIR_STEP}/src-remote.txt" || :
 echo "log status"
 git -C "$(git -C "${SRCDIR}" rev-parse --show-toplevel)" status \
-    > "${RESULTDIR_STEP}/src-status.txt"
+    > "${RESULTDIR_STEP}/src-status.txt" || :
 echo "log diff"
 git -C "${SRCDIR}" --no-pager diff > "${RESULTDIR_STEP}/src-status.diff" || :
 git -C "${SRCDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git -C "${SRCDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/src-status.diff" || :
@@ -332,15 +332,15 @@ echo
 echo "closeout ---------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-find "${WORKDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${WORKDIR_STEP}"/*
+find "${WORKDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${WORKDIR_STEP}"/* || :
 
 cp -r "${WORKDIR_STEP}"/* "${RESULTDIR_STEP}"
 
-find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${RESULTDIR_STEP}"/*
+find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${RESULTDIR_STEP}"/* || :
 
-env > "${RESULTDIR_STEP}/env.txt"
+env > "${RESULTDIR_STEP}/env.txt" || :
 
 ###############################################################################
 echo

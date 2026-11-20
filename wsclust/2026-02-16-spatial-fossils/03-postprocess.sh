@@ -114,7 +114,7 @@ echo "setting up venv"
 python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade uv
 python3 -m uv pip install -r "${SRCDIR}/requirements.txt"
-python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt"
+python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt" || :
 
 ###############################################################################
 echo
@@ -173,10 +173,10 @@ for CONFIG_DIR in "${WORKDIR_RUN}"/*/; do
         \( -name "*.log" -o -name "*.pqt" -o -name "*.npy" \) \
         -exec cp {} "${CONFIG_RESULTDIR}/" \;
 
-    find "${CONFIG_RESULTDIR}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
+    find "${CONFIG_RESULTDIR}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
     du -ah "${CONFIG_RESULTDIR}"/* 2>/dev/null || echo "(no files)"
 
-    env > "${CONFIG_RESULTDIR}/env.txt"
+    env > "${CONFIG_RESULTDIR}/env.txt" || :
 done
 
 ###############################################################################
