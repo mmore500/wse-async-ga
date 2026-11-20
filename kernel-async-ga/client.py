@@ -1058,7 +1058,7 @@ for cycle, __ in enumerate(it.takewhile(bool, it.repeat(nonBlock))):
     print("2", end="", flush=True)
 
     cycle_counts = out_tensors.ravel().copy()
-    num_complete = np.sum(cycle_counts >= nCycleAtLeast)
+    num_complete = np.sum(cycle_counts > nCycleAtLeast)
     print("3", end="", flush=True)
     should_break = num_complete == cycle_counts.size
     print(f"({num_complete/cycle_counts.size * 100}%)", end="", flush=True)

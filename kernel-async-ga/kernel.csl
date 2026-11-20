@@ -110,7 +110,9 @@ var immCounter_W = @zeros([1]u32);
 var ptr_immCounter_W : [*]u32 = &immCounter_W;
 var clobberCounter = @zeros([1]u32);  // how many immigrant clobbers occur?
 var ptr_clobberCounter : [*]u32 = &clobberCounter;
-var cycleCounter = @zeros([1]u32);  // how many self-activation cycles elapse?
+// how many self-activation cycles elapse?
+// set to nCycleAtLeast + 1 after final cycle and closeout complete
+var cycleCounter = @zeros([1]u32);
 var ptr_cycleCounter : [*]u32 = &cycleCounter;
 
 var recvCounter_N = @zeros([1]u32);  // number recv's opened + number filled
@@ -688,10 +690,15 @@ fn closeoutRecv() void {
 }
 
 task closeoutTask() void {
-  if (closeoutSend()) {
+  const closeoutComplete = closeoutSend();
+  if (closeoutComplete) {
     if (nonBlock == 0) memcpy.unblock_cmd_stream();  // terminate
   } else { @activate(closeoutTaskID); }  // trigger next cycle
   closeoutRecv();  // run LAST in either case
+
+  // count final cycle to signal closeout completion
+  // after end-state telemetry is ready
+  if (closeoutComplete) cycleCounter[0] += 1;
 }
 ///////////////////////////////////////////////////////////////////////////////
 
