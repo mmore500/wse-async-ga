@@ -45,7 +45,8 @@ var _T: u32 = 0;
 /// its n bits, bit i in record i (trait value must be less than 2^n).
 fn update(trait: u32) void {
     if (_T % dilation == 0) {
-        logger.update(if (multiplex_lsb == 0) @as(u32, trait == 0) else trait);
+        const sample = if (multiplex_lsb == 0) @as(u32, trait == 0) else trait;
+        logger.update(sample);
     }
     _T += 1;
 }

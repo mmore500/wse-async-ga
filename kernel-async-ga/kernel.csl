@@ -812,7 +812,6 @@ task cycleTask() void {
     traitCycles[population._get_ith_trait_value(i)] = cycleCounter[0];
   }
 
-  // record trait of 0th population member (by default, whether it is 0)
   wildtypeLogger.update(population._get_ith_trait_value(0));
 
   // reseed builtin PRNG from xoroshiro rng to mix entropy across generations
