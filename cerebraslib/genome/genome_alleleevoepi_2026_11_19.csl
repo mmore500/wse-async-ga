@@ -53,10 +53,13 @@
 // or 7, for 5 possible values in all. With CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB
 // set to 1 + N_SITES, the kernel's trait logger records each of these bits.
 //
-// Init rule: every host on the PE at col 0, row 0 of the PE array starts
-// infected with the wildtype pathogen (all 0 alleles); all other hosts start
-// uninfected, and no host starts with immunity. So infection spreads from
-// that corner PE only by migration (neighbor exchange and p2p).
+// Init rule: with compconf CEREBRASLIB_EVOEPI_SEED_PE_STRIDE n > 0, every
+// host on each PE whose col and row are both multiples of n starts infected
+// with the wildtype pathogen (all 0 alleles); all other hosts start
+// uninfected, and no host starts with immunity. E.g., n at least the grid's
+// rows and cols seeds only the corner PE (col 0, row 0), so infection spreads
+// only by migration (neighbor exchange and p2p); n equal to subgrid size seeds
+// the corner PE of each subgrid. With n = 0 (default), every PE is seeded.
 //
 // Not ported: the ABM's IMMUNITY_FLOOR (binary immunity can't partially
 // persist), its fixed (rather than memoryless) infection duration, mutator
@@ -89,6 +92,9 @@
 //!     "evoepi_withinhost_t": (float(compconf_data.get(
 //!         "CEREBRASLIB_EVOEPI_WITHINHOST_T:f32", 25.0,
 //!     )), pl.Float32),
+//!     "evoepi_seed_pe_stride": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_SEED_PE_STRIDE:u16", 0,
+//!     )), pl.UInt16),
 //! }
 
 // module imports =============================================================
@@ -148,6 +154,11 @@ const _withinhost_t: f32 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_EVOEPI_WITHINHOST_T", @as(f32, 25.0) // nofmt
 );
 comptime { @comptime_assert(_withinhost_t > 0.0); }
+
+// if n > 0, seed PEs whose col and row are multiples of n; if 0, seed all PEs
+const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_SEED_PE_STRIDE", @as(u16, 0) // nofmt
+);
 
 // module config specs ========================================================
 const gSize: u16 = 1;
@@ -301,7 +312,10 @@ fn _apply_waning(genome: genomePtr_t) void {
 }
 
 /// Init rule: are hosts on the PE at col x, row y seeded with infection?
-fn _is_seeded_pe(x: u16, y: u16) bool { return x == 0 and y == 0; }
+fn _is_seeded_pe(x: u16, y: u16) bool {
+    if (_seed_pe_stride == 0) return true;
+    return x % _seed_pe_stride == 0 and y % _seed_pe_stride == 0;
+}
 
 /// Helper function for testability.
 fn _initialize_one_at(genome: genomePtr_t, x: u16, y: u16) void {

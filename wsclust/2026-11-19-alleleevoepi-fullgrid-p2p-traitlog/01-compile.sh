@@ -158,30 +158,44 @@ echo "compile configs --------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # allele-specific immunity epidemiology (allele-evoepi ABM port) with 2
-# enabled sites, i.e., 4 strains, on full grid (subgrid 0, i.e., no subgrids),
-# with p2p send probability 1 in 2,000 per cycle; four runs:
-# - no p2p edges (no PE has a p2p target), default immunity waning (0.01)
-# - random p2p edges (random PE pairs), default immunity waning (0.01)
-# - control: random p2p edges, no host immune memory (waning rate 1.0, so
-#   immunity gained on recovery is lost in the same generation)
-# - control: random p2p edges, no immunity waning (waning rate 0.0)
+# enabled sites, i.e., 4 strains, with p2p send probability 1 in 2,000 per
+# cycle; five runs:
+# - full grid (subgrid 0, i.e., no subgrids):
+#   - no p2p edges (no PE has a p2p target), default immunity waning (0.01)
+#   - random p2p edges (random PE pairs), default immunity waning (0.01)
+#   - control: random p2p edges, no host immune memory (waning rate 1.0, so
+#     immunity gained on recovery is lost in the same generation)
+#   - control: random p2p edges, no immunity waning (waning rate 0.0)
+# - subgrids: 729 x 729 PEs (243 * 3), split into 9 subgrids of 243 x 243
+#   PEs, with random p2p edges (pairs within subgrids) and default waning
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1, for 5 possible values (0, or 1,
 # 3, 5, 7 for the 4 strains)
-# infection starts only on the corner PE (col 0, row 0), where all hosts start
-# infected with the wildtype strain, and spreads from there by migration
+# infection starts only on the corner PE of the grid (col 0, row 0), or of
+# each subgrid, where all hosts start infected with the wildtype strain, and
+# spreads from there by migration (seed PE stride is subgrid size, or for the
+# full grid, at least its rows and cols)
 # tournament size 2, so each host's update samples two random contacts, with
 # an infected contact winning over an uninfected one
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
 # as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_19
-subgrid=0
 p2p=0.0005
 seed=1118
-for p2pModeWaning in none:0.01 pairs:0.01 pairs:1.0 pairs:0.0; do
-    p2pMode="${p2pModeWaning%%:*}"
-    waning="${p2pModeWaning##*:}"
+for p2pModeWaningSubgrid in \
+    none:0.01:0 pairs:0.01:0 pairs:1.0:0 pairs:0.0:0 pairs:0.01:243 \
+; do
+    IFS=: read -r p2pMode waning subgrid <<< "${p2pModeWaningSubgrid}"
+    if [ "${subgrid}" -eq 0 ]; then
+        nrow=1170
+        ncol=755
+        seedstride=1170  # only corner PE
+    else
+        nrow=$((subgrid * 3))
+        ncol=$((subgrid * 3))
+        seedstride=${subgrid}  # corner PE of each subgrid
+    fi
     seed=$((seed + 1))
     CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+p2p=${p2p}+p2pmode=${p2pMode}+waning=${waning}+seed=${seed}"
     echo
@@ -204,10 +218,10 @@ export ASYNC_GA_ARCH_FLAG="wse3"
 export ASYNC_GA_GENOME_FLAVOR="${genome_flavor}"
 export ASYNC_GA_FABRIC_DIMS="762,1172"
 export ASYNC_GA_NWAV=1
-export ASYNC_GA_NCOL=755
+export ASYNC_GA_NCOL=${ncol}
 export ASYNC_GA_NCOL_SUBGRID=${subgrid}
 export ASYNC_GA_NONBLOCK=0
-export ASYNC_GA_NROW=1170
+export ASYNC_GA_NROW=${nrow}
 export ASYNC_GA_NROW_SUBGRID=${subgrid}
 export ASYNC_GA_NTRAIT=8
 export ASYNC_GA_MSEC_AT_LEAST=0
@@ -223,6 +237,7 @@ export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_NUM_BITS__u32=1024
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DILATION__u32=1  # no dilation: sample every cycle
 export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB__u16=3
 export COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16=2
+export COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16=${seedstride}
 export COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32="${waning}"
 export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${p2p}"
 
@@ -249,6 +264,7 @@ echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_NUM_BITS__u32 \${COMPCONFENV_CEREBRASL
 echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DILATION__u32 \${COMPCONFENV_CEREBRASLIB_TRAITLOGGER_DILATION__u32}"
 echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB__u16 \${COMPCONFENV_CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB__u16}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16 \${COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16}"
+echo "COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16 \${COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32}"
 echo "COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32 \${COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32}"
 EOF

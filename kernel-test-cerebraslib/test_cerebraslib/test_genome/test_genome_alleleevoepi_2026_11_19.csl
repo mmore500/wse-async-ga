@@ -62,25 +62,22 @@ fn test_tables() void {
 }
 
 fn test_initialize_one_at() void {
+    // default seed PE stride 0: every PE is seeded
+    _check_seeded_at(0, 0);
+    _check_seeded_at(1, 0);
+    _check_seeded_at(0, 1);
+    _check_seeded_at(754, 1169);
+}
+
+fn _check_seeded_at(x: u16, y: u16) void {
+    // infected with wildtype pathogen, no immunity
     var g = @zeros(genome.genome_t);
-    // corner PE: infected with wildtype pathogen, no immunity
     g[0] = 0xFFFFFFFF;
-    genome._initialize_one_at(&g, 0, 0);
+    genome._initialize_one_at(&g, x, y);
     @assert(genome._is_infected(&g));
     @assert(genome._get_sites(&g) == 0);  // wildtype
     @assert(genome._cast_fields(&g).*.pathogen == genome.infectedFlag);
     @assert(genome._cast_fields(&g).*.immunity == 0);
-    // all other PEs: uninfected, no immunity
-    _check_unseeded_at(1, 0);
-    _check_unseeded_at(0, 1);
-    _check_unseeded_at(754, 1169);
-}
-
-fn _check_unseeded_at(x: u16, y: u16) void {
-    var g = @zeros(genome.genome_t);
-    g[0] = 0xFFFFFFFF;
-    genome._initialize_one_at(&g, x, y);
-    @assert(g[0] == 0);
 }
 
 fn test_initialize_one() void {
