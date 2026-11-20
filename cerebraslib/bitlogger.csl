@@ -19,7 +19,6 @@ var dstream_T: u32 = 0;
 // record layout:
 // - each multiplexed record's numBits bits, back to back
 // - then one u32 last seen T, shared by all records (hence +2 halfwords)
-// a sample is seen if any record's bit is set
 var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
 var pendingBuffer = @zeros([numHalfWords]u16);  // shared by all records
 var ptr_recordBuffer : [*]u16 = &recordBuffer;
