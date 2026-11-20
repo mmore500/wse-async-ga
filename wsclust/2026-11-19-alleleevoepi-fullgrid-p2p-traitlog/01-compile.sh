@@ -158,7 +158,7 @@ echo "compile configs --------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # allele-specific immunity epidemiology (allele-evoepi ABM port) with 2
-# enabled sites, i.e., 4 strains, with p2p send probability 1 in 2,000 per
+# enabled sites, i.e., 4 strains, with p2p send probability 1 in 200 per
 # cycle; five runs:
 # - full grid (subgrid 0, i.e., no subgrids):
 #   - no p2p edges (no PE has a p2p target), default immunity waning (0.01)
@@ -181,7 +181,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
 # as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_19
-p2p=0.0005
+p2p=0.005
 seed=1118
 for p2pModeWaningSubgrid in \
     none:0.01:0 pairs:0.01:0 pairs:1.0:0 pairs:0.0:0 pairs:0.01:243 \
