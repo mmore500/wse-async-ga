@@ -1,5 +1,6 @@
 // module params ==============================================================
 param numBits: u16;
+param numMultiplex: u16;  // independent single-bit records packed back-to-back
 param dstreamAlgoName: comptime_string;
 param symbolName: comptime_string;
 
@@ -11,15 +12,23 @@ const dstream_algo = @import_module(
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 
 // global state ===============================================================
+// record layout:
+// - each multiplexed record's numBits bits, back to back
+// - then one u32 last seen T, shared by all records (+2 halfwords)
+// a sample is seen if any record's bit is set
 const numHalfWords = numBits >> 4;
-
+comptime {
+    @comptime_assert(numMultiplex > 0 and numMultiplex <= 32);
+    // keeps each record's bits word-aligned, so byte swaps stay in words
+    @comptime_assert(numHalfWords % 2 == 0);
+}
 var dstream_T: u32 = 0;
-var recordBuffer = @zeros([numHalfWords + 2]u16);  // +2 are u32 last seen T
-var pendingBuffer = @zeros([numHalfWords]u16);
+var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
+var pendingBuffer = @zeros([numHalfWords]u16);  // shared by all records
 var ptr_recordBuffer : [*]u16 = &recordBuffer;
 
-const recordDsd = @get_dsd(mem1d_dsd, .{
-    .tensor_access = |i|{numHalfWords} -> recordBuffer[i],
+const recordDsd = @get_dsd(mem1d_dsd, .{  // all records, and last seen T
+    .tensor_access = |i|{numMultiplex * numHalfWords + 2} -> recordBuffer[i],
 });
 const pendingDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{numHalfWords} -> pendingBuffer[i],
@@ -30,31 +39,55 @@ const pendingDsd = @get_dsd(mem1d_dsd, .{
 ///////////////////////////////////////////////////////////////////////////////
 
 fn _last_seen_T_ptr() *u32 {
-    return @ptrcast(*u32, &recordBuffer[numHalfWords]);
+    return @ptrcast(*u32, &recordBuffer[numMultiplex * numHalfWords]);
+}
+
+const multiplexBytes = numHalfWords * 2;  // stride between records' bits
+
+/// Write bits of sample, bit i into record i, at site in every record.
+fn _write_multiplex_at(site: u16, sample: u32) void {
+    // site's byte and bit, same in every record; byte and bit swapped as by
+    // bitmanip.set_nth_bit_with_swaps(..., .{ .byteSwap = true, .bitSwap = true })
+    const byteIndex = (site >> 3) ^ 3;
+    const bitMask = @as(u8, 0b10000000) >> @as(u8, site & 7);
+
+    const record_bytes = @ptrcast([*]u8, &recordBuffer[0]);
+    var remaining = sample;  // shifted down as records are written
+    var multiplexByte: u16 = byteIndex;
+    for (@range(u16, numMultiplex)) |_| {
+        if ((remaining & 1) != 0) {
+            record_bytes[multiplexByte] |= bitMask;
+        } else {
+            record_bytes[multiplexByte] &= ~bitMask;
+        }
+        remaining >>= 1;
+        multiplexByte += multiplexBytes;
+    }
 }
 
 // public API =================================================================
-fn update(sample: bool) void {
+/// Record one sample per multiplexed record, record i's from bit i of sample.
+/// Bits of sample above numMultiplex must be zero.
+fn update(sample: u32) void {
     const site = @as(u16, dstream_algo.assign_storage_site(numBits, dstream_T));
 
     const dstream_S = numBits;
-    if (sample) {
-
-        // mask out any pending zeros...
-        @or16(recordDsd, recordDsd, pendingDsd);  // (x or y) xor y is same as
-        @xor16(recordDsd, recordDsd, pendingDsd); // x & (~y)
+    if (sample != 0) {  // seen
+        // mask out any pending zeros, in all multiplexed records...
+        var record_i: u16 = 0;
+        for (@range(u16, numMultiplex)) |_| {
+            for (@range(u16, numHalfWords)) |i| {
+                recordBuffer[record_i] &= ~pendingBuffer[i];
+                record_i += 1;
+            }
+        }
         @mov16(pendingDsd, 0);
 
-        const record_bytes = @ptrcast([*]u8, &recordBuffer[0]);
-        if (site != dstream_S) bitmanip.set_nth_bit_with_swaps(
-            record_bytes,
-            site,
-            true,
-            .{ .byteSwap = true, .bitSwap = true },
-        );
+        // ... and write each multiplexed record's bit, set or not
+        if (site != dstream_S) _write_multiplex_at(site, sample);
         const last_seen_T_ptr = _last_seen_T_ptr();
         last_seen_T_ptr.* = dstream_T + 1;
-    } else {
+    } else {  // all multiplexed records zero, write lazily on next seen sample
         const pending_bytes = @ptrcast([*]u8, &pendingBuffer[0]);
         if (site != dstream_S) bitmanip.set_nth_bit_with_swaps(
             pending_bytes,
@@ -70,9 +103,7 @@ fn update(sample: bool) void {
 
 fn reset() void {
     @mov16(pendingDsd, 0);
-    @mov16(recordDsd, 0);
-    const last_seen_T_ptr = _last_seen_T_ptr();
-    last_seen_T_ptr.* = 0;
+    @mov16(recordDsd, 0);  // also clears last seen T
     dstream_T = 0;
 }
 

@@ -819,6 +819,13 @@ traitLoggerDstreamAlgoName = compconf_data[
     "CEREBRASLIB_TRAITLOGGER_DSTREAM_ALGO_NAME:comptime_string"
 ]
 log(f" - {traitLoggerNumBits=} {traitLoggerDstreamAlgoName=}")
+# 0 (default): one record, recording whether trait value is 0
+# n > 0: n multiplexed records, record i recording bit i of trait value
+traitLoggerMultiplexLsb = int(
+    compconf_data.get("CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB:u16", 0)
+)
+traitLoggerNumMultiplex = max(traitLoggerMultiplexLsb, 1)
+log(f" - {traitLoggerMultiplexLsb=} {traitLoggerNumMultiplex=}")
 
 genomeFlavor = compconf_data["ASYNC_GA_GENOME_FLAVOR:comptime_string"]
 log(f" - {genomeFlavor=}")
@@ -1336,7 +1343,11 @@ del df, traitCounts_data, traitCycles_data, traitValues_data
 
 log("wildtype traitlogs ==============================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
-traitLoggerNumWavs = traitLoggerNumBits // wavSize + 1  # +1 for dstream_T
+# each PE holds every multiplexed record's bits back to back, then one
+# dstream_T shared by all records (+1); downstream demultiplexes records
+traitLoggerNumWavs = (
+    traitLoggerNumMultiplex * traitLoggerNumBits // wavSize + 1
+)
 out_tensors = np.zeros((nRow, nCol, traitLoggerNumWavs), np.uint32)
 
 runner.memcpy_d2h(
@@ -1353,6 +1364,8 @@ runner.memcpy_d2h(
     nonblock=False,
 )
 raw_binary_data = out_tensors.copy()
+
+# save trait logger values to a file
 log("entering assemble_binary_data from wildtype traitlogs...")
 record_raw = assemble_binary_data(
     raw_binary_data.view(np.uint32), nWav=traitLoggerNumWavs, verbose=True
@@ -1360,7 +1373,6 @@ record_raw = assemble_binary_data(
 log(f" - casting record_raw to object")
 record_raw = record_raw.astype(object)
 
-# save trait logger values to a file
 log(" - creating DataFrame")
 df = pl.DataFrame({
     "data_raw": pl.Series(record_raw, dtype=pl.Binary),
@@ -1378,13 +1390,24 @@ df = df.with_columns(
     dstream_algo=pl.lit(
         f"dstream.{traitLoggerDstreamAlgoName}", dtype=pl.Categorical
     ),
-    dstream_storage_bitoffset=pl.lit(0, dtype=pl.UInt16),
-    dstream_storage_bitwidth=pl.lit(traitLoggerNumBits, dtype=pl.UInt16),
+    # bit offset of first multiplexed record; each record's bits follow
+    dstream_storage_bitoffset=pl.lit(0, dtype=pl.UInt32),
+    dstream_storage_bitwidth=pl.lit(traitLoggerNumBits, dtype=pl.UInt32),
     dstream_S=pl.lit(traitLoggerNumBits, dtype=pl.UInt16),
-    dstream_T_bitoffset=pl.lit(traitLoggerNumBits, dtype=pl.UInt16),
+    dstream_T_bitoffset=pl.lit(
+        traitLoggerNumMultiplex * traitLoggerNumBits, dtype=pl.UInt32
+    ),
     dstream_T_bitwidth=pl.lit(32, dtype=pl.UInt16),
-    trait_value=pl.lit(0, dtype=pl.UInt16),
+    # number of multiplexed records, for downstream's multiplex option; 0
+    # if not multiplexed
+    dstream_multiplex=pl.lit(traitLoggerMultiplexLsb, dtype=pl.UInt8),
+    # non-multiplexed record records whether trait value is 0; multiplexed
+    # record i records bit i of trait value, so has no single trait value
+    trait_value=pl.lit(
+        0 if traitLoggerMultiplexLsb == 0 else None, dtype=pl.UInt16
+    ),
 ).drop("data_raw")
+del record_raw
 
 log(f" - data_hex: {df['data_hex'].head(3)}")
 assert (df["data_hex"].str.len_chars() == traitLoggerNumWavs * 8).all()
@@ -1399,7 +1422,7 @@ write_parquet_verbose(
     f"+ncycle={nCycleAtLeast}"
     "+ext=.pqt",
 )
-del df, raw_binary_data, record_raw
+del df, raw_binary_data
 
 log("fitness ===================================================")
 memcpy_dtype = MemcpyDataType.MEMCPY_32BIT
