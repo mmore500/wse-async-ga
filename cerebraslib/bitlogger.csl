@@ -12,20 +12,20 @@ const dstream_algo = @import_module(
 const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 
 // global state ===============================================================
-// record layout:
-// - each multiplexed record's numBits bits, back to back
-// - then one u32 last seen T, shared by all records (+2 halfwords)
-// a sample is seen if any record's bit is set
 const numHalfWords = numBits >> 4;
 comptime { @comptime_assert(numMultiplex > 0 and numMultiplex <= 32); }
 
 var dstream_T: u32 = 0;
-// +2 are u32 last seen T
+// record layout:
+// - each multiplexed record's numBits bits, back to back
+// - then one u32 last seen T, shared by all records (hence +2 halfwords)
+// a sample is seen if any record's bit is set
 var recordBuffer = @zeros([numMultiplex * numHalfWords + 2]u16);
 var pendingBuffer = @zeros([numHalfWords]u16);  // shared by all records
 var ptr_recordBuffer : [*]u16 = &recordBuffer;
 
-const recordDsd = @get_dsd(mem1d_dsd, .{  // offset for other records
+// record 0's bits; other records use @increment_dsd_offset of it
+const recordDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{numHalfWords} -> recordBuffer[i],
 });
 const pendingDsd = @get_dsd(mem1d_dsd, .{
