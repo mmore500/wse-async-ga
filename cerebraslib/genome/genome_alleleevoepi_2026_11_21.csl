@@ -1,0 +1,477 @@
+// memory layout ===============================================================
+// byte 0 PATHOGEN SITES (2 biallelic sites, bit i -> allele at site i)
+// byte 1 INFECTION COUNTDOWN (low nibble; infected iff nonzero; high unused)
+// byte 2 HOST IMMUNITY COUNTDOWNS (4 nibbles, nibble 2 * i + a -> immunity
+// byte 3   to allele a at site i; immune iff nonzero)
+// TOTAL: 1 word -> 4 bytes
+//
+// Port of the allele-specific immunity agent-based model (ABM) from
+// https://github.com/mmore500/allele-evoepi-concept, pylib/abm_2026_03_16,
+// as genome_alleleevoepi_2026_11_19, but with infection and immunity
+// durations counted down on per-host nibbles, rather than memoryless.
+//
+// individual-host interpretation ==============================================
+// Each population member is a host. Its low half-word is the pathogen
+// infecting it (if any): up to 2 biallelic sites plus an infection countdown.
+// Its high half-word is the host's immunity: one countdown nibble per allele
+// at each site. Host immunity belongs to the host, not the pathogen, so it is
+// never overwritten by infection or immigration; only the pathogen half-word
+// is.
+//
+// Only the first N_SITES sites are enabled (compconf
+// CEREBRASLIB_EVOEPI_N_SITES, at most 2, i.e., 4 immunity nibbles / 2
+// alleles per site); the others are ignored, i.e., they never mutate, don't
+// affect transmission, and never grant immunity.
+//
+// Infection (trample_resident, clobber_immigrant): each population member is
+// replaced via a tournament among random population members, which with
+// tournament size 1 is a single random contact, as in the ABM; with larger
+// tournaments, infected contacts (fitness 1) win over uninfected ones
+// (fitness 0), so residents are more likely to contact one. An uninfected
+// resident contacting an infected host becomes infected with probability
+// CONTACT_RATE * (1 - IMMUNE_STRENGTH) ^ k, where k is the number of the
+// contact's (enabled) alleles the resident is immune to, i.e., the ABM's
+// product of per-allele susceptibilities, with binary immunity. Infected
+// residents are not reinfected. Immigrants infect the residents they would
+// replace under the same rule. On infection, the infection countdown is set to
+// INFECTION_COUNTDOWN_CAP, and, as in the ABM, each enabled site of the newly
+// infecting pathogen flips with probability
+//     m / (b - 1) * (exp((b - 1) * T) - 1),
+// with b = 1 + WITHINHOST_B * (immune to current allele - immune to other
+// allele), as in the ABM's calc_mutation_probabilities, using the newly
+// infected host's immunity.
+//
+// Per generation (elapse_inheritance_of):
+//   1. recovery: an infected host's countdown steps down by 1 with
+//      probability INFECTION_COUNTDOWN_P, and the host recovers when it
+//      reaches 0, i.e., infection lasts a sum of INFECTION_COUNTDOWN_CAP
+//      geometric waits (negative binomial), with mean
+//      INFECTION_COUNTDOWN_CAP / INFECTION_COUNTDOWN_P generations, exactly
+//      that if INFECTION_COUNTDOWN_P is 1, as in the ABM's fixed infection
+//      duration; on recovery, the countdown of each allele its pathogen
+//      carries is set to IMMUNITY_COUNTDOWN_CAP;
+//   2. waning: each nonzero immunity countdown steps down by 1 with
+//      probability IMMUNITY_COUNTDOWN_P, so immunity to an allele lasts a sum
+//      of IMMUNITY_COUNTDOWN_CAP geometric waits, with mean
+//      IMMUNITY_COUNTDOWN_CAP / IMMUNITY_COUNTDOWN_P generations (from its
+//      latest renewal by recovery).
+//
+// Trait values (get_trait_value) are bit fields: bit 0 is set if the host is
+// infected, and then bit 1 + i holds enabled site i's allele. So uninfected
+// hosts are 0, and each strain is its own odd value: with 2 sites, 1, 3, 5,
+// or 7, for 5 possible values in all. With CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB
+// set to 1 + N_SITES, the kernel's trait logger records each of these bits.
+//
+// Init rule: with compconf CEREBRASLIB_EVOEPI_SEED_PE_STRIDE n > 0, every
+// host on each PE whose col and row are both multiples of n starts infected
+// with the wildtype pathogen (all 0 alleles), with a full infection
+// countdown; all other hosts start uninfected, and no host starts with
+// immunity. E.g., n at least the grid's rows and cols seeds only the corner
+// PE (col 0, row 0), so infection spreads only by migration (neighbor
+// exchange and p2p); n equal to subgrid size seeds the corner PE of each
+// subgrid. With n = 0 (default), every PE is seeded.
+//
+// Not ported: the ABM's IMMUNITY_FLOOR and continuous immunity decay
+// (immunity here is binary, lasting until its countdown runs out), mutator
+// host subpopulations, and per-site mutation rate vectors.
+
+//! {
+//!     "nWav": (1, pl.UInt8),
+//!     "evoepi_n_sites": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_N_SITES:u16", 2,
+//!     )), pl.UInt8),
+//!     "evoepi_n_sites_max": (2, pl.UInt8),
+//!     "evoepi_contact_rate": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_CONTACT_RATE:f32", 0.35,
+//!     )), pl.Float32),
+//!     "evoepi_immune_strength": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_IMMUNE_STRENGTH:f32", 0.7,
+//!     )), pl.Float32),
+//!     "evoepi_infection_countdown_cap": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_INFECTION_COUNTDOWN_CAP:u16", 10,
+//!     )), pl.UInt8),
+//!     "evoepi_infection_countdown_p": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_INFECTION_COUNTDOWN_P:f32", 1.0,
+//!     )), pl.Float32),
+//!     "evoepi_immunity_countdown_cap": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_CAP:u16", 15,
+//!     )), pl.UInt8),
+//!     "evoepi_immunity_countdown_p": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_P:f32", 0.15,
+//!     )), pl.Float32),
+//!     "evoepi_mutation_rate": (float(
+//!         runtimeConfig["rtc_evoepi_mutationRate"].view(np.float32).flat[0]
+//!         if "rtc_evoepi_mutationRate" in runtimeConfig else (
+//!             compconf_data.get("CEREBRASLIB_EVOEPI_MUTATION_RATE:f32", 1e-6)
+//!         )
+//!     ), pl.Float32),
+//!     "evoepi_withinhost_b": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_WITHINHOST_B:f32", 0.2,
+//!     )), pl.Float32),
+//!     "evoepi_withinhost_t": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_WITHINHOST_T:f32", 25.0,
+//!     )), pl.Float32),
+//!     "evoepi_seed_pe_stride": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_SEED_PE_STRIDE:u16", 0,
+//!     )), pl.UInt16),
+//! }
+
+// module imports =============================================================
+
+const compconf = @import_module("<compconf>");
+const layout_module = @import_module("<layout>");
+
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+// compile-time configuration =================================================
+// defaults follow parameters used across allele-evoepi-concept notebooks
+
+// most sites layout supports: 16 immunity bits hold 4 nibbles, 2 alleles
+// per site
+const nSitesMax: u16 = 16 / 4 / 2;
+
+// how many sites are enabled? sites at and above are ignored
+const nSites: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_N_SITES", @as(u16, nSitesMax) // nofmt
+);
+comptime { @comptime_assert(nSites <= nSitesMax); } // supported by layout?
+comptime { @comptime_assert(nSites > 0); }
+
+const _contact_rate: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_CONTACT_RATE", @as(f32, 0.35) // nofmt
+);
+comptime { @comptime_assert(0.0 <= _contact_rate and _contact_rate <= 1.0); }
+
+const _immune_strength: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_IMMUNE_STRENGTH", @as(f32, 0.7) // nofmt
+);
+comptime {
+    @comptime_assert(0.0 <= _immune_strength and _immune_strength <= 1.0);
+}
+
+// infection lasts this many countdown steps (at most a nibble), each taken
+// with probability INFECTION_COUNTDOWN_P per generation
+const _infection_countdown_cap: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_INFECTION_COUNTDOWN_CAP", @as(u16, 10) // nofmt
+);
+comptime {
+    @comptime_assert(
+        1 <= _infection_countdown_cap and _infection_countdown_cap <= 15
+    );
+}
+
+const _infection_countdown_p: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_INFECTION_COUNTDOWN_P", @as(f32, 1.0) // nofmt
+);
+comptime {
+    @comptime_assert(
+        0.0 < _infection_countdown_p and _infection_countdown_p <= 1.0
+    );
+}
+
+// immunity to an allele lasts this many countdown steps (at most a nibble),
+// each taken with probability IMMUNITY_COUNTDOWN_P per generation; defaults
+// give mean 100 generations, matching genome_alleleevoepi_2026_11_19's
+// default waning rate 0.01
+const _immunity_countdown_cap: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_CAP", @as(u16, 15) // nofmt
+);
+comptime {
+    @comptime_assert(
+        1 <= _immunity_countdown_cap and _immunity_countdown_cap <= 15
+    );
+}
+
+const _immunity_countdown_p: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_P", @as(f32, 0.15) // nofmt
+);
+comptime {
+    @comptime_assert(
+        0.0 < _immunity_countdown_p and _immunity_countdown_p <= 1.0
+    );
+}
+
+const _mutation_rate: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_MUTATION_RATE", @as(f32, 1e-6) // nofmt
+);
+comptime { @comptime_assert(0.0 <= _mutation_rate); }
+
+// named runtime config, constant across device: mutation rate, defaulting to
+// compconf value; host may overwrite it before launch (see layout.csl and
+// kernel-async-ga/runtime_config_options.md)
+var rtc_evoepi_mutationRate = [1]f32{ _mutation_rate };
+var ptr_rtc_evoepi_mutationRate: [*]f32 = &rtc_evoepi_mutationRate;
+comptime {
+    @export_symbol(ptr_rtc_evoepi_mutationRate, "rtc_evoepi_mutationRate");
+}
+
+const _withinhost_b: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_WITHINHOST_B", @as(f32, 0.2) // nofmt
+);
+// 0 for neutral within-host evolution, i.e., mutation probability m * T at
+// each site, regardless of host immunity
+comptime { @comptime_assert(_withinhost_b >= 0.0); }
+
+const _withinhost_t: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_WITHINHOST_T", @as(f32, 25.0) // nofmt
+);
+comptime { @comptime_assert(_withinhost_t > 0.0); }
+
+// if n > 0, seed PEs whose col and row are multiples of n; if 0, seed all PEs
+const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_SEED_PE_STRIDE", @as(u16, 0) // nofmt
+);
+
+// module config specs ========================================================
+const gSize: u16 = 1;
+const genome_t = [gSize]u32;
+const genomePtr_t = [*]u32;
+// bit 0: infected; bit 1 + i: enabled site i's allele
+const nTraitVals: u16 = @as(u16, 1) << (nSites + 1);
+const hasImmClobber: bool = true;
+const hasNotifyExtinct: bool = false;
+
+// memory layout struct =======================================================
+const fields_t = extern struct {
+    pathogen: u16, // byte 0: sites (low byte), infection countdown (high)
+    immunity: u16, // byte 2: countdown nibble 2 * i + a, allele a at site i
+};
+
+/// View genome words through memory layout struct.
+fn _cast_fields(genome: genomePtr_t) *fields_t {
+    return @ptrcast(*fields_t, genome);
+}
+
+const sitesMask: u16 = (@as(u16, 1) << nSites) - 1; // enabled sites only
+const infectionShift: u16 = 8; // infection countdown, in pathogen
+const infectionMask: u16 = 0x0F00;
+
+// compile-time lookup tables ================================================
+/// Exponential, by Taylor series, for compile-time evaluation.
+fn _comptime_exp(x: f32) f32 {
+    var sum: f32 = 1.0;
+    var term: f32 = 1.0;  // x^n / n!
+    for (@range(u16, 1, 64, 1)) |n| {
+        term *= x / @as(f32, n);
+        sum += term;
+    }
+    return sum;
+}
+
+/// ABM within-host mutation probability per unit mutation rate, for relative
+/// growth rate b != 1 (probability is mutation rate times this, capped at 1).
+fn _calc_withinhost_mutation_factor(b: f32) f32 {
+    return (_comptime_exp((b - 1.0) * _withinhost_t) - 1.0) / (b - 1.0);
+}
+
+// within-host mutation probability per unit mutation rate, indexed by
+// immunity delta + 1, i.e., immune to other allele only (0), neither or both
+// (1), current only (2)
+fn _calc_mutation_factor_table() [3]f32 {
+    var table = @zeros([3]f32);
+    for (@range(u16, 3)) |i| {
+        const delta = @as(f32, i) - 1.0;
+        var b = 1.0 + _withinhost_b * delta;
+        if (b == 1.0) b = 1.000001; // as in ABM, avoids dividing by 0
+        table[i] = _calc_withinhost_mutation_factor(b);
+    }
+    return table;
+}
+const _mutationFactor = comptime _calc_mutation_factor_table();
+
+// transmission probability, indexed by number of matched immune alleles
+fn _calc_transmission_table() [nSitesMax + 1]f32 {
+    var table = @zeros([nSitesMax + 1]f32);
+    var susceptibility: f32 = 1.0;
+    for (@range(u16, nSitesMax + 1)) |k| {
+        table[k] = _contact_rate * susceptibility;
+        susceptibility *= 1.0 - _immune_strength;
+    }
+    return table;
+}
+const _transmissionP = comptime _calc_transmission_table();
+
+// internal functions =========================================================
+fn _get_mutation_p(delta_plus_one: u16) f32 {
+    const p = rtc_evoepi_mutationRate[0] * _mutationFactor[delta_plus_one];
+    return if (p < 1.0) p else 1.0;
+}
+
+fn _get_transmission_p(num_immune_alleles: u16) f32 {
+    return _transmissionP[num_immune_alleles];
+}
+
+/// Enabled pathogen sites; disabled sites read as 0.
+fn _get_sites(genome: genomePtr_t) u16 {
+    return _cast_fields(genome).*.pathogen & sitesMask;
+}
+
+fn _get_infection_countdown(genome: genomePtr_t) u16 {
+    return (_cast_fields(genome).*.pathogen & infectionMask) >> infectionShift;
+}
+
+fn _is_infected(genome: genomePtr_t) bool {
+    return _get_infection_countdown(genome) != 0;
+}
+
+/// Immunity bits, bit 2 * i + a set if immune to allele a at enabled site i,
+/// i.e., if its countdown nibble is nonzero.
+fn _get_immunity_bits(immunity: u16) u16 {
+    var bits: u16 = 0;
+    for (@range(u16, 2 * nSites)) |j| {
+        if (((immunity >> (4 * j)) & 0xF) != 0) bits |= @as(u16, 1) << j;
+    }
+    return bits;
+}
+
+/// Immunity bits for each enabled allele carried by pathogen with sites.
+fn _calc_allele_bits(sites: u16) u16 {
+    var bits: u16 = 0;
+    for (@range(u16, nSites)) |i| {
+        const allele = (sites >> i) & 1;
+        bits |= @as(u16, 1) << (2 * i + allele);
+    }
+    return bits;
+}
+
+/// How many of this pathogen's enabled alleles is this host immune to?
+fn _count_immune_alleles(immunity: u16, sites: u16) u16 {
+    return @as(u16, opscalar.popcnt32(@as(u32, immunity & _calc_allele_bits(sites))));
+}
+
+/// Does infected donor's pathogen transmit to uninfected recipient?
+fn _sample_transmission(recipient: genomePtr_t, donor: genomePtr_t) bool {
+    if (_is_infected(recipient) or !_is_infected(donor)) return false;
+    const k = _count_immune_alleles(
+        _get_immunity_bits(_cast_fields(recipient).*.immunity),
+        _get_sites(donor),
+    );
+    return opscalar.p(_get_transmission_p(k));
+}
+
+/// Within-host mutation of a pathogen with sites, in host with immunity
+/// bits.
+fn _calc_withinhost_mutation(sites: u16, immunity: u16) u16 {
+    var res = sites;
+    for (@range(u16, nSites)) |i| {
+        const allele = (sites >> i) & 1;
+        const immCurr = (immunity >> (2 * i + allele)) & 1;
+        const immOpp = (immunity >> (2 * i + (1 - allele))) & 1;
+        const deltaPlusOne = 1 + immCurr - immOpp;
+        if (opscalar.p(_get_mutation_p(deltaPlusOne))) res ^= @as(u16, 1) << i;
+    }
+    return res;
+}
+
+/// Infect host with donor's pathogen, which mutates within host, starting a
+/// full infection countdown; host keeps its own immunity.
+fn _infect(host: genomePtr_t, donor: genomePtr_t) void {
+    const f = _cast_fields(host);
+    const sites = _calc_withinhost_mutation(
+        _get_sites(donor), _get_immunity_bits(f.*.immunity)
+    );
+    f.*.pathogen = sites | (_infection_countdown_cap << infectionShift);
+}
+
+/// Take a countdown step with probability p? Always, without drawing random
+/// numbers, if p is 1.
+fn _sample_step(comptime p: f32) bool {
+    return p >= 1.0 or opscalar.p(p);
+}
+
+fn _apply_recovery(genome: genomePtr_t) void {
+    if (!_is_infected(genome) or !_sample_step(_infection_countdown_p)) return;
+    const f = _cast_fields(genome);
+    f.*.pathogen -= @as(u16, 1) << infectionShift; // count down
+    if (_is_infected(genome)) return;
+    // recovered: (re)start full immunity countdown for each carried allele
+    const alleleBits = _calc_allele_bits(_get_sites(genome));
+    var immunity = f.*.immunity;
+    for (@range(u16, 2 * nSites)) |j| {
+        if (((alleleBits >> j) & 1) != 0) {
+            immunity &= ~(@as(u16, 0xF) << (4 * j));
+            immunity |= _immunity_countdown_cap << (4 * j);
+        }
+    }
+    f.*.immunity = immunity;
+    f.*.pathogen = 0;
+}
+
+fn _apply_waning(genome: genomePtr_t) void {
+    var immunity = _cast_fields(genome).*.immunity;
+    if (immunity == 0) return;
+    for (@range(u16, 2 * nSites)) |j| {
+        const nibble = (immunity >> (4 * j)) & 0xF;
+        if (nibble != 0 and _sample_step(_immunity_countdown_p)) {
+            immunity -= @as(u16, 1) << (4 * j); // count down
+        }
+    }
+    _cast_fields(genome).*.immunity = immunity;
+}
+
+/// Init rule: are hosts on the PE at col x, row y seeded with infection?
+fn _is_seeded_pe(x: u16, y: u16) bool {
+    if (_seed_pe_stride == 0) return true;
+    return x % _seed_pe_stride == 0 and y % _seed_pe_stride == 0;
+}
+
+/// Helper function for testability.
+fn _initialize_one_at(genome: genomePtr_t, x: u16, y: u16) void {
+    genome[0] = 0;
+    // infected with wildtype pathogen (all 0 alleles), with full infection
+    // countdown, only at seeded PE
+    if (_is_seeded_pe(x, y)) {
+        _cast_fields(genome).*.pathogen = (
+            _infection_countdown_cap << infectionShift
+        );
+    }
+}
+
+// public API =================================================================
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    _apply_recovery(genome);
+    _apply_waning(genome);
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    // only infected hosts can transmit, so they win over uninfected hosts
+    return if (_is_infected(genome)) 1.0 else 0.0;
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    // bit 0: infected; bit 1 + i: enabled site i's allele (0 if uninfected)
+    if (!_is_infected(genome)) return 0;
+    return 1 | (@as(u32, _get_sites(genome)) << 1);
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    _initialize_one_at(
+        genome, layout_module.get_x_coord(), layout_module.get_y_coord()
+    );
+}
+
+fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+    // copying immigrant into resident replaces whole genome, so first make
+    // immigrant carry resident's immunity, and resident's pathogen unless
+    // immigrant's pathogen infects resident; count blocked infected immigrants
+    const infects = _sample_transmission(resident, immigrant);
+    const isClobbered = !infects and _is_infected(immigrant);
+    _cast_fields(immigrant).*.immunity = _cast_fields(resident).*.immunity;
+    if (infects) {
+        _infect(immigrant, immigrant); // mutates within resident's immunity
+    } else {
+        _cast_fields(immigrant).*.pathogen = _cast_fields(resident).*.pathogen;
+    }
+    return isClobbered;
+}
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    // contact with spawn may infect resident; resident keeps own immunity
+    if (_sample_transmission(resident, spawn)) _infect(resident, spawn);
+}
+
+fn notify_extinct() void {}
+
+/// Is genome an empty slot (e.g., no individual), so not worth sending to
+/// other PEs by p2p? Uninfected hosts carry no pathogen to transmit.
+fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
