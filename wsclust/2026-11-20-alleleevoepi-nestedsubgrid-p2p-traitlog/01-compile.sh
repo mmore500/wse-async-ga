@@ -164,14 +164,15 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # subgrids each of 18, 36, 72, 144, 288, and 576 PEs on a side, with
 # subgrids overhanging the grid edge clipped
 # p2p edges are random PE pairs within subgrids, with send probability 1 in
-# 20 per cycle (one genome per p2p message, as kernel supports)
+# 50 per cycle (one genome per p2p message)
 # migration between neighbors is 10x the default: 10 genomes per neighbor
 # send (default 1), received in batches of 40 (default 4)
 # vs. 2026-11-19 workflow, immunity waning is 5x slower (0.002, down from
 # 0.01); six runs sweep within-host mutation rate by factors of 4, from
 # 2^-16 (~1.5e-5) down to 2^-26 (~1.5e-8), bracketing the 1e-6 default
-# all six runs share one compile, with mutation rate and seed set per run by
-# runtime config (named runtime config rtc_evoepi_mutationRate, globalSeed)
+# all six runs share one compile and one job: client.py loops over six
+# runtime configs, each setting mutation rate (named runtime config
+# rtc_evoepi_mutationRate) and seed (globalSeed), outputs in dispatch=<slug>/
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1
@@ -184,7 +185,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
 # as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_19
-p2p=0.05
+p2p=0.02
 waning=0.002
 sendgenomes=10
 recvgenomes=40
@@ -194,15 +195,11 @@ nrow=1170
 ncol=755
 seedstride=9
 compileseed=1124  # runs override with runtime config globalSeed
-seed=1123
 p2pMode=pairs
-compiled=0
-for mutexp in 16 18 20 22 24 26; do
-    mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact in f32
-    seed=$((seed + 1))
-    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+nestfactor=${nestfactor}+p2p=${p2p}+p2pmode=${p2pMode}+waning=${waning}+mutationlog2=-${mutexp}+sendgenomes=${sendgenomes}+seed=${seed}"
+for _ in once; do
+    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+nestfactor=${nestfactor}+p2p=${p2p}+p2pmode=${p2pMode}+waning=${waning}+mutationlog2=sweep+sendgenomes=${sendgenomes}"
     echo
-    echo "====== Configuring run: ${CONFIG_NAME} ======"
+    echo "====== Compiling config: ${CONFIG_NAME} ======"
 
     CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
     CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
@@ -285,19 +282,22 @@ EOF
     echo "do compile: ${CONFIG_NAME} -------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
-    # runtime config sets nested subgrid sizes, p2p targets (random pairs
-    # within subgrids), mutation rate, and seed
+    # runtime configs, one per run, each set nested subgrid sizes, p2p
+    # targets (random pairs within subgrids), mutation rate, and seed
     rm -rf "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch"
-    echo "{\"dispatch_slug\": \"p2p-${p2pMode}-nest${nestfactor}-mutlog2-${mutexp}\", \"p2pMode\": \"${p2pMode}\", \"nestedSubgridSizeFactor\": ${nestfactor}, \"globalSeed\": ${seed}, \"rtc_evoepi_mutationRate:f32\": ${mutation}}" \
-        | tee "${CONFIG_WORKDIR}/runtime_config.jsonl"
+    : > "${CONFIG_WORKDIR}/runtime_config.jsonl"
+    seed=1123
+    for mutexp in 16 18 20 22 24 26; do
+        mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact f32
+        seed=$((seed + 1))
+        echo "{\"dispatch_slug\": \"mutlog2-${mutexp}-seed${seed}\", \"p2pMode\": \"${p2pMode}\", \"nestedSubgridSizeFactor\": ${nestfactor}, \"globalSeed\": ${seed}, \"rtc_evoepi_mutationRate:f32\": ${mutation}}" \
+            | tee -a "${CONFIG_WORKDIR}/runtime_config.jsonl"
+    done
+    cp "${CONFIG_WORKDIR}/runtime_config.jsonl" "${CONFIG_RESULTDIR}/"
     python3 "${WORKDIR}/src/kernel-async-ga/runtime_config_generate.py" \
         default.py.in "${CONFIG_WORKDIR}/runtime_config.jsonl"
 
-    # compile once, shared by all runs
-    if [ "${compiled}" -eq 0 ]; then
-        "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${RESULTDIR_STEP}/compile.log"
-        compiled=1
-    fi
+    "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${CONFIG_RESULTDIR}/compile.log"
 
     # Copy compiled artifacts to config workdir for run step
     cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" "${CONFIG_WORKDIR}/"
@@ -309,7 +309,7 @@ EOF
     cp -rL "${WORKDIR}/src/kernel-async-ga/runtime_config_validate" "${CONFIG_WORKDIR}/"
     cp -rL "${CONFIG_WORKDIR}/runtime_config_dispatch" "${CONFIG_RESULTDIR}/"
 
-    echo "Config ${CONFIG_NAME} setup complete!"
+    echo "Config ${CONFIG_NAME} compile complete!"
 done
 
 ###############################################################################

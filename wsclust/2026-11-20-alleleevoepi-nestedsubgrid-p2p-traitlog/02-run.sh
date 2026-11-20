@@ -256,10 +256,10 @@ def transfer_file_chunked(launcher, remote_path, local_path, tmp_dir="tmp"):
         logging.info(f"no chunks for {remote_path}, skipping")
         os.rmdir(chunk_dir)
 
-def transfer_raw_directory(launcher, local_out_dir):
+def transfer_raw_directory(launcher, local_out_dir, raw_dir="raw"):
     """Transfer raw/ directory file by file using chunked transfers."""
     logging.info("checking for raw directory...")
-    response = launcher.run("test -d raw && echo exists || echo missing")
+    response = launcher.run(f"test -d {raw_dir} && echo exists || echo missing")
     logging.info(f"raw directory: {response.strip()}")
 
     if "exists" not in response:
@@ -270,7 +270,7 @@ def transfer_raw_directory(launcher, local_out_dir):
     launcher.run(f"mkdir -p {tmp_dir}")
 
     logging.info("listing files in raw/...")
-    response = launcher.run("find raw -type f")
+    response = launcher.run(f"find {raw_dir} -type f")
     files = [f.strip() for f in response.splitlines() if f.strip()]
     logging.info(f"found {len(files)} file(s) to transfer")
 
@@ -282,9 +282,12 @@ def transfer_raw_directory(launcher, local_out_dir):
     logging.info("raw directory transfer complete!")
 
 logging.info("entering SdkLauncher")
-# Set job_time_sec to 2 hours (7200 seconds) to prevent default 600s timeout
+# Set job_time_sec to 2 hours (7200 seconds) per runtime config, as client.py
+# runs them in sequence within this job, to prevent default 600s timeout
 # @mmore500: not sure if this does anything...
-with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as launcher:
+num_runtime_configs = len(os.listdir("${CONFIG_COMPILE_WORKDIR}/runtime_config_dispatch"))
+logging.info(f"{num_runtime_configs=}")
+with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200 * num_runtime_configs) as launcher:
 
     logging.info("querying context info...")
     response = launcher.run(
@@ -309,17 +312,17 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     logging.info("... done!")
     logging.info(response + "\n")
 
-    # client.py runs in its runtime config's directory, unless it is default;
-    # there is one runtime config per compile here, so move its outputs up to
-    # be collected below
-    logging.info("moving outputs out of runtime config directory...")
-    response = launcher.run(
-        "ls -d dispatch=*/ || :",
-        "mv dispatch=*/a=* . || :",
-        "mv dispatch=*/raw . || :",
-        "ls",
-    )
+    # client.py loops over runtime configs within this job, running each in
+    # its own dispatch=<slug> directory; outputs are collected from each below
+    logging.info("listing runtime config directories...")
+    response = launcher.run("ls -d dispatch=*/ || :")
     logging.info(response + "\n")
+    dispatch_dirs = sorted(
+        line.strip().rstrip("/")
+        for line in response.splitlines()
+        if line.strip().startswith("dispatch=")
+    )
+    logging.info(f"{dispatch_dirs=}")
 
     logging.info("capturing WSJOB_ID...")
     wsjob_id = launcher.run("echo \$WSJOB_ID").strip()
@@ -346,6 +349,23 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
         logging.info("... done!")
 
     transfer_raw_directory(launcher, "${CONFIG_WORKDIR}/out")
+
+    for dispatch_dir in dispatch_dirs:
+        logging.info(f"finding output files in {dispatch_dir}...")
+        response = launcher.run(
+            f"find {dispatch_dir} -maxdepth 1 -type f "
+            r'\( -name "*.log" -o -name "*.txt" -o -name "*.pqt" -o -name "*.json" -o -name "*.npy" -o -name "*.npz" -o -name "*.csv" -o -name "*.json.gz" -o -name "*.csv.gz" \)',
+        )
+        logging.info(response + "\n")
+        for filename in response.splitlines():
+            target = f"${CONFIG_WORKDIR}/out/{filename}"
+            logging.info(f"retrieving file {filename} to {target}...")
+            launcher.download_artifact(filename, target)
+            logging.info("... done!")
+
+        transfer_raw_directory(
+            launcher, "${CONFIG_WORKDIR}/out", raw_dir=f"{dispatch_dir}/raw"
+        )
 
     logging.info("exiting SdkLauncher")
 
@@ -387,9 +407,13 @@ EOF
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
     # trait time series (per-PE trait logger records) and p2p telemetry are
-    # this workflow's main outputs, so fail if they were not collected
-    ls -l "${CONFIG_WORKDIR}/out"/a=traitloggerRecord+*.pqt
-    ls -l "${CONFIG_WORKDIR}/out"/a=p2p+*.pqt
+    # this workflow's main outputs, so fail if they were not collected from
+    # every runtime config
+    for script in "${CONFIG_COMPILE_WORKDIR}"/runtime_config_dispatch/*.py; do
+        slug="$(basename "${script}" .py)"
+        ls -l "${CONFIG_WORKDIR}/out/dispatch=${slug}"/a=traitloggerRecord+*.pqt
+        ls -l "${CONFIG_WORKDIR}/out/dispatch=${slug}"/a=p2p+*.pqt
+    done
 
     find "${CONFIG_WORKDIR}/out" -type f -exec sha256sum {} + | tee "${CONFIG_WORKDIR}/out/sha256sums-host.txt"
     find "${CONFIG_WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
