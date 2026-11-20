@@ -158,60 +158,78 @@ echo "compile configs --------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 # allele-specific immunity epidemiology (allele-evoepi ABM port) with 2
-# enabled sites, i.e., 4 strains, on the full grid, partitioned into nested
-# subgrids of growing size (runtime config nestedSubgridSizeFactor 2): 9 x 9
-# PE subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
-# subgrids each of 18, 36, 72, 144, 288, and 576 PEs on a side, with
-# subgrids overhanging the grid edge clipped
-# p2p edges are random PE pairs within subgrids, with send probability 1 in
-# 50 per cycle (one genome per p2p message)
-# migration between neighbors is 10x the default: 10 genomes per neighbor
-# send (default 1), received in batches of 40 (default 4)
-# vs. 2026-11-19 workflow, immunity waning is 5x slower (0.002, down from
-# 0.01); six runs sweep within-host mutation rate by factors of 4, from
-# 2^-16 (~1.5e-5) down to 2^-26 (~1.5e-8), bracketing the 1e-6 default
-# all six runs share one compile and one job: client.py loops over six
-# runtime configs, each setting mutation rate (named runtime config
-# rtc_evoepi_mutationRate) and seed (globalSeed), outputs in dispatch=<slug>/
+# enabled sites, i.e., 4 strains, on the full grid, with random p2p edges
+# (random PE pairs, within subgrids if any); p2p sends one genome per message,
+# and only infected hosts (genome is_empty gates p2p sends); three jobs:
+# 1. baseline: as 2026-11-19 workflow's baseline (no subgrids, immunity
+#    waning 0.01, mutation rate 1e-6, 1 genome per neighbor send, recv
+#    batches of 4, population 6800, infection seeded on corner PE only, seed
+#    1120), with p2p send probability 1 in 500
+# 2. baseline, but p2p send probability 1 in 50 (set by runtime config, so
+#    jobs 1 and 2 share one compile)
+# 3. nested subgrids, sweeping mutation rate, in one job: client.py loops
+#    over six runtime configs, each setting mutation rate 2^-16 to 2^-26 by
+#    factors of 4 (named runtime config rtc_evoepi_mutationRate) and seed
+#    (globalSeed), outputs in dispatch=<slug>/; full grid partitioned into
+#    nested subgrids (runtime config nestedSubgridSizeFactor 2): 9 x 9 PE
+#    subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
+#    subgrids each of 18, 36, 72, 144, 288, and 576 PEs on a side, with
+#    subgrids overhanging the grid edge clipped; p2p send probability 1 in
+#    50; migration between neighbors 10x the default (10 genomes per send,
+#    received in batches of 40); immunity waning 5x slower (0.002); infection
+#    seeded on every PE whose col and row are multiples of 9 (seed PE stride
+#    9), i.e., the corner PE of each smallest subgrid and of each larger
+#    subgrid, plus other PEs at the same density within larger subgrids;
+#    population 6500, below 6649 limit of PE memory with 10x neighbor
+#    buffers (6650 fails to link)
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1
-# infection starts on every PE whose col and row are multiples of 9 (seed PE
-# stride 9), i.e., the corner PE of each smallest subgrid and of each larger
-# subgrid, plus other PEs at the same density within larger subgrids, where
-# all hosts start infected with the wildtype strain
 # tournament size 2, so each host's update samples two random contacts, with
 # an infected contact winning over an uninfected one
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
 # as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_19
-p2p=0.02
-waning=0.002
-sendgenomes=10
-recvgenomes=40
-subgrid=9
-nestfactor=2
 nrow=1170
 ncol=755
-seedstride=9
-compileseed=1124  # runs override with runtime config globalSeed
 p2pMode=pairs
-for _ in once; do
-    CONFIG_NAME="flavor=${genome_flavor}+subgrid=${subgrid}+nestfactor=${nestfactor}+p2p=${p2p}+p2pmode=${p2pMode}+waning=${waning}+mutationlog2=sweep+sendgenomes=${sendgenomes}"
-    echo
-    echo "====== Compiling config: ${CONFIG_NAME} ======"
 
-    CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
-    CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
-    mkdir -p "${CONFIG_WORKDIR}"
-    mkdir -p "${CONFIG_RESULTDIR}"
+# compile, for each compile config; and write each run config's runtime
+# configs, with compiled artifacts, to its own directory (one job per run
+# config in run step)
+for compileConfig in baseline nested; do
+    if [ "${compileConfig}" = "baseline" ]; then
+        p2p=0.002  # compiled-in, runtime config may override
+        waning=0.01
+        mutation=1e-6
+        sendgenomes=1
+        recvgenomes=4
+        subgrid=0
+        seedstride=1170  # only corner PE
+        popsize=6800  # below 6975 limit of PE memory
+        compileseed=1120
+    else
+        p2p=0.02
+        waning=0.002
+        mutation=1e-6  # runtime config overrides, per run
+        sendgenomes=10
+        recvgenomes=40
+        subgrid=9
+        seedstride=9
+        popsize=6500  # below 6649 limit with 10x neighbor buffers
+        compileseed=1124  # runtime config overrides, per run
+    fi
+    COMPILE_WORKDIR="${WORKDIR_STEP}/compile=${compileConfig}"
+    COMPILE_RESULTDIR="${RESULTDIR_STEP}/compile=${compileConfig}"
+    mkdir -p "${COMPILE_WORKDIR}"
+    mkdir -p "${COMPILE_RESULTDIR}"
 
     ###########################################################################
     echo
-    echo "config compile: ${CONFIG_NAME} ---------------------------------------"
+    echo "compile: ${compileConfig} --------------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
-    cat > "${CONFIG_WORKDIR}/env.sh" << EOF
+    cat > "${COMPILE_WORKDIR}/env.sh" << EOF
 #!/usr/bin/env bash
 
 export ASYNC_GA_ARCH_FLAG="wse3"
@@ -226,7 +244,7 @@ export ASYNC_GA_NROW_SUBGRID=${subgrid}
 export ASYNC_GA_NTRAIT=8
 export ASYNC_GA_MSEC_AT_LEAST=0
 export ASYNC_GA_NCYCLE_AT_LEAST=50000
-export ASYNC_GA_POPSIZE=6500  # below 6649 limit of PE memory with 10x neighbor buffers (6650 fails to link)
+export ASYNC_GA_POPSIZE=${popsize}
 export ASYNC_GA_POPULATION_FLAVOR="population_tournamentsteadystate"
 export ASYNC_GA_TOURNSIZE_NUMERATOR=2
 export ASYNC_GA_TOURNSIZE_DENOMINATOR=1
@@ -239,6 +257,7 @@ export COMPCONFENV_CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB__u16=3
 export COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16=2
 export COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16=${seedstride}
 export COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32="${waning}"
+export COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32="${mutation}"
 export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${p2p}"
 export COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16=${sendgenomes}
 export COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16=${recvgenomes}
@@ -268,48 +287,78 @@ echo "COMPCONFENV_CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB__u16 \${COMPCONFENV_CERE
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16 \${COMPCONFENV_CEREBRASLIB_EVOEPI_N_SITES__u16}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16 \${COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32}"
+echo "COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32}"
 echo "COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32 \${COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32}"
 echo "COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16}"
 echo "COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16}"
 EOF
+    chmod +x "${COMPILE_WORKDIR}/env.sh"
+    cp "${COMPILE_WORKDIR}/env.sh" "${COMPILE_RESULTDIR}/env.sh"
+    source "${COMPILE_WORKDIR}/env.sh"
 
-    chmod +x "${CONFIG_WORKDIR}/env.sh"
-    cp "${CONFIG_WORKDIR}/env.sh" "${CONFIG_RESULTDIR}/env.sh"
-    source "${CONFIG_WORKDIR}/env.sh"
+    "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${COMPILE_RESULTDIR}/compile.log"
+    rm -rf "${COMPILE_WORKDIR}/out"
+    cp -rL "${WORKDIR}/src/kernel-async-ga/out" "${COMPILE_WORKDIR}/"
+    cp -L "${WORKDIR}/src/kernel-async-ga/compconf.json" "${COMPILE_WORKDIR}/"
 
-    ###########################################################################
-    echo
-    echo "do compile: ${CONFIG_NAME} -------------------------------------------"
-    echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
-    ###########################################################################
-    # runtime configs, one per run, each set nested subgrid sizes, p2p
-    # targets (random pairs within subgrids), mutation rate, and seed
-    rm -rf "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch"
-    : > "${CONFIG_WORKDIR}/runtime_config.jsonl"
-    seed=1123
-    for mutexp in 16 18 20 22 24 26; do
-        mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact f32
-        seed=$((seed + 1))
-        echo "{\"dispatch_slug\": \"mutlog2-${mutexp}-seed${seed}\", \"p2pMode\": \"${p2pMode}\", \"nestedSubgridSizeFactor\": ${nestfactor}, \"globalSeed\": ${seed}, \"rtc_evoepi_mutationRate:f32\": ${mutation}}" \
-            | tee -a "${CONFIG_WORKDIR}/runtime_config.jsonl"
+    # run configs, one job each; RUN_CONFIGS entries are name:p2p, where p2p
+    # is runtime p2p send probability, or "sweep" for the mutation rate sweep
+    if [ "${compileConfig}" = "baseline" ]; then
+        RUN_CONFIGS="baseline-p2p0.002:0.002 baseline-p2p0.02:0.02"
+    else
+        RUN_CONFIGS="nested-mutsweep-p2p0.02:sweep"
+    fi
+    for runConfig in ${RUN_CONFIGS}; do
+        IFS=: read -r runName runP2p <<< "${runConfig}"
+        CONFIG_NAME="flavor=${genome_flavor}+run=${runName}+subgrid=${subgrid}+waning=${waning}+sendgenomes=${sendgenomes}"
+        echo
+        echo "====== Configuring run: ${CONFIG_NAME} ======"
+
+        CONFIG_WORKDIR="${WORKDIR_STEP}/${CONFIG_NAME}"
+        CONFIG_RESULTDIR="${RESULTDIR_STEP}/${CONFIG_NAME}"
+        mkdir -p "${CONFIG_WORKDIR}"
+        mkdir -p "${CONFIG_RESULTDIR}"
+
+        #######################################################################
+        echo
+        echo "runtime configs: ${CONFIG_NAME} --------------------------------"
+        echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
+        #######################################################################
+        rm -rf "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch"
+        : > "${CONFIG_WORKDIR}/runtime_config.jsonl"
+        if [ "${runP2p}" = "sweep" ]; then
+            # nested subgrids, p2p targets (random pairs within subgrids),
+            # mutation rate, and seed, one runtime config per mutation rate
+            seed=1123
+            for mutexp in 16 18 20 22 24 26; do
+                mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact f32
+                seed=$((seed + 1))
+                echo "{\"dispatch_slug\": \"mutlog2-${mutexp}-seed${seed}\", \"p2pMode\": \"${p2pMode}\", \"nestedSubgridSizeFactor\": 2, \"globalSeed\": ${seed}, \"rtc_evoepi_mutationRate:f32\": ${mutation}}" \
+                    | tee -a "${CONFIG_WORKDIR}/runtime_config.jsonl"
+            done
+        else
+            # p2p targets (random pairs) and p2p send probability
+            echo "{\"dispatch_slug\": \"p2p-${p2pMode}-${runP2p}\", \"p2pMode\": \"${p2pMode}\", \"p2pSendProbability\": ${runP2p}}" \
+                | tee -a "${CONFIG_WORKDIR}/runtime_config.jsonl"
+        fi
+        cp "${CONFIG_WORKDIR}/runtime_config.jsonl" "${CONFIG_RESULTDIR}/"
+        python3 "${WORKDIR}/src/kernel-async-ga/runtime_config_generate.py" \
+            default.py.in "${CONFIG_WORKDIR}/runtime_config.jsonl"
+
+        # copy compiled artifacts to config workdir for run step
+        cp -L "${COMPILE_WORKDIR}/env.sh" "${CONFIG_WORKDIR}/"
+        cp -L "${COMPILE_WORKDIR}/env.sh" "${CONFIG_RESULTDIR}/"
+        cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" "${CONFIG_WORKDIR}/"
+        cp -rL "${COMPILE_WORKDIR}/out" "${CONFIG_WORKDIR}/"
+        cp -L "${WORKDIR}/src/kernel-async-ga/client.py" "${CONFIG_WORKDIR}/"
+        cp -rL "${WORKDIR}/src/kernel-async-ga/wheelhouse" "${CONFIG_WORKDIR}/"
+        cp -L "${COMPILE_WORKDIR}/compconf.json" "${CONFIG_WORKDIR}/"
+        cp -rL "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch" "${CONFIG_WORKDIR}/"
+        cp -rL "${WORKDIR}/src/kernel-async-ga/runtime_config_validate" "${CONFIG_WORKDIR}/"
+        cp -rL "${CONFIG_WORKDIR}/runtime_config_dispatch" "${CONFIG_RESULTDIR}/"
+
+        echo "Config ${CONFIG_NAME} setup complete!"
     done
-    cp "${CONFIG_WORKDIR}/runtime_config.jsonl" "${CONFIG_RESULTDIR}/"
-    python3 "${WORKDIR}/src/kernel-async-ga/runtime_config_generate.py" \
-        default.py.in "${CONFIG_WORKDIR}/runtime_config.jsonl"
-
-    "${WORKDIR}/src/kernel-async-ga/compile.sh" | tee "${CONFIG_RESULTDIR}/compile.log"
-
-    # Copy compiled artifacts to config workdir for run step
-    cp -rL "${WORKDIR}/src/kernel-async-ga/cerebraslib" "${CONFIG_WORKDIR}/"
-    cp -rL "${WORKDIR}/src/kernel-async-ga/out" "${CONFIG_WORKDIR}/"
-    cp -L "${WORKDIR}/src/kernel-async-ga/client.py" "${CONFIG_WORKDIR}/"
-    cp -rL "${WORKDIR}/src/kernel-async-ga/wheelhouse" "${CONFIG_WORKDIR}/"
-    cp -L "${WORKDIR}/src/kernel-async-ga/compconf.json" "${CONFIG_WORKDIR}/"
-    cp -rL "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch" "${CONFIG_WORKDIR}/"
-    cp -rL "${WORKDIR}/src/kernel-async-ga/runtime_config_validate" "${CONFIG_WORKDIR}/"
-    cp -rL "${CONFIG_WORKDIR}/runtime_config_dispatch" "${CONFIG_RESULTDIR}/"
-
-    echo "Config ${CONFIG_NAME} compile complete!"
 done
 
 ###############################################################################

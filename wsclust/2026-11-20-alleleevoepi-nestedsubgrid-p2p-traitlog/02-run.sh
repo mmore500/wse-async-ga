@@ -140,8 +140,9 @@ echo
 echo "run configs ------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-# run each config compiled in previous step
-for CONFIG_COMPILE_DIR in "${WORKDIR}/01-compile"/*/; do
+# run each run config set up in previous step, one job each (skipping
+# compile=* directories, which hold shared compiles)
+for CONFIG_COMPILE_DIR in "${WORKDIR}/01-compile"/flavor=*/; do
     CONFIG_NAME="$(basename "${CONFIG_COMPILE_DIR}")"
     echo
     echo "====== Running config: ${CONFIG_NAME} ======"
