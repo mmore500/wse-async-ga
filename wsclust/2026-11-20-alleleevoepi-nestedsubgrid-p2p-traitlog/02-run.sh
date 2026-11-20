@@ -282,12 +282,9 @@ def transfer_raw_directory(launcher, local_out_dir, raw_dir="raw"):
     logging.info("raw directory transfer complete!")
 
 logging.info("entering SdkLauncher")
-# Set job_time_sec to 2 hours (7200 seconds) per runtime config, as client.py
-# runs them in sequence within this job, to prevent default 600s timeout
+# Set job_time_sec to 2 hours (7200 seconds) to prevent default 600s timeout
 # @mmore500: not sure if this does anything...
-num_runtime_configs = len(os.listdir("${CONFIG_COMPILE_WORKDIR}/runtime_config_dispatch"))
-logging.info(f"{num_runtime_configs=}")
-with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200 * num_runtime_configs) as launcher:
+with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as launcher:
 
     logging.info("querying context info...")
     response = launcher.run(
