@@ -691,7 +691,7 @@ fn closeoutRecv() void {
 
 task closeoutTask() void {
   const closeoutComplete = closeoutSend();
-  if (isComplete) {
+  if (closeoutComplete) {
     if (nonBlock == 0) memcpy.unblock_cmd_stream();  // terminate
   } else { @activate(closeoutTaskID); }  // trigger next cycle
   closeoutRecv();  // run LAST in either case
