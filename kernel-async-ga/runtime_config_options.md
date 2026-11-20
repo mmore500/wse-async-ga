@@ -17,6 +17,14 @@ If no runtime config value is specified, symbols keep compile time default.
 - `nColSubgrid`
   - no migration every n cols, 0 for none
   - sets `rtc_nColSubgrid`
+- `nestedSubgridSizeFactor`
+  - integer, default 1 (uniform `nRowSubgrid` x `nColSubgrid` subgrids)
+  - if more than 1, subgrids nest outward from PE (0, 0): smallest subgrids
+    (`nRowSubgrid` x `nColSubgrid`, which must be equal and nonzero) at the
+    corner, then L-shaped shells of `nestedSubgridSizeFactor`^2 - 1 subgrids at each
+    size `nRowSubgrid` * `nestedSubgridSizeFactor`^k, until the grid is covered;
+    subgrids overhanging grid edges are clipped
+  - sets `rtc_nRowSubgrid` and `rtc_nColSubgrid` per PE
 - `nCycleAtLeast`
   - how many cycles to run for
   - sets `rtc_nCycleAtLeast`
@@ -27,7 +35,7 @@ If no runtime config value is specified, symbols keep compile time default.
   - how p2p targets are assigned
   - `"none"` (default): no PE has a target, `rtc_p2pTarget` is not set
   - `"pairs"`: PEs target each other in random pairs within subgrid, one
-    may be left unpaired; sets `rtc_p2pTarget`
+    per subgrid may be left unpaired; sets `rtc_p2pTarget`
 - `p2pSeed`
   - seeds random choice of targets
   - if not specified, `globalSeed`

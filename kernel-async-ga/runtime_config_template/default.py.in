@@ -6,7 +6,6 @@ values for rtc_* device symbols to stdout.
 See `runtime_config_options.md`.
 """
 
-import itertools as it
 import json
 import sys
 
@@ -29,6 +28,39 @@ if __name__ == "__main__":
             & runtime_config.keys()
         )
     }
+
+    # per-PE subgrid sizes, 0 for no partitioning along that axis
+    nRowSubgrid, nColSubgrid = (
+        runtime_config.get(key, comptime_config[key])
+        for key in ("nRowSubgrid", "nColSubgrid")
+    )
+    rowSubgrid = np.full((nRow, nCol), nRowSubgrid)
+    colSubgrid = np.full((nRow, nCol), nColSubgrid)
+
+    # nested subgrids, smallest (nRowSubgrid x nColSubgrid) at PE (0, 0),
+    # growing outward in L-shaped shells of growth^2 - 1 subgrids per size;
+    # subgrid sizes base * growth^k, with overhanging subgrids clipped by grid
+    nestedSubgridSizeFactor = runtime_config.get("nestedSubgridSizeFactor", 1)
+    if not isinstance(nestedSubgridSizeFactor, int) or nestedSubgridSizeFactor < 1:
+        raise ValueError(f"{nestedSubgridSizeFactor=} must be a positive integer")
+    if nestedSubgridSizeFactor > 1:
+        base = nRowSubgrid
+        if base < 1 or nColSubgrid != base:
+            raise ValueError(
+                f"nestedSubgridSizeFactor needs square subgrids, {nRowSubgrid=} "
+                f"{nColSubgrid=}",
+            )
+        rows, cols = np.indices((nRow, nCol))
+        shell = np.maximum(rows, cols) // base  # base-sized steps from corner
+        while (shell >= nestedSubgridSizeFactor).any():
+            grow = shell >= nestedSubgridSizeFactor
+            rowSubgrid[grow] *= nestedSubgridSizeFactor
+            shell[grow] //= nestedSubgridSizeFactor
+        colSubgrid = rowSubgrid
+        for key, value in zip(
+            ("nRowSubgrid", "nColSubgrid"), (rowSubgrid, colSubgrid)
+        ):
+            symbols[f"rtc_{key}"] = value.astype(np.uint32).reshape(shape)
     if "p2pSendProbability" in runtime_config:  # float32, copied as raw bits
         symbols["rtc_p2pSendProbability"] = np.full(
             shape, runtime_config["p2pSendProbability"], np.float32
@@ -38,22 +70,20 @@ if __name__ == "__main__":
     if p2pMode == "none":
         pass
     elif p2pMode == "pairs":
-        globalSeed, nRowSubgrid, nColSubgrid = (
-            runtime_config.get(key, comptime_config[key])
-            for key in ("globalSeed", "nRowSubgrid", "nColSubgrid")
+        globalSeed = runtime_config.get(
+            "globalSeed", comptime_config["globalSeed"]
         )
         rng = np.random.default_rng(runtime_config.get("p2pSeed", globalSeed))
-        tile = np.arange(nRow * nCol).reshape(nRow, nCol)
+        # subgrids, by tile id of their top-left PE, in row-major order
+        rows, cols = np.indices((nRow, nCol))
+        top = rows - rows % np.where(rowSubgrid, rowSubgrid, nRow)
+        left = cols - cols % np.where(colSubgrid, colSubgrid, nCol)
+        corner = (top * nCol + left).ravel()
+        order = np.argsort(corner, kind="stable")  # row-major within subgrid
+        bounds = np.flatnonzero(np.diff(corner[order])) + 1
         target = np.full(nRow * nCol, -1)  # tile id, -1 for none
-        for row, col in it.product(
-            range(0, nRow, nRowSubgrid or nRow),
-            range(0, nCol, nColSubgrid or nCol),
-        ):
-            subgrid = tile[
-                row : row + (nRowSubgrid or nRow),
-                col : col + (nColSubgrid or nCol),
-            ]
-            tiles = rng.permutation(subgrid.ravel())
+        for subgrid in np.split(order, bounds):
+            tiles = rng.permutation(subgrid)
             a, b = tiles[: len(tiles) // 2 * 2].reshape(-1, 2).T
             target[a], target[b] = b, a
 

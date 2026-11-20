@@ -11,15 +11,21 @@ import numpy as np
 
 
 def validate_rtc_p2pTarget_within_subgrid(
-    data: np.ndarray, nRowSubgrid: int, nColSubgrid: int
+    data: np.ndarray, nRowSubgrid: np.ndarray, nColSubgrid: np.ndarray
 ) -> None:
+    """Check p2p targets share a subgrid, given per-PE subgrid sizes."""
     nRow, nCol = data.shape[:2]
     rows, cols = np.indices((nRow, nCol))
+    nRowSubgrid = np.broadcast_to(nRowSubgrid, (nRow, nCol)).astype(np.int64)
+    nColSubgrid = np.broadcast_to(nColSubgrid, (nRow, nCol)).astype(np.int64)
+    # subgrids identified by their top-left PE
+    top = rows - rows % np.where(nRowSubgrid, nRowSubgrid, nRow)
+    left = cols - cols % np.where(nColSubgrid, nColSubgrid, nCol)
     has_target = data[:, :, 0] != 0xFFFFFFFF
     col, row = data[:, :, 0] >> 16, data[:, :, 0] & 0xFFFF
-    is_intersubgrid = has_target & (
-        (row // (nRowSubgrid or nRow) != rows // (nRowSubgrid or nRow))
-        | (col // (nColSubgrid or nCol) != cols // (nColSubgrid or nCol))
+    col, row = col[has_target], row[has_target]
+    is_intersubgrid = (top[row, col] != top[has_target]) | (
+        left[row, col] != left[has_target]
     )
     num_bad = is_intersubgrid.sum()
     assert not num_bad, f"{num_bad} PEs have target in another subgrid"
@@ -34,11 +40,11 @@ if __name__ == "__main__":
     # subgrid sizes are runtime config too, defaulting to comptime_config
     nRowSubgrid, nColSubgrid = (
         (
-            int(runtime_config[f"rtc_{key}"].max())
+            runtime_config[f"rtc_{key}"][:, :, 0]
             if f"rtc_{key}" in runtime_config
-            else comptime_config[key]
+            else np.array(comptime_config[key])
         )
         for key in ("nRowSubgrid", "nColSubgrid")
     )
-    print(f"{nRowSubgrid=} {nColSubgrid=}")
+    print(f"{np.unique(nRowSubgrid)=} {np.unique(nColSubgrid)=}")
     validate_rtc_p2pTarget_within_subgrid(data, nRowSubgrid, nColSubgrid)

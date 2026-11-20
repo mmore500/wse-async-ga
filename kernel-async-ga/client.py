@@ -147,24 +147,19 @@ def assemble_genome_bookend_data(
 def with_subgrid_columns(df: "pl.LazyFrame") -> "pl.LazyFrame":
     """Add subgrid identity columns, computed from `row` and `col` columns.
 
-    Subgrids are the nRowSubgrid x nColSubgrid blocks of PEs between which
-    migration is disabled (0 means no partitioning along that axis). Adds
-    `subgrid_row` and `subgrid_col` (block coordinates) and `subgrid` (flat,
-    row-major block index, unique within a run).
+    Subgrids are the blocks of PEs between which migration is disabled, with
+    per-PE sizes `subgrid_nrow` x `subgrid_ncol` (0 means no partitioning along
+    that axis; sizes may vary between PEs, e.g., runtime config nestedSubgridSizeFactor).
+    Adds `subgrid_row` and `subgrid_col` (coordinates of the subgrid's top-left
+    PE, in units of the smallest subgrid size) and `subgrid` (flat, row-major
+    index from those coordinates, unique within a run).
     """
-    nSubgridCols = -(-nCol // nColSubgrid) if nColSubgrid else 1
+    tile = pl.col("row").cast(pl.UInt32) * nCol + pl.col("col").cast(pl.UInt32)
     return df.with_columns(
-        subgrid_row=(
-            pl.col("row") // nRowSubgrid if nRowSubgrid else pl.lit(0)
-        ).cast(pl.UInt16),
-        subgrid_col=(
-            pl.col("col") // nColSubgrid if nColSubgrid else pl.lit(0)
-        ).cast(pl.UInt16),
-    ).with_columns(
-        subgrid=(
-            pl.col("subgrid_row").cast(pl.UInt32) * nSubgridCols
-            + pl.col("subgrid_col").cast(pl.UInt32)
-        ),
+        **{
+            key: pl.lit(pl.Series(value.ravel())).gather(tile)
+            for key, value in subgridColumns.items()
+        },
     )
 
 
@@ -795,15 +790,38 @@ for i, (symbol, data) in enumerate(runtimeConfig.items(), start=1):
 if "rtc_globalSeed" in runtimeConfig:
     globalSeed = np.unique(runtimeConfig["rtc_globalSeed"]).item()
     log(f" - runtime config sets {globalSeed=}")
-if "rtc_nRowSubgrid" in runtimeConfig:
-    nRowSubgrid = np.unique(runtimeConfig["rtc_nRowSubgrid"]).item()
-    log(f" - runtime config sets {nRowSubgrid=}")
-if "rtc_nColSubgrid" in runtimeConfig:
-    nColSubgrid = np.unique(runtimeConfig["rtc_nColSubgrid"]).item()
-    log(f" - runtime config sets {nColSubgrid=}")
 if "rtc_nCycleAtLeast" in runtimeConfig:
     nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
     log(f" - runtime config sets {nCycleAtLeast=}")
+
+# subgrid sizes may vary between PEs (e.g., runtime config nestedSubgridSizeFactor)
+rowSubgrid = np.full((nRow, nCol), nRowSubgrid, dtype=np.int64)
+colSubgrid = np.full((nRow, nCol), nColSubgrid, dtype=np.int64)
+if "rtc_nRowSubgrid" in runtimeConfig:
+    rowSubgrid[:] = runtimeConfig["rtc_nRowSubgrid"].reshape(nRow, nCol)
+    nRowSubgrid = int(rowSubgrid.min())  # smallest, if they vary
+    log(f" - runtime config sets {np.unique(rowSubgrid)=}")
+if "rtc_nColSubgrid" in runtimeConfig:
+    colSubgrid[:] = runtimeConfig["rtc_nColSubgrid"].reshape(nRow, nCol)
+    nColSubgrid = int(colSubgrid.min())  # smallest, if they vary
+    log(f" - runtime config sets {np.unique(colSubgrid)=}")
+_rows, _cols = np.indices((nRow, nCol))
+_rowUnit = int(rowSubgrid[rowSubgrid > 0].min(initial=nRow))
+_colUnit = int(colSubgrid[colSubgrid > 0].min(initial=nCol))
+_subgridRow = _rows - _rows % np.where(rowSubgrid, rowSubgrid, nRow)
+_subgridRow //= _rowUnit  # top-left PE, in units of smallest subgrid
+_subgridCol = _cols - _cols % np.where(colSubgrid, colSubgrid, nCol)
+_subgridCol //= _colUnit
+subgridColumns = {  # per-PE values, by tile id, for with_subgrid_columns
+    "subgrid_row": _subgridRow.astype(np.uint16),
+    "subgrid_col": _subgridCol.astype(np.uint16),
+    "subgrid": (
+        _subgridRow * -(-nCol // _colUnit) + _subgridCol
+    ).astype(np.uint32),
+    "subgrid_nrow": rowSubgrid.astype(np.uint16),
+    "subgrid_ncol": colSubgrid.astype(np.uint16),
+}
+del _rows, _cols, _rowUnit, _colUnit, _subgridRow, _subgridCol
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 

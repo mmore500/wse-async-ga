@@ -10,14 +10,24 @@ import sys
 import numpy as np
 
 
-def validate_rtc_nColSubgrid_uniform(
+def validate_rtc_nColSubgrid_walls(
     data: np.ndarray, comptime_config: dict
 ) -> None:
-    assert len(np.unique(data)) == 1, "subgrid size differs between PEs"
+    """Check horizontally adjacent PEs agree on whether they can migrate.
+
+    Subgrid sizes may differ between PEs (e.g., nestedSubgridSizeFactor), but kernel.csl
+    disables migration per PE, at x % n == 0 (W) and x % n == n - 1 (E).
+    """
+    size = data[:, :, 0].astype(np.int64)
+    x = np.indices(size.shape)[1]
+    first = (size != 0) & (x % np.maximum(size, 1) == 0)  # 0: no subgrids
+    last = (size != 0) & (x % np.maximum(size, 1) == size - 1)
+    num_bad = (last[:, :-1] != first[:, 1:]).sum()
+    assert not num_bad, f"{num_bad} PE pairs disagree on subgrid boundary"
 
 
 if __name__ == "__main__":
     comptime_config = json.loads(sys.argv[1])
     data = np.load(io.BytesIO(sys.stdin.buffer.read()))["rtc_nColSubgrid"]
     print(f"validating rtc_nColSubgrid {data.shape=}")
-    validate_rtc_nColSubgrid_uniform(data, comptime_config)
+    validate_rtc_nColSubgrid_walls(data, comptime_config)
