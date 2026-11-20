@@ -127,12 +127,12 @@ echo "log and setup source ---------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 echo "log revision"
-git -C "${FLOWDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/git-revision.txt"
+git -C "${FLOWDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/git-revision.txt" || :
 echo "log remote"
-git -C "${FLOWDIR}" remote -v > "${RESULTDIR_STEP}/git-remote.txt"
+git -C "${FLOWDIR}" remote -v > "${RESULTDIR_STEP}/git-remote.txt" || :
 echo "log status"
 git -C "$(git -C "${FLOWDIR}" rev-parse --show-toplevel)" status \
-    > "${RESULTDIR_STEP}/git-status.txt"
+    > "${RESULTDIR_STEP}/git-status.txt" || :
 echo "log diff"
 git -C "${FLOWDIR}" --no-pager diff > "${RESULTDIR_STEP}/git-status.diff" || :
 git -C "${FLOWDIR}" ls-files -z --others --exclude-standard --exclude=resultdir --exclude=workdir | xargs -0 -I {} git -C "${FLOWDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/git-status.diff" || :
@@ -146,12 +146,12 @@ rsync -a "$(git rev-parse --show-toplevel)/" "${SRCDIR}"
 echo "... done!"
 
 echo "log revision"
-git -C "${SRCDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/src-revision.txt"
+git -C "${SRCDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/src-revision.txt" || :
 echo "log remote"
-git -C "${SRCDIR}" remote -v > "${RESULTDIR_STEP}/src-remote.txt"
+git -C "${SRCDIR}" remote -v > "${RESULTDIR_STEP}/src-remote.txt" || :
 echo "log status"
 git -C "$(git -C "${SRCDIR}" rev-parse --show-toplevel)" status \
-    > "${RESULTDIR_STEP}/src-status.txt"
+    > "${RESULTDIR_STEP}/src-status.txt" || :
 echo "log diff"
 git -C "${SRCDIR}" --no-pager diff > "${RESULTDIR_STEP}/src-status.diff" || :
 git -C "${SRCDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git -C "${SRCDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/src-status.diff" || :
@@ -175,7 +175,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install --upgrade uv
 python3 -m uv pip install -r "${SRCDIR}/requirements_cs.txt"
 python3 -m uv pip install "${SRCDIR}/pylib_cs"
-python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt"
+python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt" || :
 python3 -m pylib_cs.cslc_wsclust_shim  # test install
 
 ###############################################################################
@@ -183,10 +183,10 @@ echo
 echo "closeout ---------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${RESULTDIR_STEP}"/*
+find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${RESULTDIR_STEP}"/* || :
 
-env > "${RESULTDIR_STEP}/env.txt"
+env > "${RESULTDIR_STEP}/env.txt" || :
 
 ###############################################################################
 echo
