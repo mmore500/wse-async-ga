@@ -41,9 +41,22 @@ fn incrmod32(val: u32, mod: u32) u32 {
 /// Multiply two 32-bit integers.
 fn mul32(a: u32, b: u32) u32 { return a * b; }
 
-// Sample a coin flip with probability p.
+/// Threshold that a uniform random 32-bit integer falls below with the given
+/// probability, i.e., floor(probability * 2^32), so probability has 2^-32
+/// resolution. Probabilities at least 1 (or at most 0) map to 2^32 - 1 (or 0),
+/// so callers must still treat them as always (or never).
+fn p_threshold32(probability: f32) u32 {
+    if (!(probability > 0.0)) return 0; // also NaN
+    if (probability >= 1.0) return 0xFFFFFFFF;
+    return @as(u32, probability * 4294967296.0); // exact scaling by 2^32
+}
+
+/// Sample a coin flip with probability p, at 2^-32 resolution (unlike
+/// random_f32, whose 23-bit mantissa would round small probabilities up to
+/// 2^-23); draws one random 32-bit integer.
 fn p(probability: f32) bool {
-    return random.random_f32(0.0, 1.0) < probability;
+    const val = random_u32();
+    return probability >= 1.0 or val < p_threshold32(probability);
 }
 
 /// Draw a random 32-bit integer.
