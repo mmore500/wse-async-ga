@@ -482,7 +482,27 @@ const recvNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );
 comptime { @comptime_assert(recvNumGenomes >= 1); }
-const recvBufSize: u16 = comptime message.words_for(recvNumGenomes);
+// recv batches hold whole sends, so padding at the end of each send (with
+// messages under a word) is skipped, not read as genomes
+comptime { @comptime_assert(recvNumGenomes % sendNumGenomes == 0); }
+const recvNumSends: u16 = recvNumGenomes / sendNumGenomes;
+const recvBufSize: u16 = recvNumSends * sendBufSize;
+// do sends' messages fill whole words? then a recv batch is one contiguous run
+const isSendUnpadded: bool = (sendNumGenomes * genome_.gBitsMsg) % 32 == 0;
+
+// immigrate a recv batch, send by send, returning clobber count
+fn immigrateRecvBatch(recvBuf: [*]u32) u32 {
+  if (isSendUnpadded) {
+    return population.immigrate_genomes(recvBuf, recvNumGenomes);
+  }
+  var nClobbers: u32 = 0;
+  for (@range(u16, recvNumSends)) |i| {
+    nClobbers += population.immigrate_genomes(
+      @ptrcast([*]u32, &recvBuf[i * sendBufSize]), sendNumGenomes
+    );
+  }
+  return nClobbers;
+}
 
 // how many times to immigrate each neighbor and p2p immigrant? 1: as received
 const immEnrichNeigh: u16 = comptime compconf.get_value_or(
@@ -608,7 +628,9 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // each message is a header wavelet, one genome's message, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
-const p2pMsgSize: u16 = if (p2pEnabled) 2 + comptime message.words_for(1) else 0;
+const p2pMsgSize: u16 = (
+  if (p2pEnabled) 2 + comptime message.words_for(1) else 0
+);
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
 const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
@@ -799,9 +821,7 @@ task cycleTask() void {
     if (j == 0 and recvFlag_N == 1) {  // has open recv request been filled?
       var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
       if (immCounter_N[0] <= throttleThresh) {
-        clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_N, recvNumGenomes, immEnrichNeigh
-        );
+        clobberCounter[0] += immigrateRecvBatch(recvBufPtr_N);
         immCounter_N[0] += 1;
       }
       recvFlag_N = 0; dispatchRecv_N();
@@ -809,9 +829,7 @@ task cycleTask() void {
     else if (j == 1 and recvFlag_S == 1) {
       var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
       if (immCounter_S[0] <= throttleThresh) {
-        clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_S, recvNumGenomes, immEnrichNeigh
-        );
+        clobberCounter[0] += immigrateRecvBatch(recvBufPtr_S);
         immCounter_S[0] += 1;
       }
       recvFlag_S = 0; dispatchRecv_S();
@@ -819,9 +837,7 @@ task cycleTask() void {
     else if (j == 2 and recvFlag_E == 1) {
       var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
       if (immCounter_E[0] <= throttleThresh) {
-        clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_E, recvNumGenomes, immEnrichNeigh
-        );
+        clobberCounter[0] += immigrateRecvBatch(recvBufPtr_E);
         immCounter_E[0] += 1;
       }
       recvFlag_E = 0; dispatchRecv_E();
@@ -829,9 +845,7 @@ task cycleTask() void {
     else if (j == 3 and recvFlag_W == 1) {
       var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
       if (immCounter_W[0] <= throttleThresh) {
-        clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_W, recvNumGenomes, immEnrichNeigh
-        );
+        clobberCounter[0] += immigrateRecvBatch(recvBufPtr_W);
         immCounter_W[0] += 1;
       }
       recvFlag_W = 0; dispatchRecv_W();
