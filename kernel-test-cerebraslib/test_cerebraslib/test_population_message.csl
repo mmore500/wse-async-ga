@@ -167,6 +167,58 @@ fn _test_emigrate_live(pop: [*]u32, which: u16) void {
     @assert(0 < nSent and nSent < 64);  // sent about 1 in 4 times
 }
 
+fn _emigrate_batch(which: u16) u16 {  // 0: generational, 1: steady state
+    const toBuf = @ptrcast([*]u32, &msgBuf);
+    if (which == 0) { return generational.emigrate_live_batch(toBuf, nMsg); }
+    return steadystate.emigrate_live_batch(toBuf, nMsg);
+}
+
+/// Count messages in a full batch that are live hosts' pathogens.
+fn _count_live_messages(mask: u16) u16 {
+    var nLive: u16 = 0;
+    for (@range(u16, nMsg)) |k| {
+        const msg = @as(u16, (msgBuf[k / 2] >> (16 * (k % 2))) & 0xFFFF);
+        if ((msg & genome.infectedFlag) != 0) {
+            @assert(((mask >> (msg & 0xFF)) & 1) == 1);  // from a live host
+            nLive += 1;
+        } else {
+            @assert(msg == 0);  // empty hosts here are all-zero pathogen
+        }
+    }
+    @assert(msgBuf[2] == 0xFEEDBEEF);
+    return nLive;
+}
+
+fn _test_emigrate_batch(pop: [*]u32, which: u16) void {
+    _setup(pop);
+    msgBuf[2] = 0xFEEDBEEF;
+    // all live: full batch, no empty genomes passed over
+    @assert(_emigrate_batch(which) == 0);
+    @assert(_count_live_messages(0xFF) == nMsg);
+
+    // none live: whole population passed over, batch of empty genomes
+    _infect_masked(pop, 0x00);
+    @assert(_emigrate_batch(which) == 8);
+    @assert(_count_live_messages(0x00) == 0);
+
+    // two live: both sent, rest of batch empty, all 6 empty passed over
+    _infect_masked(pop, 0x24);
+    @assert(_emigrate_batch(which) == 6);
+    @assert(_count_live_messages(0x24) == 2);
+
+    // six live: full batch, passing over between 0 and 2 empty genomes
+    _infect_masked(pop, 0x7E);
+    for (@range(u16, 16)) |rep| {
+        @assert(_emigrate_batch(which) <= 2);
+        @assert(_count_live_messages(0x7E) == nMsg);
+    }
+}
+
+fn test_emigrate_live_batch() void {
+    _test_emigrate_batch(@ptrcast([*]u32, &generational.buffer), 0);
+    _test_emigrate_batch(@ptrcast([*]u32, &steadystate.buffer), 1);
+}
+
 fn test_emigrate_live_genomes() void {
     _test_emigrate_live(@ptrcast([*]u32, &generational.buffer), 0);
     _test_emigrate_live(@ptrcast([*]u32, &steadystate.buffer), 1);
@@ -177,4 +229,5 @@ fn do_test() void {
     test_generational();
     test_steadystate();
     test_emigrate_live_genomes();
+    test_emigrate_live_batch();
 }

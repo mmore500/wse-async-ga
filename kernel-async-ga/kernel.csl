@@ -278,6 +278,26 @@ const sendNumGenomes: u16 = comptime compconf.get_value_or(
 comptime { @comptime_assert(sendNumGenomes >= 1); }
 const sendBufSize: u16 = comptime message.words_for(sendNumGenomes);
 
+// send only live (non-empty) genomes to neighbors? if so, each cycle, each
+// send thread free (after p2p, which goes first) sends a batch of live genomes
+// to the least sent-to direction without a send in flight; empty genomes
+// passed over while filling batches add up, and each full batch's worth quells
+// a send instead, so sends go at a rate proportional to the live population
+const neighborSendLive: bool = 0 != comptime compconf.get_value_or(
+  "ASYNC_GA_NEIGHBOR_SEND_LIVE", @as(u16, 0)
+);
+var sendQuell: u32 = 0;  // empty genomes passed over, not yet quelled
+var neighborSendCounts = @zeros([4]u32);  // live sends dispatched: N, S, E, W
+
+// fill send buffer, adding any empty genomes passed over to quell count
+fn fillSendBuf(sendBuf: [*]u32) void {
+  if (neighborSendLive) {
+    sendQuell += population.emigrate_live_batch(sendBuf, sendNumGenomes);
+  } else {
+    population.emigrate_genomes(sendBuf, sendNumGenomes);
+  }
+}
+
 // send NORTH =================================================================
 var sendFlag_N: u8; // need refill? initialized at startup
 var sendThread_N: u8;  // which thread is sending?
@@ -292,7 +312,7 @@ task sendFinalizeTask_N() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_N(comptime thread: u8) void {
-  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_N), sendNumGenomes);
+  fillSendBuf(@ptrcast([*]u32, &sendBuf_N));
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_N;
   const sendDsd_N = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_N,
     .extent = sendBufWords, .output_queue = oq, });
@@ -340,7 +360,7 @@ task sendFinalizeTask_S() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_S(comptime thread: u8) void {
-  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_S), sendNumGenomes);
+  fillSendBuf(@ptrcast([*]u32, &sendBuf_S));
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_S;
   const sendDsd_S = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_S,
     .extent = sendBufWords, .output_queue = oq, });
@@ -388,7 +408,7 @@ task sendFinalizeTask_E() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_E(comptime thread: u8) void {
-  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_E), sendNumGenomes);
+  fillSendBuf(@ptrcast([*]u32, &sendBuf_E));
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_E;
   const sendDsd_E = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_E,
     .extent = sendBufWords, .output_queue = oq, });
@@ -436,7 +456,7 @@ task sendFinalizeTask_W() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_W(comptime thread: u8) void {
-  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_W), sendNumGenomes);
+  fillSendBuf(@ptrcast([*]u32, &sendBuf_W));
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_W;
   const sendDsd_W = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_W,
     .extent = sendBufWords, .output_queue = oq, });
@@ -807,6 +827,37 @@ fn shouldHalt(cycle: u32) bool {
 // cycle task =================================================================
 // main program loop: self-activate with incrementing values until nCycleAtLeast
 ///////////////////////////////////////////////////////////////////////////////
+// for each free send thread, quell a send or send a live batch to the least
+// sent-to direction without a send in flight (ties broken from shuf)
+fn sendLiveToNeighbors(shuf: u16) void {
+  const numBusy = (
+    busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
+  );
+  const numFree = 4 - @as(u16, numBusy);
+  for (@range(u16, 4)) |t| {
+    if (t >= numFree) break;
+    if (sendQuell >= sendNumGenomes) {  // quell, using up this thread's turn
+      sendQuell -= sendNumGenomes;
+      continue;
+    }
+    const sendFlags = [4]u8{ sendFlag_N, sendFlag_S, sendFlag_E, sendFlag_W };
+    var best: u16 = 4;  // none ready
+    for (@range(u16, 4)) |i| {
+      const j = (i + shuf) & 3;
+      const isLeast = (
+        best == 4 or neighborSendCounts[j] < neighborSendCounts[best]
+      );
+      if (sendFlags[j] == 1 and isLeast) { best = j; }
+    }
+    if (best == 0 and dispatchSend_N()) { sendFlag_N = 0; }
+    else if (best == 1 and dispatchSend_S()) { sendFlag_S = 0; }
+    else if (best == 2 and dispatchSend_E()) { sendFlag_E = 0; }
+    else if (best == 3 and dispatchSend_W()) { sendFlag_W = 0; }
+    else { break; }  // no direction ready, or no thread free
+    neighborSendCounts[best] += 1;
+  }
+}
+
 task cycleTask() void {
   // handle recv flags, pull recv buffer into pop and start next async recv
   // note: never-filled recv requests on PE array edges ok
@@ -893,7 +944,9 @@ task cycleTask() void {
     if (sendCount_P > 0 and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
-  for (@range(u16, 4)) |i| {  // send to all neighbors
+  if (neighborSendLive) { sendLiveToNeighbors(shuf2); }
+  for (@range(u16, 4)) |i| {  // send to all neighbors, unless live only
+    if (neighborSendLive) break;
     const numBusy = (
       busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
     );

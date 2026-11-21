@@ -179,6 +179,36 @@ fn emigrate_live_genomes(toBuf: [*]u32, nGenomes: u16) u16 {
     return nFound;
 }
 
+/// Pack a full batch of nGenomes messages into toBuf, of live (non-empty)
+/// genomes scanned on (wrapping) from a random population member, returning
+/// how many empty genomes were passed over. If the whole population has fewer
+/// than nGenomes live, the rest of the batch is empty genomes.
+fn emigrate_live_batch(toBuf: [*]u32, nGenomes: u16) u16 {
+    for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
+    const start = opscalar.unif16(popSize);
+
+    var nFound: u16 = 0;
+    var nEmpty: u16 = 0;
+    var emptyIdx: u16 = start;  // most recent empty genome passed over
+    var offset: u16 = 0;
+    while (nFound < nGenomes and offset < popSize) : (offset += 1) {
+        const i = (start + offset) % popSize;
+        const candidate = _get_ith_genome(i);
+        if (genome.is_empty(candidate)) {
+            nEmpty += 1;
+            emptyIdx = i;
+        } else {
+            message.pack(candidate, toBuf, nFound);
+            nFound += 1;
+        }
+    }
+    // too few live genomes in population: fill out batch with empty genomes
+    while (nFound < nGenomes) : (nFound += 1) {
+        message.pack(_get_ith_genome(emptyIdx), toBuf, nFound);
+    }
+    return nEmpty;
+}
+
 fn init_module() void { _initialize_all(); }
 
 fn do_generation() void {
