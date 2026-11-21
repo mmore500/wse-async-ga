@@ -1,0 +1,19 @@
+comptime {
+  asm (
+    @strcat(".global _opaque32\n",
+            ".type _opaque32, @function\n",
+            "_opaque32:\n",
+            "  mov16 r0 = r2\n",
+            "  mov16 r1 = r3\n",
+            "  jmp r15\n",
+            ".size _opaque32, . - _opaque32\n")
+  );
+}
+
+extern fn _opaque32(x: u32) u32;
+
+/// Return x, guaranteeing runtime evaluation.
+fn opaque_u32(x: u32) u32 { return _opaque32(x); }
+
+/// Return x, guaranteeing runtime evaluation.
+fn opaque_f32(x: f32) f32 { return @bitcast(f32, _opaque32(@bitcast(u32, x))); }
