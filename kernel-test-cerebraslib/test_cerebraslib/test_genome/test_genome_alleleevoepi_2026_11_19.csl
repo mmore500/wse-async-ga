@@ -298,7 +298,15 @@ fn test_calc_fitness_and_trait() void {
     @assert(genome.get_trait_value(&g) < @as(u32, genome.nTraitVals));
 }
 
+fn test_is_empty() void {
+    var genome = @zeros(genome.genome_t);
+    @assert(!genome.is_empty(&genome));
+    genome.initialize_one(&genome);
+    @assert(!genome.is_empty(&genome));
+}
+
 fn do_test() void {
+    test_is_empty();
     test_enabled_sites();
     test_calc_allele_bits();
     test_tables();

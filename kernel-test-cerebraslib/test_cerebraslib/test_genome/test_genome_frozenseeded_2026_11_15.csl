@@ -117,7 +117,15 @@ fn test_trample_resident() void {
     @assert(genome_frozenseeded._is_empty(&spawn));
 }
 
+fn test_is_empty() void {
+    var genome = @zeros(genome_frozenseeded.genome_t);
+    @assert(!genome_frozenseeded.is_empty(&genome));
+    genome_frozenseeded.initialize_one(&genome);
+    @assert(!genome_frozenseeded.is_empty(&genome));
+}
+
 fn do_test() void {
+    test_is_empty();
     test_initialize_one_at();
     test_is_seeded_pe();
     test_initialize_one();
