@@ -401,3 +401,7 @@ fn notify_extinct() void { _isExtinct = true; }
 
 // cleared genome?
 fn is_empty(genome: genomePtr_t) bool { return _is_clear(genome); }
+
+/// Export names of symbols the host sets (e.g., runtime config), from a
+/// layout block.
+fn export_symbol_names() void {}

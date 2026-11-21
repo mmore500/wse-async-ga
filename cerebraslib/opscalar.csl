@@ -67,10 +67,10 @@ fn incrmod32(val: u32, mod: u32) u32 {
 fn mul32(a: u32, b: u32) u32 { return a * b; }
 
 /// floor(probability * 2^32), the threshold a uniform random 32-bit integer
-/// falls below with given probability, for probability in [0, 1).
+/// falls below with given probability.
 fn _p_threshold32(probability: f32) u32 {
     @assert(probability >= 0.0 and probability < 1.0);
-    // workaround: f32 to u32 conversion saturates at 2^31 - 1
+    // sdk v2.10 workaround: f32 to u32 saturates at 2^31 - 1
     if (probability < 0.5) {
         return @as(u32, probability * 4294967296.0);
     } else {

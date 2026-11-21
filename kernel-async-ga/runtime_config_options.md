@@ -17,13 +17,28 @@ If no runtime config value is specified, symbols keep compile time default.
 - `nColSubgrid`
   - no migration every n cols, 0 for none
   - sets `rtc_nColSubgrid`
-- `nestedSubgridSizeFactor`
-  - integer, default 1 (uniform `nRowSubgrid` x `nColSubgrid` subgrids)
-  - if more than 1, subgrids nest outward from PE (0, 0): smallest subgrids
-    (`nRowSubgrid` x `nColSubgrid`, which must be equal and nonzero) at the
-    corner, then L-shaped shells of `nestedSubgridSizeFactor`^2 - 1 subgrids at each
-    size `nRowSubgrid` * `nestedSubgridSizeFactor`^k, until the grid is covered;
-    subgrids overhanging grid edges are clipped
+- `nestingFactorSubgrid`
+  - integer, default 1 (uniform subgrids); if more, subgrids grow by this
+    factor outward from PE (0, 0), needing square `nRowSubgrid` (b), e.g., 2:
+    ```
+    +---+---+-------+---------------+
+    | b | b |       |               |
+    +---+---+  2b   |               |
+    | b | b |       |               |
+    +---+---+-------+      4b       |
+    |       |       |               |
+    |  2b   |  2b   |               |
+    |       |       |               |
+    +-------+-------+---------------+
+    |               |               |
+    |               |               |
+    |               |               |
+    |      4b       |      4b       |
+    |               |               |
+    |               |               |
+    |               |               |
+    +---------------+---------------+
+    ```
   - sets `rtc_nRowSubgrid` and `rtc_nColSubgrid` per PE
 - `nCycleAtLeast`
   - how many cycles to run for
@@ -39,7 +54,7 @@ If no runtime config value is specified, symbols keep compile time default.
 - `p2pSeed`
   - seeds random choice of targets
   - if not specified, `globalSeed`
-- `uniformConstant`
+- `fillSymbolValue`
   - device symbols set to the same value on every PE, as `type` `f32`,
     `i32`, or `u32`, e.g., `{"rtc_foo": {"value": 0.5, "type": "f32"}}`
-  - each symbol must be listed in `cerebraslib/rtc_named_exports.csl`
+  - each symbol must be exported (e.g., via genome `export_symbol_names`)

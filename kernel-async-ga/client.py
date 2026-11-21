@@ -6,7 +6,6 @@ from collections import Counter
 import fnmatch
 import functools
 import gc
-import inspect
 import io
 import itertools as it
 import json
@@ -146,24 +145,14 @@ def assemble_genome_bookend_data(
 
 
 def with_subgrid_columns(df: "pl.LazyFrame") -> "pl.LazyFrame":
-    """Add subgrid identity columns, joined on `row` and `col` columns.
-
-    Subgrids are the blocks of PEs between which migration is disabled, with
-    per-PE sizes `subgrid_nrow` x `subgrid_ncol` (0 means no partitioning along
-    that axis; sizes may vary between PEs, e.g., runtime config
-    nestedSubgridSizeFactor). Adds `subgrid_row` and `subgrid_col`
-    (coordinates of the subgrid's top-left PE, in units of the smallest
-    subgrid size) and `subgrid` (flat, row-major index from those
-    coordinates, unique within a run).
-    """
+    """Add each PE's subgrid columns (see subgridFrame), joined on `row` and
+    `col` columns."""
     # join, rather than gather by tile id, so that streaming sinks work
-    joinKwargs = (  # polars < 1.19 left joins keep left order without asking
-        {"maintain_order": "left"}
-        if "maintain_order" in inspect.signature(pl.LazyFrame.join).parameters
-        else {}
-    )
     return df.join(
-        subgridFrame.lazy(), on=["row", "col"], how="left", **joinKwargs
+        subgridFrame.lazy(),
+        on=["row", "col"],
+        how="left",
+        maintain_order="left",
     )
 
 
@@ -798,7 +787,7 @@ if "rtc_nCycleAtLeast" in runtimeConfig:
     nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
     log(f" - runtime config sets {nCycleAtLeast=}")
 
-# subgrid sizes may vary between PEs (e.g., runtime config nestedSubgridSizeFactor)
+# subgrid sizes may vary between PEs (e.g., runtime config nestingFactorSubgrid)
 rowSubgrid = np.full((nRow, nCol), nRowSubgrid, dtype=np.int64)
 colSubgrid = np.full((nRow, nCol), nColSubgrid, dtype=np.int64)
 if "rtc_nRowSubgrid" in runtimeConfig:
@@ -816,7 +805,10 @@ _subgridRow = _rows - _rows % np.where(rowSubgrid, rowSubgrid, nRow)
 _subgridRow //= _rowUnit  # top-left PE, in units of smallest subgrid
 _subgridCol = _cols - _cols % np.where(colSubgrid, colSubgrid, nCol)
 _subgridCol //= _colUnit
-subgridFrame = pl.DataFrame(  # per-PE values, for with_subgrid_columns
+# per-PE subgrid columns, joined onto outputs by with_subgrid_columns:
+# subgrid_row and subgrid_col, top-left PE in units of smallest subgrid size;
+# subgrid, unique row-major index; subgrid_nrow and subgrid_ncol, sizes
+subgridFrame = pl.DataFrame(
     {
         "row": pl.Series(_rows.ravel(), dtype=pl.UInt16),
         "col": pl.Series(_cols.ravel(), dtype=pl.UInt16),
@@ -831,14 +823,11 @@ subgridFrame = pl.DataFrame(  # per-PE values, for with_subgrid_columns
     },
 )
 del _rows, _cols, _rowUnit, _colUnit, _subgridRow, _subgridCol
-# runtime config may set p2p send probability, e.g., uniformly; NaN if varied
+# runtime config may set p2p send probability; mean over PEs if varied
 runtimeP2pSendProbability = p2pSendProbability
 if "rtc_p2pSendProbability" in runtimeConfig:
-    _values = np.unique(
-        runtimeConfig["rtc_p2pSendProbability"].view(np.float32),
-    )
     runtimeP2pSendProbability = float(
-        _values.item() if len(_values) == 1 else np.nan,
+        runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
     )
     log(f" - runtime config sets {runtimeP2pSendProbability=}")
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
