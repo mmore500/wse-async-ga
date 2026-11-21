@@ -1,0 +1,117 @@
+// populations of a genome with messages smaller than the genome: the
+// allele-evoepi genome sends only its pathogen (low half-word)
+const genome = @import_module(
+    "cerebraslib/genome/genome_alleleevoepi_2026_11_19.csl"
+);
+const generational = @import_module(
+    "cerebraslib/population_tournamentgenerational.csl",
+    .{ .genome = genome, .popSize = 8, .pExtinction = 0.0,
+       .tournamentSize = 1.0 },
+);
+const steadystate = @import_module(
+    "cerebraslib/population_tournamentsteadystate.csl",
+    .{ .genome = genome, .popSize = 8, .pExtinction = 0.0,
+       .tournamentSize = 1.0 },
+);
+
+const nMsg: u16 = 4;
+var msgBuf = @zeros([2 + 1]u32);  // 4 half-word messages, and a guard word
+
+fn _fields(g: [*]u32) *genome.fields_t { return genome._cast_fields(g); }
+
+fn _ith(pop: [*]u32, i: u16) *genome.fields_t {
+    return _fields(@ptrcast([*]u32, &pop[i]));
+}
+
+/// Each host i has distinct immunity, and is infected with pathogen sites i.
+/// (genomes are 1 word, so host i is pop[i])
+fn _setup(pop: [*]u32) void {
+    for (@range(u16, 8)) |i| {
+        _ith(pop, i).*.pathogen = i | genome.infectedFlag;
+        _ith(pop, i).*.immunity = 0x0100 * (i + 1);
+    }
+}
+
+/// Each host's immunity is still there, though hosts may be permuted.
+fn _check_immunity_kept(pop: [*]u32) void {
+    for (@range(u16, 8)) |j| {
+        var count: u16 = 0;
+        for (@range(u16, 8)) |i| {
+            if (_ith(pop, i).*.immunity == 0x0100 * (j + 1)) { count += 1; }
+        }
+        @assert(count == 1);
+    }
+}
+
+/// Every sent message is some host's pathogen, and nothing else is written.
+fn _check_emigrated(pop: [*]u32) void {
+    @assert(msgBuf[2] == 0xFEEDBEEF);
+    for (@range(u16, nMsg)) |k| {
+        const msg: u16 = @as(u16, (msgBuf[k / 2] >> (16 * (k % 2))) & 0xFFFF);
+        var found = false;
+        for (@range(u16, 8)) |i| {
+            if (_ith(pop, i).*.pathogen == msg) { found = true; }
+        }
+        @assert(found);
+    }
+}
+
+fn _fill_messages() void {
+    // uninfected immigrants never infect, so leave residents as they were
+    msgBuf[0] = 0; msgBuf[1] = 0; msgBuf[2] = 0xFEEDBEEF;
+}
+
+fn test_message_size() void {
+    @assert(genome.gBitsMsg == 16);
+    @assert(generational.message.words_for(nMsg) == 2);
+    @assert(!generational.message.isWholeGenome);
+}
+
+fn test_generational() void {
+    _setup(@ptrcast([*]u32, &generational.buffer));
+    msgBuf[2] = 0xFEEDBEEF;
+    generational.emigrate_genomes(@ptrcast([*]u32, &msgBuf), nMsg);
+    _check_emigrated(@ptrcast([*]u32, &generational.buffer));
+
+    _fill_messages();
+    const nClobbers = generational.immigrate_genomes(
+        @ptrcast([*]u32, &msgBuf), nMsg
+    );
+    @assert(nClobbers == 0);
+    _check_immunity_kept(@ptrcast([*]u32, &generational.buffer));
+    for (@range(u16, 8)) |i| {  // uninfected immigrants infect no one
+        const f = _fields(generational._get_ith_genome(i));
+        @assert(f.*.pathogen == (i | genome.infectedFlag));
+    }
+
+    // infected immigrants replace pathogens only, never immunity
+    msgBuf[0] = 0x01000100 | 0x00010001; msgBuf[1] = msgBuf[0];
+    const n = generational.immigrate_genomes(@ptrcast([*]u32, &msgBuf), nMsg);
+    @assert(n <= nMsg);
+    _check_immunity_kept(@ptrcast([*]u32, &generational.buffer));
+}
+
+fn test_steadystate() void {
+    _setup(@ptrcast([*]u32, &steadystate.buffer));
+    msgBuf[2] = 0xFEEDBEEF;
+    steadystate.emigrate_genomes(@ptrcast([*]u32, &msgBuf), nMsg);
+    _check_emigrated(@ptrcast([*]u32, &steadystate.buffer));
+
+    _fill_messages();
+    const nClobbers = steadystate.immigrate_genomes(
+        @ptrcast([*]u32, &msgBuf), nMsg
+    );
+    @assert(nClobbers == 0);
+    _check_immunity_kept(@ptrcast([*]u32, &steadystate.buffer));
+
+    msgBuf[0] = 0x01000100 | 0x00010001; msgBuf[1] = msgBuf[0];
+    const n = steadystate.immigrate_genomes(@ptrcast([*]u32, &msgBuf), nMsg);
+    @assert(n <= nMsg);
+    _check_immunity_kept(@ptrcast([*]u32, &steadystate.buffer));
+}
+
+fn do_test() void {
+    test_message_size();
+    test_generational();
+    test_steadystate();
+}

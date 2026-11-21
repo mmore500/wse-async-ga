@@ -59,6 +59,15 @@ const genome_ = @import_module(
   .{ .rng = rng },
 );
 const nTraitVals = genome_.nTraitVals;
+const message = @import_module(  // genomes' packed messages to other PEs
+  "cerebraslib/genome_message.csl", .{
+    .gWordsPop = genome_.gWordsPop,
+    .gBitsMsg = genome_.gBitsMsg,
+  },
+);
+comptime {  // host copies at most the population genome
+  @comptime_assert(genome_.gWordsD2h <= genome_.gWordsPop);
+}
 const ctc_p2pSendProbability = comptime compconf.get_value_or(
     "ASYNC_GA_P2P_SEND_PROBABILITY", @as(f32, 0.0)
 );
@@ -143,10 +152,7 @@ var ptr_traitCycles: [*]u32 = &traitCycles;
 var traitValues = @zeros([nTraitVals]u32);
 var ptr_traitValues: [*]u32 = &traitValues;
 
-comptime {  // host copies at most the population genome
-  @comptime_assert(genome_.gWordsD2h <= genome_.gWordsPop);
-}
-var genome = @zeros([genome_.gWordsD2h]u32);  // samples 0th pop element
+var genome = @zeros([genome_.gWordsD2h]u32);  // samples 0th pop elem
 var ptr_genome : [*]u32 = &genome;  // (which is convenient)
 
 var fitness = @zeros([1]f32);  // samples 0th population element (convenient)
@@ -270,7 +276,7 @@ const sendNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES", @as(u16, 1)
 );
 comptime { @comptime_assert(sendNumGenomes >= 1); }
-const sendBufWords: u16 = (sendNumGenomes * genome_.gBitsMsg + 31) / 32;
+const sendBufSize: u16 = comptime message.words_for(sendNumGenomes);
 
 // send NORTH =================================================================
 var sendFlag_N: u8; // need refill? initialized at startup
@@ -286,7 +292,7 @@ task sendFinalizeTask_N() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_N(comptime thread: u8) void {
-  population.emigrate_genomes(sendBufDsd_N, sendNumGenomes);
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_N), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_N;
   const sendDsd_N = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_N,
     .extent = sendBufWords, .output_queue = oq, });
@@ -334,7 +340,7 @@ task sendFinalizeTask_S() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_S(comptime thread: u8) void {
-  population.emigrate_genomes(sendBufDsd_S, sendNumGenomes);
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_S), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_S;
   const sendDsd_S = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_S,
     .extent = sendBufWords, .output_queue = oq, });
@@ -382,7 +388,7 @@ task sendFinalizeTask_E() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_E(comptime thread: u8) void {
-  population.emigrate_genomes(sendBufDsd_E, sendNumGenomes);
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_E), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_E;
   const sendDsd_E = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_E,
     .extent = sendBufWords, .output_queue = oq, });
@@ -430,7 +436,7 @@ task sendFinalizeTask_W() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_W(comptime thread: u8) void {
-  population.emigrate_genomes(sendBufDsd_W, sendNumGenomes);
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_W), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_W;
   const sendDsd_W = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_W,
     .extent = sendBufWords, .output_queue = oq, });
@@ -476,7 +482,7 @@ const recvNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );
 comptime { @comptime_assert(recvNumGenomes >= 1); }
-const recvBufWords: u16 = (recvNumGenomes * genome_.gBitsMsg + 31) / 32;
+const recvBufSize: u16 = comptime message.words_for(recvNumGenomes);
 
 // how many times to immigrate each neighbor and p2p immigrant? 1: as received
 const immEnrichNeigh: u16 = comptime compconf.get_value_or(
@@ -599,10 +605,10 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // p2p send/recv tasks
 // ============================================================================
 // exchange genomes with another PE via p2p message passing,
-// each message is a header wavelet, one genome, and a pad wavelet
+// each message is a header wavelet, one genome's message, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
-const p2pMsgSize: u16 = if (p2pEnabled) 2 + (genome_.gBitsMsg + 31) / 32 else 0;
+const p2pMsgSize: u16 = if (p2pEnabled) 2 + comptime message.words_for(1) else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
 const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
@@ -621,11 +627,6 @@ var sendThread_P: u8;  // which thread is sending?
 var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
 const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> sendBuf_P[i], });
-const sendGenomeDsd_P = (  // minus header and pad
-  if (p2pEnabled) @get_dsd(mem1d_dsd, .{
-    .tensor_access = |i|{p2pMsgSize - 2} -> sendBuf_P[i + 1], })
-  else sendBufDsd_P  // unused placeholder
-);
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_P() void {
@@ -850,10 +851,11 @@ task cycleTask() void {
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
   // p2p send goes first, so neighbor sends can't starve it of threads
-  // sample one genome into the send buffer, and send unless it is empty
+  // sample one genome's message into the send buffer, and send unless it is
+  // empty (genomes' is_empty reads only message bits)
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
-    population.emigrate_genomes(sendGenomeDsd_P, 1);
+    population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_P[1]), 1);
     const isEmpty = genome_.is_empty(@ptrcast([*]u32, &sendBuf_P[1]));
     if (!isEmpty and dispatchSend_P()) { sendFlag_P = 0; }
   }

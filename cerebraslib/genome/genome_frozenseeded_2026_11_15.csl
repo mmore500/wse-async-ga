@@ -30,11 +30,10 @@
 const layout_module = @import_module("<layout>");
 
 // module config specs ========================================================
-const _gSize: u16 = 1;
-const gWordsPop: u16 = _gSize;  // size used in local population
-const gWordsD2h: u16 = _gSize;  // size copied to host
-const gBitsMsg: u16 = 32 * _gSize;  // size migrated between PEs
-const genome_t = [_gSize]u32;
+const gWordsPop: u16 = 1;  // held in population
+const gWordsD2h: u16 = gWordsPop;  // copied to host
+const gBitsMsg: u16 = 32 * gWordsPop;  // sent to PEs
+const genome_t = [gWordsPop]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 2;
 const hasImmClobber: bool = false;
@@ -87,7 +86,7 @@ fn initialize_one(genome: genomePtr_t) void {
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
-    for (@range(u16, _gSize)) |i| { resident[i] = spawn[i]; }
+    for (@range(u16, gWordsPop)) |i| { resident[i] = spawn[i]; }
 }
 
 fn notify_extinct() void {}

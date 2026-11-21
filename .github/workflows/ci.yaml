@@ -116,6 +116,10 @@ jobs:
             nonBlock: 0
             genome: genome_frozenseeded_2026_11_15
             p2p: 0.5
+          - arch: wse3  # messages smaller than genome (pathogen only)
+            nonBlock: 0
+            genome: genome_alleleevoepi_2026_11_19
+            p2p: 0.5
     env:
       CSLC: cslc
       CS_PYTHON: cs_python

@@ -9,11 +9,16 @@ const math = @import_module("<math>");
 const random = @import_module("<random>");
 
 const opscalar = @import_module("cerebraslib/opscalar.csl");
+const message = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = genome.gWordsPop,
+    .gBitsMsg = genome.gBitsMsg,
+});
 
 // global state ===============================================================
 const bufSize = popSize * genome.gWordsPop;
 
 var buffer = @zeros([bufSize]u32);
+var immigrantBuf = @zeros([genome.gWordsPop]u32);  // unpacked
 const bufferDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{bufSize} -> buffer[i],
 });
@@ -104,27 +109,47 @@ fn _perform_selection_all() void {
 }
 
 // public API =================================================================
-/// Emigrate nGenomes genomes to toDsd. Each of the nGenomes copied-from slots
-/// is first swapped with a uniformly random population member, so the
-/// genomes sent are a random sample of the population (not always the same
-/// fixed slots) while only permuting buffer contents in place --- no
-/// dedicated sampling buffer needed.
-fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
+/// Emigrate nGenomes genomes' packed messages to toBuf. Each of the nGenomes
+/// copied-from slots is first swapped with a uniformly random population
+/// member, so the genomes sent are a random sample of the population (not
+/// always the same fixed slots) while only permuting buffer contents in place
+/// --- no dedicated sampling buffer needed.
+fn emigrate_genomes(toBuf: [*]u32, nGenomes: u16) void {
     for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
 
-    const nWords = nGenomes * genome.gWordsPop;
-    const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
-    @mov32(toDsd, bufferDsd_);
+    if (message.isWholeGenome) {
+        const nWords = nGenomes * genome.gWordsPop;
+        const toDsd = @get_dsd(mem1d_dsd, .{
+            .base_address = toBuf, .extent = nWords,
+        });
+        const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
+        @mov32(toDsd, bufferDsd_);
+    } else {
+        for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
+        for (@range(u16, nGenomes)) |i| {
+            message.pack(_get_ith_genome(i), toBuf, i);
+        }
+    }
 }
 
 /// Immigrate nGenomes genomes from fromBuf. Each immigrant overwrites a
 /// uniformly random population member (sampled with replacement, so a later
-/// immigrant may overwrite an earlier immigrant).
+/// immigrant may overwrite an earlier immigrant). Residents keep their bits
+/// above each immigrant's packed message.
 fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
     var nClobbers: u32 = 0;
     for (@range(u16, nGenomes)) |i| {
         const resident = _get_ith_genome(opscalar.unif16(popSize));
-        const immigrant = @ptrcast([*]u32, &fromBuf[i * genome.gWordsPop]);
+        var immigrant = @ptrcast(
+            [*]u32, &fromBuf[i * genome.gWordsPop]
+        );
+        if (!message.isWholeGenome) {
+            immigrant = @ptrcast([*]u32, &immigrantBuf);
+            for (@range(u16, genome.gWordsPop)) |w| {
+                immigrant[w] = resident[w];
+            }
+            message.unpack(fromBuf, i, immigrant);
+        }
         if (genome.hasImmClobber) {
             nClobbers += @as(u32, genome.clobber_immigrant(resident, immigrant));
         }

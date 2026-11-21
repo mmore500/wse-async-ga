@@ -53,9 +53,7 @@ fn check_all4() void {
 }
 
 var emBuf2 = @zeros([4 * 2]u32);
-const emBufDsd2 = @get_dsd(mem1d_dsd, .{ .tensor_access = |i|{4 * 2} -> emBuf2[i] });
 var emBuf4 = @zeros([4 * 4]u32);
-const emBufDsd4 = @get_dsd(mem1d_dsd, .{ .tensor_access = |i|{4 * 4} -> emBuf4[i] });
 
 fn do_test() void {
     population2.init_module();
@@ -65,7 +63,7 @@ fn do_test() void {
     check_sample_n2(32);
     check_all2();
 
-    population2.emigrate_genomes(emBufDsd2, 4);
+    population2.emigrate_genomes(@ptrcast([*]u32, &emBuf2), 4);
     for (@range(u16, 4)) |k| {
         @assert(genome2._validate(@ptrcast([*]u32, &emBuf2[k * 2])));
     }
@@ -84,7 +82,7 @@ fn do_test() void {
     check_sample_n4(1);
     check_sample_n4(4);
     check_sample_n4(32);
-    population4.emigrate_genomes(emBufDsd4, 4);
+    population4.emigrate_genomes(@ptrcast([*]u32, &emBuf4), 4);
     for (@range(u16, 4)) |k| {
         @assert(genome4._validate(@ptrcast([*]u32, &emBuf4[k * 4])));
     }

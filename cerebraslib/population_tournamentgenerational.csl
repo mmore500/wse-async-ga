@@ -10,6 +10,10 @@ const random = @import_module("<random>");
 
 const dsd = @import_module("cerebraslib/dsd.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
+const message = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = genome.gWordsPop,
+    .gBitsMsg = genome.gBitsMsg,
+});
 
 // global state ===============================================================
 const bufSize = popSize * genome.gWordsPop;
@@ -33,6 +37,7 @@ var fitBuf = @zeros([popSize]f32);
 const fitBufDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{popSize} -> fitBuf[i],
 });
+var immigrantBuf = @zeros([genome.gWordsPop]u32);  // unpacked
 var indexBuf = @zeros([popSize]u16);
 const indexBufDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{popSize} -> indexBuf[i],
@@ -184,14 +189,30 @@ fn _offset_word_index(wordIndex: u16, offset: u16) u32 {
 }
 
 // public API =================================================================
-fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
-    _sample_n(nGenomes);
-    const nWords = nGenomes * genome.gWordsPop;
-    const swapDsd_ = @set_dsd_length(swapDsd, nWords);
-    @map(_get_population_word, swapDsd_, toDsd);
+/// Pack messages of nGenomes randomly sampled genomes into toBuf.
+fn emigrate_genomes(toBuf: [*]u32, nGenomes: u16) void {
+    if (message.isWholeGenome) {
+        _sample_n(nGenomes);
+        const nWords = nGenomes * genome.gWordsPop;
+        const toDsd = @get_dsd(mem1d_dsd, .{
+            .base_address = toBuf, .extent = nWords,
+        });
+        const swapDsd_ = @set_dsd_length(swapDsd, nWords);
+        @map(_get_population_word, swapDsd_, toDsd);
+    } else {
+        for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
+        for (@range(u16, nGenomes)) |i| {
+            message.pack(_get_ith_genome(opscalar.unif16(popSize)), toBuf, i);
+        }
+    }
 }
 
+/// Immigrate nGenomes packed messages from fromBuf, each over a randomly
+/// sampled resident, which keeps its bits above the message.
 fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
+    if (!message.isWholeGenome) {
+        return _immigrate_messages(fromBuf, nGenomes);
+    }
     _sample_n(nGenomes);
 
     var nClobbers: u32 = 0;
@@ -211,6 +232,26 @@ fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
     const nWords = nGenomes * genome.gWordsPop;
     const swapDsd_ = @set_dsd_length(swapDsd, nWords);
     @map(_put_population_word, fromDsd, swapDsd_);
+    return nClobbers;
+}
+
+fn _immigrate_messages(fromBuf: [*]u32, nGenomes: u16) u32 {
+    var nClobbers: u32 = 0;
+    for (@range(u16, nGenomes)) |i| {
+        const resident = _get_ith_genome(opscalar.unif16(popSize));
+        const immigrant = @ptrcast([*]u32, &immigrantBuf);
+        for (@range(u16, genome.gWordsPop)) |w| {
+            immigrant[w] = resident[w];
+        }
+        message.unpack(fromBuf, i, immigrant);
+        if (genome.hasImmClobber) {
+            const isClobbered = genome.clobber_immigrant(resident, immigrant);
+            nClobbers += @as(u32, isClobbered);
+        }
+        for (@range(u16, genome.gWordsPop)) |w| {
+            resident[w] = immigrant[w];
+        }
+    }
     return nClobbers;
 }
 

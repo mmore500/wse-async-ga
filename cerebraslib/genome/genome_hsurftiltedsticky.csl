@@ -25,11 +25,10 @@ const opscalar = @import_module("cerebraslib/opscalar.csl");
 const tilted = @import_module("cerebraslib/tilted_sticky.csl");
 
 // module config specs ========================================================
-const _gSize: u16 = 3;
-const gWordsPop: u16 = _gSize;  // size used in local population
-const gWordsD2h: u16 = _gSize;  // size copied to host
-const gBitsMsg: u16 = 32 * _gSize;  // size migrated between PEs
-const genome_t = [_gSize]u32;
+const gWordsPop: u16 = 3;  // held in population
+const gWordsD2h: u16 = gWordsPop;  // copied to host
+const gBitsMsg: u16 = 32 * gWordsPop;  // sent to PEs
+const genome_t = [gWordsPop]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
@@ -85,7 +84,7 @@ fn get_trait_value(genome: genomePtr_t) u32 {
 }
 
 fn initialize_one(genome: genomePtr_t) void {
-    const gHalfWords: u16 = _gSize * 2;
+    const gHalfWords: u16 = gWordsPop * 2;
     bitmanip.randomize(@ptrcast([*]u16, genome), gHalfWords);
     _cast_fields(genome).*.fitness = 0.0;
     _cast_fields(genome).*.hstrat_T = 0;
@@ -94,7 +93,7 @@ fn initialize_one(genome: genomePtr_t) void {
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
-    for (@range(u16, _gSize)) |i| { resident[i] = spawn[i]; }
+    for (@range(u16, gWordsPop)) |i| { resident[i] = spawn[i]; }
 }
 
 fn notify_extinct() void {}
