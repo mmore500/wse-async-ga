@@ -174,7 +174,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # mutation rate, seed), from two compiles:
 # 1. full grid, as 2026-11-20 workflow's baseline (no subgrids, mean immunity
 #    100 generations, mutation rate 1e-6, 1 genome per neighbor send, recv
-#    batches of 4, population 6800, infection seeded on corner PE only), but
+#    batches of 4, population 6000, infection seeded on corner PE only), but
 #    p2p send probability 1 in 20 (up from 1 in 500)
 # 2-6. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
 #    subgrids occupy (runtime config nestedSubgridSizeFactor 2): 9 x 9 PE
@@ -185,7 +185,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #    neighbors 10x the default (10 genomes per send,
 #    received in batches of 40); mean immunity 500 generations; infection
 #    seeded on every PE whose col and row are multiples of 9 (seed PE stride
-#    9); population 6500, below 6649 limit of PE memory with 10x neighbor
+#    9); population 6000, to fit PE memory with 10x neighbor
 #    buffers
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
@@ -211,7 +211,7 @@ for compileConfig in fullgrid nested; do
         recvgenomes=4
         subgrid=0
         seedstride=1170  # only corner PE
-        popsize=6800  # below 6975 limit of PE memory
+        popsize=6000  # to fit PE memory
         compileseed=1130  # runtime config sets it too
     else
         nrow=1152  # only PEs of full (non-overflowing) nested subgrids
@@ -222,7 +222,7 @@ for compileConfig in fullgrid nested; do
         recvgenomes=40
         subgrid=9
         seedstride=9
-        popsize=6500  # below 6649 limit with 10x neighbor buffers
+        popsize=6000  # to fit PE memory with 10x neighbor buffers
         compileseed=1131  # runtime config overrides, per run
     fi
     COMPILE_WORKDIR="${WORKDIR_STEP}/compile=${compileConfig}"
