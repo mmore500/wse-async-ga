@@ -157,14 +157,18 @@ def with_subgrid_columns(
     """
     nRow, nCol = rowSubgrid.shape
     rows, cols = np.indices((nRow, nCol))
-    heights = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
-    widths = np.where(colSubgrid, colSubgrid, nCol)
-    subgridOriginRow = rows - rows % heights
-    subgridOriginCol = cols - cols % widths
-    rowUnit, colUnit = int(heights.min()), int(widths.min())  # smallest
+    subgridHeight = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+    subgridWidth = np.where(colSubgrid, colSubgrid, nCol)
+    subgridOriginRow = rows - rows % subgridHeight
+    subgridOriginCol = cols - cols % subgridWidth
+    subgridUnitHeight = int(subgridHeight.min())  # smallest
+    subgridUnitWidth = int(subgridWidth.min())
     subgridOriginPe = subgridOriginRow * nCol + subgridOriginCol
     _, subgrid = np.unique(subgridOriginPe, return_inverse=True)
-    log(f" - {rowUnit=} {colUnit=} subgrids={subgrid.max() + 1}")
+    log(
+        f" - {subgridUnitHeight=} {subgridUnitWidth=}"
+        f" subgrids={subgrid.max() + 1}"
+    )
     subgrids = pl.DataFrame(
         {
             "row": pl.Series(rows.ravel(), dtype=pl.UInt16),
@@ -177,13 +181,19 @@ def with_subgrid_columns(
                 subgridOriginCol.ravel(), dtype=pl.UInt16
             ),
             "subgrid_index_row": pl.Series(
-                (subgridOriginRow // rowUnit).ravel(), dtype=pl.UInt16
+                (subgridOriginRow // subgridUnitHeight).ravel(),
+                dtype=pl.UInt16,
             ),
             "subgrid_index_col": pl.Series(
-                (subgridOriginCol // colUnit).ravel(), dtype=pl.UInt16
+                (subgridOriginCol // subgridUnitWidth).ravel(),
+                dtype=pl.UInt16,
             ),
-            "subgrid_height": pl.Series(heights.ravel(), dtype=pl.UInt16),
-            "subgrid_width": pl.Series(widths.ravel(), dtype=pl.UInt16),
+            "subgrid_height": pl.Series(
+                subgridHeight.ravel(), dtype=pl.UInt16
+            ),
+            "subgrid_width": pl.Series(
+                subgridWidth.ravel(), dtype=pl.UInt16
+            ),
         },
     )
     return df.join(

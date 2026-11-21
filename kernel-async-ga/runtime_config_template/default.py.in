@@ -31,11 +31,16 @@ def _eval_symbol_values(*, exprs: dict, shape: tuple) -> dict:
 
 
 def _nest_subgrid_sizes(
-    *, nRow: int, nCol: int, nRowSubgrid: int, nColSubgrid: int, factor: int
+    *,
+    nRow: int,
+    nCol: int,
+    nRowSubgrid: int,
+    nColSubgrid: int,
+    nestingFactor: int,
 ) -> tuple:
-    """Per-PE subgrid sizes, nested outward from PE (0, 0) by factor.
+    """Per-PE subgrid sizes, nested outward from PE (0, 0) by nestingFactor.
 
-    Nested subgrids, e.g., factor 2, with b = nRowSubgrid:
+    Nested subgrids, e.g., nestingFactor 2, with b = nRowSubgrid:
     +---+---+-------+---------------+
     | b | b |       |               |
     +---+---+  2b   |               |
@@ -55,9 +60,11 @@ def _nest_subgrid_sizes(
     +---------------+---------------+
     PE (0, 0) at top left; subgrids may overhang PE array.
     """
-    if not (isinstance(factor, int) and factor >= 1):
-        raise ValueError(f"nestingFactorSubgrid {factor=} not positive int")
-    if factor > 1 and not (nRowSubgrid and nColSubgrid):
+    if not (isinstance(nestingFactor, int) and nestingFactor >= 1):
+        raise ValueError(
+            f"nestingFactorSubgrid {nestingFactor=} not positive int"
+        )
+    if nestingFactor > 1 and not (nRowSubgrid and nColSubgrid):
         raise ValueError(
             f"nestingFactorSubgrid needs {nRowSubgrid=}, {nColSubgrid=} "
             "nonzero",
@@ -69,12 +76,15 @@ def _nest_subgrid_sizes(
         rows // max(nRowSubgrid, 1), cols // max(nColSubgrid, 1)
     )
 
-    # nesting level: how many of factor, factor^2, factor^3, ... are at most
-    # baseSubgridsOut; subgrids there are factor^level times base size
+    # nesting level: how many of nestingFactor, nestingFactor^2, ... are at
+    # most baseSubgridsOut; subgrids there are nestingFactor^level times base
     maxLevel = int(baseSubgridsOut.max()).bit_length()
-    powers = factor ** np.arange(1, maxLevel + 1)
+    powers = nestingFactor ** np.arange(1, maxLevel + 1)
     level = np.sum(baseSubgridsOut[..., np.newaxis] >= powers, axis=-1)
-    return nRowSubgrid * factor**level, nColSubgrid * factor**level
+    return (
+        nRowSubgrid * nestingFactor**level,
+        nColSubgrid * nestingFactor**level,
+    )
 
 
 def _pair_p2p_targets(
@@ -169,7 +179,7 @@ if __name__ == "__main__":
         nCol=nCol,
         nRowSubgrid=nRowSubgrid,
         nColSubgrid=nColSubgrid,
-        factor=nestingFactor,
+        nestingFactor=nestingFactor,
     )
     if nestingFactor == 1:  # uniform subgrids, as without nesting
         assert (rowSubgrid == nRowSubgrid).all()
