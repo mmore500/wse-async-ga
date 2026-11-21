@@ -112,8 +112,9 @@ fn test_is_empty() void {
     _make(&g, 0x03, true, 0);
     @assert(!genome.is_empty(&g));  // infected
 
-    // the 4-bit message (pathogen nibble) holds sites and infection flag
-    @assert(genome.gBitsMsg == 4);
+    // the 4-bit message (pathogen nibble, by default) holds sites and
+    // infection flag
+    @assert(genome.gBitsMsg == 4 or genome.gBitsMsg == 32);
     @assert((genome._cast_fields(&g).*.pathogen & ~@as(u16, 0xF)) == 0);
     g[0] = 0xFFFFFFF0;  // all but message
     @assert(genome.is_empty(&g));

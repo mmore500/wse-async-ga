@@ -110,6 +110,9 @@
 //!     "evoepi_withinhost_t": (float(compconf_data.get(
 //!         "CEREBRASLIB_EVOEPI_WITHINHOST_T:f32", 1.0,
 //!     )), pl.Float32),
+//!     "evoepi_msg_bits": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_MSG_BITS:u16", 4,
+//!     )), pl.UInt8),
 //!     "evoepi_seed_pe_stride": (int(compconf_data.get(
 //!         "CEREBRASLIB_EVOEPI_SEED_PE_STRIDE:u16", 0,
 //!     )), pl.UInt16),
@@ -196,8 +199,13 @@ const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
 // module config specs ========================================================
 const gWordsPop: u16 = 1;  // held in population
 const gWordsD2h: u16 = gWordsPop;  // copied to host
-// only the pathogen (low nibble) is sent to PEs; immunity stays with host
-const gBitsMsg: u16 = 4;
+// only the pathogen (low nibble) is sent to PEs, by default; with compconf
+// CEREBRASLIB_EVOEPI_MSG_BITS 32, whole genomes are, as before message
+// packing (immigrants still take residents' immunity, in clobber_immigrant)
+const gBitsMsg: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_MSG_BITS", @as(u16, 4) // nofmt
+);
+comptime { @comptime_assert(gBitsMsg == 4 or gBitsMsg == 32); }
 const genome_t = [gWordsPop]u32;
 const genomePtr_t = [*]u32;
 // bit 0: infected; bit 1 + i: enabled site i's allele
