@@ -183,8 +183,8 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # mutation rate, seed), from two compiles:
 # 1-2. preliminary: full grid (no subgrids), mutation rate 1e-6, infection
 #    seeded on corner PE only, comparing p2p send probability 1 in 20 and 1
-#    in 10; population 396 per PE, so the grid (one subgrid) holds about 350
-#    million hosts
+#    in 10; population 1055 per PE, as jobs 3-7 (so the grid, one subgrid,
+#    holds about 932 million hosts)
 # 3-7. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
 #    subgrids occupy (runtime config nestingFactorSubgrid 2): 9 x 9 PE
 #    subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
@@ -218,7 +218,7 @@ for compileConfig in fullgrid nested; do
         p2p=0.05  # compiled-in, runtime config sets it too
         subgrid=0
         seedstride=1170  # only corner PE
-        popsize=396  # 1170 * 755 * 396 ~= 350 million hosts
+        popsize=1055  # as nested compile
         compileseed=1130  # runtime config sets it too
     else
         nrow=1152  # only PEs of full (non-overflowing) nested subgrids
