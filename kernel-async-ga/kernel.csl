@@ -287,6 +287,9 @@ const sendBufSize: u16 = comptime message.words_for(sendNumGenomes);
 const neighborSendLive: bool = 0 != comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_LIVE", @as(u16, 0)
 );
+comptime {  // live batches are filled from the population
+  if (neighborSendLive) @comptime_assert(sendNumGenomes <= popSize);
+}
 var sendQuell: u32 = 0;  // empty genomes passed over, not yet quelled
 var neighborSendCounts = @zeros([4]u32);  // live sends dispatched: N, S, E, W
 

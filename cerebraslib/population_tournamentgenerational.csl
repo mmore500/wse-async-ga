@@ -255,6 +255,11 @@ fn _immigrate_messages(fromBuf: [*]u32, nGenomes: u16) u32 {
     return nClobbers;
 }
 
+/// Population index offset on from start, wrapping (in u32, to not overflow).
+fn _wrap_index(start: u16, offset: u16) u16 {
+    return @as(u16, (@as(u32, start) + @as(u32, offset)) % popSize);
+}
+
 /// Pack messages of up to nGenomes live (non-empty) genomes into toBuf,
 /// returning how many. Samples one random population member, and if it is
 /// live, scans on from it (wrapping) until nGenomes are found or the whole
@@ -267,7 +272,7 @@ fn emigrate_live_genomes(toBuf: [*]u32, nGenomes: u16) u16 {
     var nFound: u16 = 0;
     var offset: u16 = 0;
     while (nFound < nGenomes and offset < popSize) : (offset += 1) {
-        const candidate = _get_ith_genome((start + offset) % popSize);
+        const candidate = _get_ith_genome(_wrap_index(start, offset));
         if (!genome.is_empty(candidate)) {
             message.pack(candidate, toBuf, nFound);
             nFound += 1;
@@ -289,7 +294,7 @@ fn emigrate_live_batch(toBuf: [*]u32, nGenomes: u16) u16 {
     var emptyIdx: u16 = start;  // most recent empty genome passed over
     var offset: u16 = 0;
     while (nFound < nGenomes and offset < popSize) : (offset += 1) {
-        const i = (start + offset) % popSize;
+        const i = _wrap_index(start, offset);
         const candidate = _get_ith_genome(i);
         if (genome.is_empty(candidate)) {
             nEmpty += 1;
