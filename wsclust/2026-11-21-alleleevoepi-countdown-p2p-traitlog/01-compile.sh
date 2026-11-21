@@ -166,22 +166,23 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # neutral (WITHINHOST_B 0), with WITHINHOST_T 1, so each site of a new
 # infection mutates with probability equal to the mutation rate, regardless
 # of host immunity (i.e., mutation rate is per site per transmission)
-# p2p edges are random PE pairs (within subgrids, if any), one genome per p2p
-# message, and only infected hosts are sent
-# seven independent runs (one job each), each set by its own runtime config
-# (p2p targets, and per run p2p send probability, mutation rate, seed), from
-# two compiles:
+# p2p edges are random PE pairs (within subgrids, if any), with send
+# probability 1 in 20, one genome per p2p message, and only infected hosts
+# are sent
+# seven independent runs (one job each, run in job order), each set by its
+# own runtime config (p2p targets, and per run p2p send probability,
+# mutation rate, seed), from two compiles:
 # 1. full grid, as 2026-11-20 workflow's baseline (no subgrids, mean immunity
 #    100 generations, mutation rate 1e-6, 1 genome per neighbor send, recv
 #    batches of 4, population 6800, infection seeded on corner PE only), but
-#    p2p send probability 1 in 20
+#    p2p send probability 1 in 20 (up from 1 in 500)
 # 2-7. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
 #    subgrids occupy (runtime config nestedSubgridSizeFactor 2): 9 x 9 PE
 #    subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
 #    subgrids each of 18, 36, 72, 144, and 288 PEs on a side, and one 576 x
 #    576 subgrid; sweeping mutation rate 2^-16 to 2^-26 by factors of 4
-#    (named runtime config rtc_evoepi_mutationRate); p2p send probability 1
-#    in 50; migration between neighbors 10x the default (10 genomes per send,
+#    (named runtime config rtc_evoepi_mutationRate); migration between
+#    neighbors 10x the default (10 genomes per send,
 #    received in batches of 40); mean immunity 500 generations; infection
 #    seeded on every PE whose col and row are multiples of 9 (seed PE stride
 #    9); population 6500, below 6649 limit of PE memory with 10x neighbor
@@ -195,6 +196,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_21
 p2pMode=pairs
+jobnum=0  # job order, in config names, as run step runs them in name order
 
 # compile, for each compile config; and write each run config's runtime
 # config, with compiled artifacts, to its own directory (one job per run
@@ -214,7 +216,7 @@ for compileConfig in fullgrid nested; do
     else
         nrow=1152  # only PEs of full (non-overflowing) nested subgrids
         ncol=576
-        p2p=0.02
+        p2p=0.05
         immunityp=0.03  # countdown cap 15: mean 500 generations
         sendgenomes=10
         recvgenomes=40
@@ -321,12 +323,13 @@ EOF
         RUN_CONFIGS="fullgrid-p2p0.05:0.05:none:1130"
         nest=""
     else
-        RUN_CONFIGS="nested-mutlog2-16:0.02:16:1131 nested-mutlog2-18:0.02:18:1132 nested-mutlog2-20:0.02:20:1133 nested-mutlog2-22:0.02:22:1134 nested-mutlog2-24:0.02:24:1135 nested-mutlog2-26:0.02:26:1136"
+        RUN_CONFIGS="nested-mutlog2-16:0.05:16:1131 nested-mutlog2-18:0.05:18:1132 nested-mutlog2-20:0.05:20:1133 nested-mutlog2-22:0.05:22:1134 nested-mutlog2-24:0.05:24:1135 nested-mutlog2-26:0.05:26:1136"
         nest=", \"nestedSubgridSizeFactor\": 2"
     fi
     for runConfig in ${RUN_CONFIGS}; do
         IFS=: read -r runName runP2p runMutexp runSeed <<< "${runConfig}"
-        CONFIG_NAME="flavor=${genome_flavor}+run=${runName}+subgrid=${subgrid}+immunityp=${immunityp}+sendgenomes=${sendgenomes}+seed=${runSeed}"
+        jobnum=$((jobnum + 1))
+        CONFIG_NAME="flavor=${genome_flavor}+job=${jobnum}+run=${runName}+subgrid=${subgrid}+immunityp=${immunityp}+sendgenomes=${sendgenomes}+seed=${runSeed}"
         echo
         echo "====== Configuring run: ${CONFIG_NAME} ======"
 
