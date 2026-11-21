@@ -5,7 +5,12 @@ const memcpy = @import_module("<memcpy/get_params>", .{
   .height = 1,
 });
 
-const rtc_named_exports = @import_module("cerebraslib/rtc_named_exports.csl");
+// genome whose exported symbol names unit tests need (genome
+// alleleevoepi_2026_11_21 exports the same name)
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const genome_alleleevoepi = @import_module(
+  "cerebraslib/genome/genome_alleleevoepi_2026_11_19.csl", .{ .rng = rng }
+);
 
 layout {
   // how many PE?
@@ -17,5 +22,5 @@ layout {
   });
 
   @export_name("dolaunch", fn()void);
-  rtc_named_exports.export_names();
+  genome_alleleevoepi.export_symbol_names();
 }

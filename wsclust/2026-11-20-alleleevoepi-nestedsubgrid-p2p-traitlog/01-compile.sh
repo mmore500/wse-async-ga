@@ -171,7 +171,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #    over six runtime configs, each setting mutation rate 2^-16 to 2^-26 by
 #    factors of 4 (named runtime config rtc_evoepi_mutationRate) and seed
 #    (globalSeed), outputs in dispatch=<slug>/; full grid partitioned into
-#    nested subgrids (runtime config nestedSubgridSizeFactor 2): 9 x 9 PE
+#    nested subgrids (runtime config nestingFactorSubgrid 2): 9 x 9 PE
 #    subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
 #    subgrids each of 18, 36, 72, 144, 288, and 576 PEs on a side, with
 #    subgrids overhanging the grid edge clipped; p2p send probability 1 in
@@ -259,8 +259,8 @@ export COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16=${seedstride}
 export COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32="${waning}"
 export COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32="${mutation}"
 export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${p2p}"
-export COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16=${sendgenomes}
-export COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16=${recvgenomes}
+export COMPCONFENV_ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES__u16=${sendgenomes}
+export COMPCONFENV_ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES__u16=${recvgenomes}
 
 echo "ASYNC_GA_ARCH_FLAG \${ASYNC_GA_ARCH_FLAG}"
 echo "ASYNC_GA_GENOME_FLAVOR \${ASYNC_GA_GENOME_FLAVOR}"
@@ -289,8 +289,8 @@ echo "COMPCONFENV_CEREBRASLIB_EVOEPI_SEED_PE_STRIDE__u16 \${COMPCONFENV_CEREBRAS
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_WANING_RATE__f32}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32}"
 echo "COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32 \${COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32}"
-echo "COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16}"
-echo "COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_RECV_NUM_GENOMES__u16}"
+echo "COMPCONFENV_ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES__u16}"
+echo "COMPCONFENV_ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES__u16}"
 EOF
     chmod +x "${COMPILE_WORKDIR}/env.sh"
     cp "${COMPILE_WORKDIR}/env.sh" "${COMPILE_RESULTDIR}/env.sh"
@@ -333,7 +333,7 @@ EOF
             for mutexp in 16 18 20 22 24 26; do
                 mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact f32
                 seed=$((seed + 1))
-                echo "{\"dispatch_slug\": \"mutlog2-${mutexp}-seed${seed}\", \"p2pMode\": \"${p2pMode}\", \"nestedSubgridSizeFactor\": 2, \"globalSeed\": ${seed}, \"uniformConstant\": {\"rtc_evoepi_mutationRate\": {\"value\": ${mutation}, \"type\": \"f32\"}}}" \
+                echo "{\"dispatch_slug\": \"mutlog2-${mutexp}-seed${seed}\", \"p2pMode\": \"${p2pMode}\", \"nestingFactorSubgrid\": 2, \"globalSeed\": ${seed}, \"fillSymbolValue\": {\"rtc_evoepi_mutationRate\": {\"value\": ${mutation}, \"type\": \"f32\"}}}" \
                     | tee -a "${CONFIG_WORKDIR}/runtime_config.jsonl"
             done
         else

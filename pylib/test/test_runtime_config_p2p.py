@@ -245,7 +245,7 @@ def test_subgrid_growth_template(
         "nColSubgrid": base,
         "globalSeed": 0,
     }
-    runtime_config = {"nestedSubgridSizeFactor": growth, "p2pMode": "pairs"}
+    runtime_config = {"nestingFactorSubgrid": growth, "p2pMode": "pairs"}
     npz = _generate(tmp_path, comptime, runtime_config)
     data = np.load(io.BytesIO(npz))
     size = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
@@ -289,12 +289,12 @@ def test_subgrid_growth_one_is_uniform(tmp_path: pathlib.Path) -> None:
     }
     pairs = {"p2pMode": "pairs"}
     assert _generate(tmp_path, comptime, pairs) == _generate(
-        tmp_path, comptime, {**pairs, "nestedSubgridSizeFactor": 1}
+        tmp_path, comptime, {**pairs, "nestingFactorSubgrid": 1}
     )
     for bad in (
-        {"nestedSubgridSizeFactor": 0},
-        {"nestedSubgridSizeFactor": 1.5},
-        {"nestedSubgridSizeFactor": 2},
+        {"nestingFactorSubgrid": 0},
+        {"nestingFactorSubgrid": 1.5},
+        {"nestingFactorSubgrid": 2},
     ):
         with pytest.raises(subprocess.CalledProcessError):  # non-square
             _generate(tmp_path, comptime, bad)
@@ -325,7 +325,7 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         "globalSeed": 0,
     }
     runtime_config = {
-        "uniformConstant": {
+        "fillSymbolValue": {
             "rtc_foo": {"value": 2.0**-20, "type": "f32"},
             "rtc_bar": {"value": -3, "type": "i32"},
             "rtc_baz": {"value": 7, "type": "u32"},
@@ -343,12 +343,12 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         assert (data[symbol].view(dtype) == value).all()
 
     for bad in (
-        {"uniformConstant": {"rtc_foo": {"value": 1.0}}},  # no type
-        {"uniformConstant": {"rtc_foo": {"value": 1.0, "type": "f64"}}},
-        {"uniformConstant": {"foo": {"value": 1.0, "type": "f32"}}},  # no rtc_
+        {"fillSymbolValue": {"rtc_foo": {"value": 1.0}}},  # no type
+        {"fillSymbolValue": {"rtc_foo": {"value": 1.0, "type": "f64"}}},
+        {"fillSymbolValue": {"foo": {"value": 1.0, "type": "f32"}}},  # no rtc_
         {  # set twice
             "nRowSubgrid": 2,
-            "uniformConstant": {"rtc_nRowSubgrid": {"value": 2, "type": "u32"}},
+            "fillSymbolValue": {"rtc_nRowSubgrid": {"value": 2, "type": "u32"}},
         },
     ):
         with pytest.raises(subprocess.CalledProcessError):
