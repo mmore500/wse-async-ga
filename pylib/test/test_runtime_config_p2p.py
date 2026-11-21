@@ -378,3 +378,26 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
     ):
         with pytest.raises(subprocess.CalledProcessError):
             _generate(tmp_path, comptime, bad)
+
+
+@pytest.mark.parametrize(
+    "rate, ok",
+    [(2.0**-16, True), (0.0, True), (-1.0, False), (np.nan, False)],
+)
+def test_rtc_evoepi_mutation_rate_validator(rate: float, ok: bool) -> None:
+    npz = _to_npz(
+        rtc_evoepi_mutationRate=np.full((2, 2, 1), rate, np.float32).view(
+            np.uint32
+        )
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            validate_dir.with_name("rtc_evoepi_mutationRate") / "default.py",
+            "{}",
+        ],
+        input=npz,
+        capture_output=True,
+        check=False,
+    )
+    assert (result.returncode == 0) == ok

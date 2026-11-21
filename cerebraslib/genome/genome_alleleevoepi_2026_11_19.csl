@@ -83,9 +83,12 @@
 //!     "evoepi_waning_rate": (float(compconf_data.get(
 //!         "CEREBRASLIB_EVOEPI_WANING_RATE:f32", 0.01,
 //!     )), pl.Float32),
-//!     "evoepi_mutation_rate": (float(compconf_data.get(
-//!         "CEREBRASLIB_EVOEPI_MUTATION_RATE:f32", 1e-6,
-//!     )), pl.Float32),
+//!     "evoepi_mutation_rate": (float(
+//!         rtc_data["rtc_evoepi_mutationRate"].view(np.float32).flat[0]
+//!         if "rtc_evoepi_mutationRate" in rtc_data else (
+//!             compconf_data.get("CEREBRASLIB_EVOEPI_MUTATION_RATE:f32", 1e-6)
+//!         )
+//!     ), pl.Float32),
 //!     "evoepi_withinhost_b": (float(compconf_data.get(
 //!         "CEREBRASLIB_EVOEPI_WITHINHOST_B:f32", 0.2,
 //!     )), pl.Float32),
@@ -145,6 +148,15 @@ const _mutation_rate: f32 = comptime compconf.get_value_or( //nofmt
 );
 comptime { @comptime_assert(0.0 <= _mutation_rate); }
 
+// named runtime config, constant across device: mutation rate, defaulting to
+// compconf value; host may overwrite it before launch (see layout.csl and
+// kernel-async-ga/runtime_config_options.md)
+var rtc_evoepi_mutationRate = [1]f32{ _mutation_rate };
+var ptr_rtc_evoepi_mutationRate: [*]f32 = &rtc_evoepi_mutationRate;
+comptime {
+    @export_symbol(ptr_rtc_evoepi_mutationRate, "rtc_evoepi_mutationRate");
+}
+
 const _withinhost_b: f32 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_EVOEPI_WITHINHOST_B", @as(f32, 0.2) // nofmt
 );
@@ -195,28 +207,26 @@ fn _comptime_exp(x: f32) f32 {
     return sum;
 }
 
-/// ABM within-host mutation probability, for relative growth rate b != 1.
-fn _calc_withinhost_mutation_p(b: f32) f32 {
-    const p = (
-        _mutation_rate / (b - 1.0)
-        * (_comptime_exp((b - 1.0) * _withinhost_t) - 1.0)
-    );
-    return if (p < 1.0) p else 1.0;
+/// ABM within-host mutation probability per unit mutation rate, for relative
+/// growth rate b != 1 (probability is mutation rate times this, capped at 1).
+fn _calc_withinhost_mutation_factor(b: f32) f32 {
+    return (_comptime_exp((b - 1.0) * _withinhost_t) - 1.0) / (b - 1.0);
 }
 
-// within-host mutation probability, indexed by immunity delta + 1, i.e.,
-// immune to other allele only (0), neither or both (1), current only (2)
-fn _calc_mutation_table() [3]f32 {
+// within-host mutation probability per unit mutation rate, indexed by
+// immunity delta + 1, i.e., immune to other allele only (0), neither or both
+// (1), current only (2)
+fn _calc_mutation_factor_table() [3]f32 {
     var table = @zeros([3]f32);
     for (@range(u16, 3)) |i| {
         const delta = @as(f32, i) - 1.0;
         var b = 1.0 + _withinhost_b * delta;
         if (b == 1.0) b = 1.000001; // as in ABM, avoids dividing by 0
-        table[i] = _calc_withinhost_mutation_p(b);
+        table[i] = _calc_withinhost_mutation_factor(b);
     }
     return table;
 }
-const _mutationP = comptime _calc_mutation_table();
+const _mutationFactor = comptime _calc_mutation_factor_table();
 
 // transmission probability, indexed by number of matched immune alleles
 fn _calc_transmission_table() [nSitesMax + 1]f32 {
@@ -232,7 +242,8 @@ const _transmissionP = comptime _calc_transmission_table();
 
 // internal functions =========================================================
 fn _get_mutation_p(delta_plus_one: u16) f32 {
-    return _mutationP[delta_plus_one];
+    const p = rtc_evoepi_mutationRate[0] * _mutationFactor[delta_plus_one];
+    return if (p < 1.0) p else 1.0;
 }
 
 fn _get_transmission_p(num_immune_alleles: u16) f32 {
@@ -372,4 +383,7 @@ fn notify_extinct() void {}
 // uninfected host?
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
 
-fn export_symbol_names() void {}  // hook into top-level layout block
+// hook into top-level layout block
+fn export_symbol_names() void {
+  @export_name("rtc_evoepi_mutationRate", [*]f32, true);
+}
