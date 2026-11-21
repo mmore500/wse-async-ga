@@ -283,6 +283,7 @@ const sendBufSize: u16 = comptime message.words_for(sendNumGenomes);
 // to the least sent-to direction without a send in flight; empty genomes
 // passed over while filling batches add up, and each full batch's worth quells
 // a send instead, so sends go at a rate proportional to the live population
+// (and receives are not throttled to the slowest direction)
 const neighborSendLive: bool = 0 != comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_LIVE", @as(u16, 0)
 );
@@ -864,7 +865,10 @@ task cycleTask() void {
   // --------------------------------------------------------------------------
 
   const shuf1 = @random16() & 3;
-  const throttleThresh = math.min(
+  // throttle immigration to slowest active direction, unless neighbors send
+  // only live genomes, at rates that are meant to differ between directions
+  const noThrottle: u32 = 0xFFFFFFFF;
+  const throttleThresh = if (neighborSendLive) noThrottle else math.min(
     math.min(
       if (immCounter_N[0] > 0) immCounter_N[0] else 0xFFFFFFFF,
       if (immCounter_S[0] > 0) immCounter_S[0] else 0xFFFFFFFF,
