@@ -5,4 +5,5 @@
 # --no-deps) so that cs_python's own numpy etc. is not shadowed.
 downstream==1.16.4
 lazy_loader==0.4
-polars==1.8.2
+polars==1.36.1
+polars-runtime-32==1.36.1

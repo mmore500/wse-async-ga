@@ -4,6 +4,7 @@ import pathlib
 import string
 import subprocess
 import sys
+from collections import Counter
 
 import numpy as np
 import pytest
@@ -216,6 +217,123 @@ def test_p2p_send_probability_validator_compiled_in(
         check=False,
     )
     assert (result.returncode == 0) == ok
+
+
+def _validate_subgrid(axis: str, npz: bytes, comptime: dict) -> bool:
+    """Does npz pass rtc_n{axis}Subgrid validator?"""
+    return not subprocess.run(
+        [
+            sys.executable,
+            validate_dir.with_name(f"rtc_n{axis}Subgrid") / "default.py",
+            json.dumps(comptime),
+        ],
+        input=npz,
+        capture_output=True,
+        check=False,
+    ).returncode
+
+
+@pytest.mark.parametrize("growth", [2, 3, 4])
+@pytest.mark.parametrize(
+    "nRow, nCol, baseRow, baseCol",
+    [(30, 19, 1, 1), (70, 45, 2, 2), (70, 45, 3, 2)],
+)
+def test_subgrid_growth_template(
+    tmp_path: pathlib.Path,
+    growth: int,
+    nRow: int,
+    nCol: int,
+    baseRow: int,
+    baseCol: int,
+) -> None:
+    comptime = {
+        "nRow": nRow,
+        "nCol": nCol,
+        "nRowSubgrid": baseRow,
+        "nColSubgrid": baseCol,
+        "globalSeed": 0,
+    }
+    runtime_config = {"nestingFactorSubgrid": growth, "p2pMode": "pairs"}
+    npz = _generate(tmp_path, comptime, runtime_config)
+    data = np.load(io.BytesIO(npz))
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    width = data["rtc_nColSubgrid"][:, :, 0].astype(int)
+    assert (height * baseCol == width * baseRow).all()  # same nesting level
+
+    # subgrids aligned to their own size, so PEs agree on walls
+    rows, cols = np.indices((nRow, nCol))
+    top, left = rows - rows % height, cols - cols % width
+    for row, col in zip(*np.indices((nRow, nCol)).reshape(2, -1)):
+        h, w = height[row, col], width[row, col]
+        t, l = top[row, col], left[row, col]
+        assert (height[t : t + h, l : l + w] == h).all()
+        assert (width[t : t + h, l : l + w] == w).all()
+
+    # smallest at corner, then growth^2 - 1 subgrids per size, growing out
+    assert baseRow * growth**2 <= nRow and baseCol * growth**2 <= nCol
+    corners = {(t, l, h) for t, l, h in zip(top.flat, left.flat, height.flat)}
+    full = Counter(
+        h
+        for t, l, h in corners
+        if t + h <= nRow and l + h * baseCol // baseRow <= nCol
+    )
+    assert height[0, 0] == baseRow and full[baseRow] == growth**2
+    assert full[baseRow * growth] == growth**2 - 1
+
+    for axis in "Row", "Col":
+        assert _validate_subgrid(axis, npz, comptime)
+    for validator in "default.py", "intersubgrid.py":
+        assert _validate(validator, npz, comptime), validator
+
+    # p2p pairs stay within (variable-size) subgrids
+    target = data["rtc_p2pTarget"][:, :, 0]
+    has = target != 0xFFFFFFFF
+    trow, tcol = target[has] & 0xFFFF, target[has] >> 16
+    assert (top[trow, tcol] == top[has]).all()
+    assert (left[trow, tcol] == left[has]).all()
+    assert has.sum() >= nRow * nCol - len(corners)
+
+
+def test_subgrid_growth_one_is_uniform(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 9,
+        "nCol": 7,
+        "nRowSubgrid": 2,
+        "nColSubgrid": 3,
+        "globalSeed": 0,
+    }
+    pairs = {"p2pMode": "pairs"}
+    assert _generate(tmp_path, comptime, pairs) == _generate(
+        tmp_path, comptime, {**pairs, "nestingFactorSubgrid": 1}
+    )
+    for bad in (
+        {"nestingFactorSubgrid": 0},
+        {"nestingFactorSubgrid": 1.5},
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)
+    with pytest.raises(subprocess.CalledProcessError):  # no base subgrids
+        _generate(
+            tmp_path,
+            {**comptime, "nColSubgrid": 0},
+            {"nestingFactorSubgrid": 2},
+        )
+
+
+def test_subgrid_validators_reject() -> None:
+    comptime = {"nRow": 4, "nCol": 4, "nRowSubgrid": 0, "nColSubgrid": 0}
+    uniform = np.full((4, 4, 1), 2, np.uint32)
+    for axis in "Row", "Col":
+        assert _validate_subgrid(
+            axis, _to_npz(**{f"rtc_n{axis}Subgrid": uniform}), comptime
+        )
+    # size 2 PEs above/left of size 3 PEs disagree on walls
+    mixed = uniform.copy()
+    mixed[2:, 2:] = 3
+    for axis in "Row", "Col":
+        assert not _validate_subgrid(
+            axis, _to_npz(**{f"rtc_n{axis}Subgrid": mixed}), comptime
+        )
 
 
 def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:

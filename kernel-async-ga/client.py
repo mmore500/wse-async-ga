@@ -144,27 +144,44 @@ def assemble_genome_bookend_data(
     return assemble_binary_data(data, nWav=nWav + 2, verbose=verbose)
 
 
-def with_subgrid_columns(df: "pl.LazyFrame") -> "pl.LazyFrame":
-    """Add subgrid identity columns, computed from `row` and `col` columns.
+def with_subgrid_columns(
+    df: "pl.LazyFrame", rowSubgrid: "np.ndarray", colSubgrid: "np.ndarray"
+) -> "pl.LazyFrame":
+    """Add subgrid columns, joined on `row` and `col` columns, given per-PE
+    subgrid sizes (0 for no partitioning along that axis).
 
-    Subgrids are the nRowSubgrid x nColSubgrid blocks of PEs between which
-    migration is disabled (0 means no partitioning along that axis). Adds
-    `subgrid_row` and `subgrid_col` (block coordinates) and `subgrid` (flat,
-    row-major block index, unique within a run).
+    Adds `subgrid` (contiguous index, row-major), `subgrid_origin_row` and
+    `subgrid_origin_col` (top-left PE's row and col), `subgrid_index_row` and
+    `subgrid_index_col` (top-left PE in units of smallest subgrid size), and
+    `subgrid_height` and `subgrid_width` (sizes, in PEs).
     """
-    nSubgridCols = -(-nCol // nColSubgrid) if nColSubgrid else 1
-    return df.with_columns(
-        subgrid_row=(
-            pl.col("row") // nRowSubgrid if nRowSubgrid else pl.lit(0)
-        ).cast(pl.UInt16),
-        subgrid_col=(
-            pl.col("col") // nColSubgrid if nColSubgrid else pl.lit(0)
-        ).cast(pl.UInt16),
-    ).with_columns(
-        subgrid=(
-            pl.col("subgrid_row").cast(pl.UInt32) * nSubgridCols
-            + pl.col("subgrid_col").cast(pl.UInt32)
-        ),
+    nRow, nCol = rowSubgrid.shape
+    rows, cols = np.indices((nRow, nCol))
+    heights = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+    widths = np.where(colSubgrid, colSubgrid, nCol)
+    subgridY, subgridX = rows - rows % heights, cols - cols % widths
+    rowUnit, colUnit = int(heights.min()), int(widths.min())  # smallest
+    _, subgrid = np.unique(subgridY * nCol + subgridX, return_inverse=True)
+    log(f" - {rowUnit=} {colUnit=} subgrids={subgrid.max() + 1}")
+    subgrids = pl.DataFrame(
+        {
+            "row": pl.Series(rows.ravel(), dtype=pl.UInt16),
+            "col": pl.Series(cols.ravel(), dtype=pl.UInt16),
+            "subgrid": pl.Series(subgrid.ravel(), dtype=pl.UInt32),
+            "subgrid_origin_row": pl.Series(subgridY.ravel(), dtype=pl.UInt16),
+            "subgrid_origin_col": pl.Series(subgridX.ravel(), dtype=pl.UInt16),
+            "subgrid_index_row": pl.Series(
+                (subgridY // rowUnit).ravel(), dtype=pl.UInt16
+            ),
+            "subgrid_index_col": pl.Series(
+                (subgridX // colUnit).ravel(), dtype=pl.UInt16
+            ),
+            "subgrid_height": pl.Series(heights.ravel(), dtype=pl.UInt16),
+            "subgrid_width": pl.Series(widths.ravel(), dtype=pl.UInt16),
+        },
+    )
+    return df.join(
+        subgrids.lazy(), on=["row", "col"], how="left", maintain_order="left"
     )
 
 
@@ -289,7 +306,7 @@ def process_fossils(nWav: int) -> None:
         ).lazy()
         del layer, layer_T, position
         gc.collect()
-        df_indices = with_subgrid_columns(df_indices)
+        df_indices = with_subgrid_columns(df_indices, rowSubgrid, colSubgrid)
 
         log(" - saving indices...")  # separate for sink compat
         fi_len = df_indices.select(pl.len()).collect().item()
@@ -795,15 +812,26 @@ for i, (symbol, data) in enumerate(runtimeConfig.items(), start=1):
 if "rtc_globalSeed" in runtimeConfig:
     globalSeed = np.unique(runtimeConfig["rtc_globalSeed"]).item()
     log(f" - runtime config sets {globalSeed=}")
-if "rtc_nRowSubgrid" in runtimeConfig:
-    nRowSubgrid = np.unique(runtimeConfig["rtc_nRowSubgrid"]).item()
-    log(f" - runtime config sets {nRowSubgrid=}")
-if "rtc_nColSubgrid" in runtimeConfig:
-    nColSubgrid = np.unique(runtimeConfig["rtc_nColSubgrid"]).item()
-    log(f" - runtime config sets {nColSubgrid=}")
 if "rtc_nCycleAtLeast" in runtimeConfig:
     nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
     log(f" - runtime config sets {nCycleAtLeast=}")
+
+if "rtc_nRowSubgrid" in runtimeConfig:
+    rowSubgrid = runtimeConfig["rtc_nRowSubgrid"].reshape(nRow, nCol)
+    nRowSubgrid = int(rowSubgrid.min())  # smallest, if they vary
+    log(f" - runtime config sets {np.unique(rowSubgrid)=}")
+else:
+    rowSubgrid = np.full((nRow, nCol), nRowSubgrid)
+    log(f" - comptime config sets {nRowSubgrid=}")
+
+if "rtc_nColSubgrid" in runtimeConfig:
+    colSubgrid = runtimeConfig["rtc_nColSubgrid"].reshape(nRow, nCol)
+    nColSubgrid = int(colSubgrid.min())  # smallest, if they vary
+    log(f" - runtime config sets {np.unique(colSubgrid)=}")
+else:
+    colSubgrid = np.full((nRow, nCol), nColSubgrid)
+    log(f" - comptime config sets {nColSubgrid=}")
+
 if "rtc_p2pSendProbability" in runtimeConfig:
     runtimeP2pSendProbabilityMean = float(
         runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
@@ -812,6 +840,7 @@ if "rtc_p2pSendProbability" in runtimeConfig:
 else:
     runtimeP2pSendProbabilityMean = p2pSendProbability
     log(f" - comptime config sets {runtimeP2pSendProbabilityMean=}")
+
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 
@@ -848,7 +877,7 @@ genomeData = eval(
         "compconf_data": compconf_data,
         "np": np,
         "pl": pl,
-        "runtimeConfig": runtimeConfig,
+        "rtc_data": runtimeConfig,
     },
 )
 log(f" - {genomeData=}")
@@ -1479,7 +1508,7 @@ df = pl.DataFrame({
     "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
     "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
 })
-df = with_subgrid_columns(df.lazy()).collect()
+df = with_subgrid_columns(df.lazy(), rowSubgrid, colSubgrid).collect()
 log(f" - data_raw: {df['data_raw'].head(3)}")
 assert (df["data_raw"].bin.size(unit="b") == nWav * 4).all()
 df = df.with_columns(
@@ -1851,7 +1880,7 @@ if p2pEnabled:
             "p2p_imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
         }
     )
-    df = with_subgrid_columns(df.lazy()).collect()
+    df = with_subgrid_columns(df.lazy(), rowSubgrid, colSubgrid).collect()
     df = df.with_columns(
         *(
             pl.lit(value, dtype=dtype).alias(key)
