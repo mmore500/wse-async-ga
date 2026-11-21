@@ -237,7 +237,7 @@ jobs:
               default.py.in runtime_config_sweep.jsonl
           fi
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
-          # retry up to 2 times on simulator kernel stall
+          # retry up to 4 times on simulator kernel stall
           ./.github/scripts/retry_on_kernel_stall.sh \
             sudo -E env PATH=$PATH ./kernel-async-ga/execute.sh
 
@@ -275,8 +275,21 @@ jobs:
           print(df)
           assert len(df) == 3 * 3, len(df)
           assert df['has_p2p_target'].sum() == 8  # 9 PEs, one left unpaired
-          paired = df.filter(pl.col('has_p2p_target'))
-          assert (paired['p2p_imm_count'] > 0).all(), paired['p2p_imm_count']
+          unpaired = df.filter(~pl.col('has_p2p_target'))
+          assert (unpaired['p2p_imm_count'] == 0).all(), unpaired
+          # empty genomes aren't sent, so a PE whose partner's population is
+          # mostly empty may immigrate none; but every pair exchanges some
+          paired = df.filter(pl.col('has_p2p_target')).join(
+              df.select(
+                  p2p_target_row='row',
+                  p2p_target_col='col',
+                  partner_imm_count='p2p_imm_count',
+              ),
+              on=['p2p_target_row', 'p2p_target_col'],
+          )
+          assert len(paired) == 8, paired
+          exchanged = paired['p2p_imm_count'] + paired['partner_imm_count']
+          assert (exchanged > 0).all(), paired
           "
 
   test-sample-populations:
@@ -380,7 +393,7 @@ jobs:
       - name: Generate sample tagged populations
         run: |
           export CSLC CS_PYTHON PATH ASYNC_GA_ARCH_FLAG
-          # retry up to 2 times on simulator kernel stall
+          # retry up to 4 times on simulator kernel stall
           ./.github/scripts/retry_on_kernel_stall.sh \
             sudo -E env PATH=$PATH \
             ./kernel-async-ga/generate_sample_tagged_populations.sh
@@ -573,7 +586,7 @@ jobs:
           export COMPCONFENV_CEREBRASLIB_DSTREAM_VALIDATOR__comptime_string="${{ matrix.dstream_validator }}"
           export COMPCONFENV_CEREBRASLIB_DSTREAM_EXPECTED_T__u32="${{ matrix.dstream_expected_T }}"
           export COMPCONFENV_CEREBRASLIB_HSTRAT_DSTREAM_ALGO_NAME__comptime_string="${{ matrix.dstream_algo_name }}"
-          # retry up to 2 times on simulator kernel stall
+          # retry up to 4 times on simulator kernel stall
           ./.github/scripts/retry_on_kernel_stall.sh \
             sudo -E env PATH=$PATH ./kernel-async-ga/execute.sh
 
