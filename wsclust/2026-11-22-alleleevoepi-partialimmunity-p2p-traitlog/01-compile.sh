@@ -170,7 +170,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # of host immunity (i.e., mutation rate is per site per transmission)
 # hosts' 4-bit pathogen nibbles are sent between PEs (8 per wavelet):
 # - neighbors are sent only live (infected) genomes, in batches of 8 (1
-#   wavelet), received 4 sends at a time; each free send thread (after p2p)
+#   wavelet), received 2 sends at a time; each free send thread (after p2p)
 #   sends to the least sent-to direction, and sends are quelled in proportion
 #   to empty (uninfected) hosts passed over, so neighbor sends go at a rate
 #   proportional to live population (and receives aren't throttled)
@@ -205,7 +205,7 @@ genome_flavor=genome_alleleevoepi_2026_11_22
 p2pMode=pairs
 p2pbatch=24  # 3 wavelets of 4-bit messages
 sendgenomes=8  # 1 wavelet of 4-bit messages
-recvgenomes=32  # 4 sends
+recvgenomes=16  # 2 sends
 jobnum=0  # job order, in config names, as run step runs them in name order
 
 # compile, for each compile config; and write each run config's runtime
