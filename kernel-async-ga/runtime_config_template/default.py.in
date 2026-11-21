@@ -10,6 +10,7 @@ import json
 import sys
 
 import numpy as np
+import polars as pl
 
 if __name__ == "__main__":
     comptime_config = json.load(sys.stdin)
@@ -113,35 +114,39 @@ if __name__ == "__main__":
         globalSeed = runtime_config.get(
             "globalSeed", comptime_config["globalSeed"]
         )
-        rng = np.random.default_rng(runtime_config.get("p2pSeed", globalSeed))
+        p2pSeed = runtime_config.get("p2pSeed", globalSeed)
 
-        # each PE's subgrid, identified by its top-left (origin) PE
-        heights = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
-        widths = np.where(colSubgrid, colSubgrid, nCol)
-        subgridOriginRow = rows - rows % heights
-        subgridOriginCol = cols - cols % widths
-        subgridOriginPe = (subgridOriginRow * nCol + subgridOriginCol).ravel()
+        subgridHeight = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+        subgridWidth = np.where(colSubgrid, colSubgrid, nCol)
+        subgrid = ["subgridRow", "subgridCol"]  # subgrid's top-left PE
+        pair = [*subgrid, "pair"]
 
-        # PEs in random order within each subgrid, subgrid by subgrid
-        pes = np.lexsort((rng.random(nRow * nCol), subgridOriginPe))
-        origin = subgridOriginPe[pes]
-
-        # pair 1st and 2nd, 3rd and 4th, etc. PE within each subgrid
-        start = np.searchsorted(origin, origin)
-        partner = start + ((np.arange(pes.size) - start) ^ 1)
-        isPaired = np.append(origin, -1)[partner] == origin  # odd one out
-        p2pTarget = np.full(pes.size, -1)  # PE id, -1 for none
-        p2pTarget[pes[isPaired]] = pes[partner[isPaired]]
-
-        # check target's target is self, and not self
-        paired = np.flatnonzero(p2pTarget != -1)
-        assert (p2pTarget[paired] != paired).all()
-        assert (p2pTarget[p2pTarget[paired]] == paired).all()
-        symbols["rtc_p2pTarget"] = np.where(
-            p2pTarget != -1,
-            (p2pTarget % nCol) << 16 | (p2pTarget // nCol),  # col << 16 | row
-            0xFFFFFFFF,
-        ).astype(np.uint32).reshape(shape)
+        p2pTarget = (
+            pl.DataFrame(
+                {
+                    "address": (cols << 16 | rows).ravel(),
+                    "subgridRow": (rows - rows % subgridHeight).ravel(),
+                    "subgridCol": (cols - cols % subgridWidth).ravel(),
+                }
+            )
+            .with_columns(lot=pl.int_range(pl.len()).shuffle(seed=p2pSeed))
+            # draw lots: within each subgrid, the lowest two pair up, then the
+            # next two, etc.
+            .with_columns(
+                pair=(pl.col("lot").rank("ordinal").over(subgrid) - 1) // 2,
+            )
+            # each PE targets the other PE of its pair; the odd one out targets
+            # nothing
+            .select(
+                pl.when(pl.len().over(pair) == 2)
+                .then(pl.col("address").reverse().over(pair))
+                .otherwise(0xFFFFFFFF)
+                .cast(pl.UInt32)
+            )
+        )
+        symbols["rtc_p2pTarget"] = (
+            p2pTarget.to_series().to_numpy().reshape(shape)
+        )
     else:
         raise ValueError(f"unknown {p2pMode=}")
 

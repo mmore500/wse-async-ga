@@ -590,6 +590,10 @@ else:
 
 log(f"- prepending to sys path {wheelhouseTarget=}")
 sys.path.insert(0, wheelhouseTarget)
+# so subprocesses (runtime config generators, validators) can import them too
+os.environ["PYTHONPATH"] = os.pathsep.join(
+    filter(None, [wheelhouseTarget, os.environ.get("PYTHONPATH")])
+)
 
 # each runtime config file (runtime_config_dispatch/*.py) defines one set of
 # per-PE values memcpy'ed to rtc_* device symbols, configuring one run cycle
