@@ -29,19 +29,16 @@ if __name__ == "__main__":
         )
     }
 
-    # named runtime configs, constant across device, from "rtc_<name>:<type>"
-    # keys, e.g., "rtc_foo:f32": 0.5; 32-bit values, as raw bits
+    # device symbols set to the same value on every PE, as raw 32-bit bits,
+    # e.g., "uniformConstant": {"rtc_foo": {"value": 0.5, "type": "f32"}}
     dtypes = {"f32": np.float32, "i32": np.int32, "u32": np.uint32}
-    for key in sorted(runtime_config):
-        name, _, dtype = key.partition(":")
-        if not name.startswith("rtc_"):
-            continue
-        if dtype not in dtypes:
-            raise ValueError(f"{key=} needs a type suffix, one of {[*dtypes]}")
-        if name in symbols:
-            raise ValueError(f"{key=} sets {name} twice")
-        symbols[name] = np.full(
-            shape, runtime_config[key], dtypes[dtype]
+    for symbol, spec in sorted(runtime_config.get("uniformConstant", {}).items()):
+        if not symbol.startswith("rtc_") or symbol in symbols:
+            raise ValueError(f"uniformConstant {symbol=} invalid or set twice")
+        if spec.keys() != {"value", "type"} or spec["type"] not in dtypes:
+            raise ValueError(f"uniformConstant {symbol=} needs value and type")
+        symbols[symbol] = np.full(
+            shape, spec["value"], dtypes[spec["type"]]
         ).view(np.uint32)
 
     # per-PE subgrid sizes, 0 for no partitioning along that axis

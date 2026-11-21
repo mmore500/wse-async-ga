@@ -325,9 +325,11 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         "globalSeed": 0,
     }
     runtime_config = {
-        "rtc_foo:f32": 2.0**-20,
-        "rtc_bar:i32": -3,
-        "rtc_baz:u32": 7,
+        "uniformConstant": {
+            "rtc_foo": {"value": 2.0**-20, "type": "f32"},
+            "rtc_bar": {"value": -3, "type": "i32"},
+            "rtc_baz": {"value": 7, "type": "u32"},
+        },
     }
     data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
     assert sorted(data.files) == ["rtc_bar", "rtc_baz", "rtc_foo"]
@@ -341,9 +343,13 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         assert (data[symbol].view(dtype) == value).all()
 
     for bad in (
-        {"rtc_foo": 1.0},  # no type
-        {"rtc_foo:f64": 1.0},  # unsupported type
-        {"nRowSubgrid": 2, "rtc_nRowSubgrid:u32": 2},  # set twice
+        {"uniformConstant": {"rtc_foo": {"value": 1.0}}},  # no type
+        {"uniformConstant": {"rtc_foo": {"value": 1.0, "type": "f64"}}},
+        {"uniformConstant": {"foo": {"value": 1.0, "type": "f32"}}},  # no rtc_
+        {  # set twice
+            "nRowSubgrid": 2,
+            "uniformConstant": {"rtc_nRowSubgrid": {"value": 2, "type": "u32"}},
+        },
     ):
         with pytest.raises(subprocess.CalledProcessError):
             _generate(tmp_path, comptime, bad)
