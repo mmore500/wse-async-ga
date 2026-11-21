@@ -135,13 +135,15 @@ if __name__ == "__main__":
                 )
                 // 2
             )
-            # each PE targets its pair's other PE; odd one out targets nothing
+            # each PE targets the other PE of its pair, i.e., pair's address sum
+            # less its own; odd one out targets nothing
             .select(
                 pl.when(pl.len().over("subgridRow", "subgridCol", "pair") == 2)
                 .then(
                     pl.col("address")
-                    .reverse()
+                    .sum()
                     .over("subgridRow", "subgridCol", "pair")
+                    - pl.col("address")
                 )
                 .otherwise(0xFFFFFFFF)
                 .cast(pl.UInt32)
