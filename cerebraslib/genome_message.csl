@@ -9,7 +9,8 @@
 // Unpacking overwrites only an immigrant's message bits, so a genome's bits
 // above its message (e.g., host state) come from the resident it replaces.
 // Genomes' is_empty must read only message bits, as it is also applied to
-// messages.
+// messages. Messages under a word are zero padded, so then all-zero messages
+// must be empty (checked by each genome's unit tests).
 
 // module params ==============================================================
 param gWordsPop: u16;  // genome.gWordsPop

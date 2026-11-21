@@ -385,6 +385,12 @@ fn test_trample_resident() void {
 }
 
 fn test_is_empty() void {
+    // messages under a word are zero padded, so all-zero messages must be
+    // empty
+    if (genome_mls.gBitsMsg < 32) {
+        var zeroMsg = @zeros(genome_mls.genome_t);
+        @assert(genome_mls.is_empty(&zeroMsg));
+    }
     var g = @zeros(genome_mls.genome_t);
     @assert(genome_mls.is_empty(&g));  // zeroed genome is cleared
     for (@range(u16, genome_mls.gWordsPop)) |i| { g[i] = 0xFFFFFFFF; }

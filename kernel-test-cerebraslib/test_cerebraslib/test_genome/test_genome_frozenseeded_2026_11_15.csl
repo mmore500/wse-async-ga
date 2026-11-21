@@ -118,6 +118,12 @@ fn test_trample_resident() void {
 }
 
 fn test_is_empty() void {
+    // messages under a word are zero padded, so all-zero messages must be
+    // empty
+    if (genome_frozenseeded.gBitsMsg < 32) {
+        var zeroMsg = @zeros(genome_frozenseeded.genome_t);
+        @assert(genome_frozenseeded.is_empty(&zeroMsg));
+    }
     var g = @zeros(genome_frozenseeded.genome_t);
     @assert(genome_frozenseeded.is_empty(&g));  // zero is the empty value
     g[0] = genome_frozenseeded.valFull;
