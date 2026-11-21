@@ -835,12 +835,14 @@ else:
 rowSubgrid = rowSubgrid.astype(np.int64)
 colSubgrid = colSubgrid.astype(np.int64)
 # runtime config may set p2p send probability; mean over PEs if varied
-runtimeP2pSendProbabilityMean = p2pSendProbability
 if "rtc_p2pSendProbability" in runtimeConfig:
     runtimeP2pSendProbabilityMean = float(
         runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
     )
     log(f" - runtime config sets {runtimeP2pSendProbabilityMean=}")
+else:
+    runtimeP2pSendProbabilityMean = p2pSendProbability
+    log(f" - comptime config sets {runtimeP2pSendProbabilityMean=}")
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 
@@ -871,7 +873,6 @@ genomeDataRaw = "".join(
     for line in pathlib.Path(genomePath).read_text().split("\n")
     if line.startswith("//!")
 ) or "{}"
-# genome metadata may read named runtime configs (runtime_config_options.md)
 genomeData = eval(
     genomeDataRaw,
     {

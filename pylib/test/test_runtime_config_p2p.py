@@ -347,30 +347,35 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         "globalSeed": 0,
     }
     runtime_config = {
-        "fillSymbolValue": {
-            "rtc_foo": {"value": 2.0**-20, "type": "f32"},
-            "rtc_bar": {"value": -3, "type": "i32"},
-            "rtc_baz": {"value": 7, "type": "u32"},
+        "setSymbolValue": {
+            "rtc_foo": "lambda dims: np.full(dims, 2.0**-20, np.float32)",
+            "rtc_bar": "lambda dims: np.full(dims, -3, np.int32)",
+            "rtc_baz": "np.full(dims, 7, np.uint32)",  # expression of dims
+            "rtc_qux": "lambda dims: np.arange(6, dtype=np.uint32)"
+            ".reshape(dims)",
         },
     }
     data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
-    assert sorted(data.files) == ["rtc_bar", "rtc_baz", "rtc_foo"]
+    assert sorted(data.files) == ["rtc_bar", "rtc_baz", "rtc_foo", "rtc_qux"]
     for symbol, dtype, value in (
         ("rtc_foo", np.float32, 2.0**-20),
         ("rtc_bar", np.int32, -3),
         ("rtc_baz", np.uint32, 7),
+        ("rtc_qux", np.uint32, np.arange(6).reshape(3, 2, 1)),
     ):
         assert data[symbol].shape == (3, 2, 1)
         assert data[symbol].dtype == np.uint32  # raw bits, as client copies
         assert (data[symbol].view(dtype) == value).all()
 
     for bad in (
-        {"fillSymbolValue": {"rtc_foo": {"value": 1.0}}},  # no type
-        {"fillSymbolValue": {"rtc_foo": {"value": 1.0, "type": "f64"}}},
-        {"fillSymbolValue": {"foo": {"value": 1.0, "type": "f32"}}},  # no rtc_
+        {"setSymbolValue": {"rtc_foo": "lambda dims: np.full(dims, 1.0)"}},
+        {"setSymbolValue": {"rtc_foo": "np.zeros(2, np.float32)"}},
+        {"setSymbolValue": {"foo": "lambda dims: np.zeros(dims, np.float32)"}},
         {  # set twice
             "nRowSubgrid": 2,
-            "fillSymbolValue": {"rtc_nRowSubgrid": {"value": 2, "type": "u32"}},
+            "setSymbolValue": {
+                "rtc_nRowSubgrid": "lambda dims: np.full(dims, 2, np.uint32)",
+            },
         },
     ):
         with pytest.raises(subprocess.CalledProcessError):
