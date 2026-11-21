@@ -6,7 +6,6 @@ from collections import Counter
 import fnmatch
 import functools
 import gc
-import inspect
 import io
 import itertools as it
 import json
@@ -181,14 +180,9 @@ def with_subgrid_columns(
             "subgrid_width": pl.Series(widths.ravel(), dtype=pl.UInt16),
         },
     )
-    # cs_python's polars on the cluster may predate join maintain_order
-    # (polars 1.19), whose left joins keep left order anyway
-    keepOrder = (
-        {"maintain_order": "left"}
-        if "maintain_order" in inspect.signature(pl.LazyFrame.join).parameters
-        else {}
+    return df.join(
+        subgrids.lazy(), on=["row", "col"], how="left", maintain_order="left"
     )
-    return df.join(subgrids.lazy(), on=["row", "col"], how="left", **keepOrder)
 
 
 def process_fossils(nWav: int) -> None:
