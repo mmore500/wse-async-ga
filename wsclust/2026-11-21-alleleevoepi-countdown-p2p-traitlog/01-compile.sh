@@ -351,7 +351,7 @@ EOF
         else
             mutation="$(python3 -c "print(repr(2.0 ** -${runMutexp}))")"  # exact f32
         fi
-        echo "{\"dispatch_slug\": \"${runName}\", \"p2pMode\": \"${p2pMode}\"${nest}, \"p2pSendProbability\": ${runP2p}, \"globalSeed\": ${runSeed}, \"fillSymbolValue\": {\"rtc_evoepi_mutationRate\": {\"value\": ${mutation}, \"type\": \"f32\"}}}" \
+        echo "{\"dispatch_slug\": \"${runName}\", \"p2pMode\": \"${p2pMode}\"${nest}, \"p2pSendProbability\": ${runP2p}, \"globalSeed\": ${runSeed}, \"setSymbolValue\": {\"rtc_evoepi_mutationRate\": \"lambda dims: np.full(dims, ${mutation}, np.float32)\"}}" \
             | tee "${CONFIG_WORKDIR}/runtime_config.jsonl"
         cp "${CONFIG_WORKDIR}/runtime_config.jsonl" "${CONFIG_RESULTDIR}/"
         python3 "${WORKDIR}/src/kernel-async-ga/runtime_config_generate.py" \

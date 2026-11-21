@@ -55,7 +55,8 @@ If no runtime config value is specified, symbols keep compile time default.
 - `p2pSeed`
   - seeds random choice of targets
   - if not specified, `globalSeed`
-- `fillSymbolValue`
-  - device symbols set to the same value on every PE, as `type` `f32`,
-    `i32`, or `u32`, e.g., `{"rtc_foo": {"value": 0.5, "type": "f32"}}`
+- `setSymbolValue`
+  - device symbols set from a Python expression giving 32-bit values of
+    shape `dims` (nRow, nCol, 1), e.g., `f32`, `i32`, or `u32`:
+    `{"rtc_foo": "lambda dims: np.full(dims, 0.5, np.float32)"}`
   - each symbol must be exported (e.g., via genome `export_symbol_names`)

@@ -29,18 +29,18 @@ if __name__ == "__main__":
         )
     }
 
-    # device symbols set to the same value on every PE,
-    # e.g., "fillSymbolValue": {"rtc_foo": {"value": 0.5, "type": "f32"}}
-    dtypes = {"f32": np.float32, "i32": np.int32, "u32": np.uint32}
-    fills = runtime_config.get("fillSymbolValue", {})
-    for symbol, spec in sorted(fills.items()):
+    # device symbols set from Python expressions of dims (symbol shape), e.g.,
+    # "setSymbolValue": {"rtc_foo": "lambda dims: np.zeros(dims, np.float32)"}
+    dims = shape
+    exprs = runtime_config.get("setSymbolValue", {})
+    for symbol, expr in sorted(exprs.items()):
         if not symbol.startswith("rtc_") or symbol in symbols:
-            raise ValueError(f"fillSymbolValue {symbol=} invalid or double set")
-        if spec.keys() != {"value", "type"} or spec["type"] not in dtypes:
-            raise ValueError(f"fillSymbolValue {symbol=} needs value and type")
-        symbols[symbol] = np.full(
-            shape, spec["value"], dtypes[spec["type"]]
-        ).view(np.uint32)  # sent as raw word bits
+            raise ValueError(f"setSymbolValue {symbol=} invalid or double set")
+        values = eval(expr, {"np": np, "dims": dims})
+        values = np.asarray(values(dims) if callable(values) else values)
+        if values.shape != dims or values.dtype.itemsize != 4:
+            raise ValueError(f"setSymbolValue {symbol=} needs 32-bit {dims=}")
+        symbols[symbol] = values.view(np.uint32)  # sent as raw word bits
 
     # per-PE subgrid sizes, 0 for no partitioning along that axis
     nRowSubgrid, nColSubgrid = (

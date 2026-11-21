@@ -83,5 +83,4 @@ fn notify_extinct() void {}
 
 fn is_empty(genome: genomePtr_t) bool { return false; }  // never empty
 
-// hook into top-level layout block
-fn export_symbol_names() void {}
+fn export_symbol_names() void {}  // hook into top-level layout block
