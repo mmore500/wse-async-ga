@@ -12,6 +12,119 @@ import sys
 import numpy as np
 import polars as pl
 
+
+def eval_symbol_values(exprs: dict, shape: tuple) -> dict:
+    """Evaluate device symbol values from Python lambdas of symbol shape, e.g.,
+    {"rtc_foo": "lambda shape: np.zeros(shape, np.int32)"}, as raw word bits.
+    """
+    symbols = {}
+    for symbol, expr in sorted(exprs.items()):
+        if not symbol.startswith("rtc_"):
+            raise ValueError(f"setSymbolValues {symbol=} invalid")
+        values = eval(expr, {"np": np, "shape": shape})(shape)
+        if values.shape != shape or values.dtype.itemsize != 4:
+            raise ValueError(
+                f"setSymbolValues {symbol=} needs 32-bit {shape=}",
+            )
+        symbols[symbol] = values.view(np.uint32)
+    return symbols
+
+
+def nest_subgrid_sizes(
+    nRow: int, nCol: int, nRowSubgrid: int, nColSubgrid: int, factor: int
+) -> tuple:
+    """Per-PE subgrid sizes, nested outward from PE (0, 0) by factor.
+
+    Nested subgrids, e.g., factor 2, with b = nRowSubgrid:
+    +---+---+-------+---------------+
+    | b | b |       |               |
+    +---+---+  2b   |               |
+    | b | b |       |               |
+    +---+---+-------+      4b       |
+    |       |       |               |
+    |  2b   |  2b   |               |
+    |       |       |               |
+    +-------+-------+---------------+
+    |               |               |
+    |               |               |
+    |               |               |
+    |      4b       |      4b       |
+    |               |               |
+    |               |               |
+    |               |               |
+    +---------------+---------------+
+    PE (0, 0) at top left; subgrids may overhang PE array.
+    """
+    if not (isinstance(factor, int) and factor >= 1):
+        raise ValueError(f"nestingFactorSubgrid {factor=} not positive int")
+    if factor > 1 and not (nRowSubgrid and nColSubgrid):
+        raise ValueError(
+            f"nestingFactorSubgrid needs {nRowSubgrid=}, {nColSubgrid=} "
+            "nonzero",
+        )
+
+    rows, cols = np.indices((nRow, nCol))
+    # how many base (nRowSubgrid x nColSubgrid) subgrids from the corner
+    baseSubgridsOut = np.maximum(
+        rows // max(nRowSubgrid, 1), cols // max(nColSubgrid, 1)
+    )
+
+    # nesting level: how many of factor, factor^2, factor^3, ... are at most
+    # baseSubgridsOut; subgrids there are factor^level times base size
+    maxLevel = int(baseSubgridsOut.max()).bit_length()
+    powers = factor ** np.arange(1, maxLevel + 1)
+    level = np.sum(baseSubgridsOut[..., np.newaxis] >= powers, axis=-1)
+    return nRowSubgrid * factor**level, nColSubgrid * factor**level
+
+
+def pair_p2p_targets(
+    rowSubgrid: np.ndarray, colSubgrid: np.ndarray, seed: int
+) -> np.ndarray:
+    """Pair PEs at random within their subgrids, given per-PE subgrid sizes
+    (0 for no partitioning along that axis).
+
+    Returns each PE's target address (col << 16 | row), or 0xFFFFFFFF for the
+    odd one out of a subgrid.
+    """
+    nRow, nCol = rowSubgrid.shape
+    rows, cols = np.indices((nRow, nCol))
+    subgridHeight = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+    subgridWidth = np.where(colSubgrid, colSubgrid, nCol)
+
+    return (
+        pl.DataFrame(
+            {
+                "address": (cols << 16 | rows).ravel(),
+                # subgrids identified by their top-left PE
+                "subgridRow": (rows - rows % subgridHeight).ravel(),
+                "subgridCol": (cols - cols % subgridWidth).ravel(),
+            }
+        )
+        .with_columns(lot=pl.int_range(pl.len()).shuffle(seed=seed))
+        # draw lots: in each subgrid, lowest two pair, then next two, etc.
+        .with_columns(
+            pair=(pl.col("lot").rank("ordinal") - 1).over(
+                "subgridRow", "subgridCol"
+            )
+            // 2
+        )
+        # each PE targets the other PE of its pair, i.e., pair's address sum
+        # less its own; odd one out targets nothing
+        .select(
+            pl.when(pl.len().over("subgridRow", "subgridCol", "pair") == 2)
+            .then(
+                pl.col("address").sum().over("subgridRow", "subgridCol", "pair")
+                - pl.col("address")
+            )
+            .otherwise(0xFFFFFFFF)
+            .cast(pl.UInt32)
+        )
+        .to_series()
+        .to_numpy()
+        .reshape(nRow, nCol)
+    )
+
+
 if __name__ == "__main__":
     comptime_config = json.load(sys.stdin)
     runtime_config = ${runtime_config}  # from jsonl
@@ -30,71 +143,19 @@ if __name__ == "__main__":
         )
     }
 
-    # device symbols set from Python lambdas of symbol shape, e.g.,
-    # "setSymbolValues": {"rtc_foo": "lambda shape: np.zeros(shape, np.int32)"}
     exprs = runtime_config.get("setSymbolValues", {})
-    for symbol, expr in sorted(exprs.items()):
-        if not symbol.startswith("rtc_") or symbol in symbols:
-            raise ValueError(
-                f"setSymbolValues {symbol=} invalid or double set",
-            )
-        values = eval(expr, {"np": np, "shape": shape})(shape)
-        if values.shape != shape or values.dtype.itemsize != 4:
-            raise ValueError(
-                f"setSymbolValues {symbol=} needs 32-bit {shape=}",
-            )
-        symbols[symbol] = values.view(np.uint32)  # sent as raw word bits
+    if exprs.keys() & symbols.keys():
+        raise ValueError(f"setSymbolValues double sets {exprs.keys()=}")
+    symbols.update(eval_symbol_values(exprs, shape))
 
-    # per-PE subgrid sizes, 0 for no partitioning along that axis
     nRowSubgrid, nColSubgrid = (
         runtime_config.get(key, comptime_config[key])
         for key in ("nRowSubgrid", "nColSubgrid")
     )
-    rowSubgrid = np.full((nRow, nCol), nRowSubgrid)
-    colSubgrid = np.full((nRow, nCol), nColSubgrid)
-
-    # nested subgrids, e.g., nestingFactorSubgrid 2, with b = nRowSubgrid:
-    # +---+---+-------+---------------+
-    # | b | b |       |               |
-    # +---+---+  2b   |               |
-    # | b | b |       |               |
-    # +---+---+-------+      4b       |
-    # |       |       |               |
-    # |  2b   |  2b   |               |
-    # |       |       |               |
-    # +-------+-------+---------------+
-    # |               |               |
-    # |               |               |
-    # |               |               |
-    # |      4b       |      4b       |
-    # |               |               |
-    # |               |               |
-    # |               |               |
-    # +---------------+---------------+
-    # PE (0, 0) at top left; subgrids may overhang PE array
     nestingFactor = runtime_config.get("nestingFactorSubgrid", 1)
-    if not (isinstance(nestingFactor, int) and nestingFactor >= 1):
-        raise ValueError(f"{nestingFactor=} not positive int")
-    if nestingFactor > 1 and not (nRowSubgrid and nColSubgrid):
-        raise ValueError(
-            f"nestingFactorSubgrid needs {nRowSubgrid=}, {nColSubgrid=} "
-            "nonzero",
-        )
-
-    rows, cols = np.indices((nRow, nCol))
-    # how many base (nRowSubgrid x nColSubgrid) subgrids from the corner
-    baseSubgridsOut = np.maximum(
-        rows // max(nRowSubgrid, 1), cols // max(nColSubgrid, 1)
+    rowSubgrid, colSubgrid = nest_subgrid_sizes(
+        nRow, nCol, nRowSubgrid, nColSubgrid, nestingFactor
     )
-
-    # nesting level: how many of factor, factor^2, factor^3, ... are at most
-    # baseSubgridsOut; subgrids there are factor^level times base size
-    maxLevel = int(baseSubgridsOut.max()).bit_length()
-    powers = nestingFactor ** np.arange(1, maxLevel + 1)
-    level = np.sum(baseSubgridsOut[..., np.newaxis] >= powers, axis=-1)
-    rowSubgrid = nRowSubgrid * nestingFactor**level
-    colSubgrid = nColSubgrid * nestingFactor**level
-
     if nestingFactor == 1:  # uniform subgrids, as without nesting
         assert (rowSubgrid == nRowSubgrid).all()
         assert (colSubgrid == nColSubgrid).all()
@@ -115,43 +176,9 @@ if __name__ == "__main__":
             "globalSeed", comptime_config["globalSeed"]
         )
         p2pSeed = runtime_config.get("p2pSeed", globalSeed)
-
-        subgridHeight = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
-        subgridWidth = np.where(colSubgrid, colSubgrid, nCol)
-
-        p2pTarget = (
-            pl.DataFrame(
-                {
-                    "address": (cols << 16 | rows).ravel(),
-                    # subgrids identified by their top-left PE
-                    "subgridRow": (rows - rows % subgridHeight).ravel(),
-                    "subgridCol": (cols - cols % subgridWidth).ravel(),
-                }
-            ).with_columns(lot=pl.int_range(pl.len()).shuffle(seed=p2pSeed))
-            # draw lots: in each subgrid, lowest two pair, then next two, etc.
-            .with_columns(
-                pair=(pl.col("lot").rank("ordinal") - 1).over(
-                    "subgridRow", "subgridCol"
-                )
-                // 2
-            )
-            # each PE targets the other PE of its pair, i.e., pair's address sum
-            # less its own; odd one out targets nothing
-            .select(
-                pl.when(pl.len().over("subgridRow", "subgridCol", "pair") == 2)
-                .then(
-                    pl.col("address")
-                    .sum()
-                    .over("subgridRow", "subgridCol", "pair")
-                    - pl.col("address")
-                )
-                .otherwise(0xFFFFFFFF)
-                .cast(pl.UInt32)
-            )
-        )
-        symbols["rtc_p2pTarget"] = (
-            p2pTarget.to_series().to_numpy().reshape(shape)
-        )
+        symbols["rtc_p2pTarget"] = pair_p2p_targets(
+            rowSubgrid, colSubgrid, p2pSeed
+        ).reshape(shape)
     else:
         raise ValueError(f"unknown {p2pMode=}")
 
