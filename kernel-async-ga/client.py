@@ -590,7 +590,6 @@ else:
 
 log(f"- prepending to sys path {wheelhouseTarget=}")
 sys.path.insert(0, wheelhouseTarget)
-# so subprocesses (runtime config generators, validators) can import them too
 os.environ["PYTHONPATH"] = os.pathsep.join(
     filter(None, [wheelhouseTarget, os.environ.get("PYTHONPATH")])
 )
