@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run a command, retrying it up to ASYNC_GA_KERNEL_STALL_RETRIES (default 2)
+# Run a command, retrying it up to ASYNC_GA_KERNEL_STALL_RETRIES (default 4)
 # more times, but only if it fails with the Cerebras SDK runtime's kernel
 # stall error, e.g.,
 #   the received length (0 bytes) is not expected (16 bytes), could be a
@@ -10,7 +10,7 @@
 
 set -uo pipefail
 
-max_retries="${ASYNC_GA_KERNEL_STALL_RETRIES:-2}"
+max_retries="${ASYNC_GA_KERNEL_STALL_RETRIES:-4}"
 stall_pattern="could be a kernel stall"
 
 log="$(mktemp)"
