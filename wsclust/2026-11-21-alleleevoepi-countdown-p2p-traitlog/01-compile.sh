@@ -169,18 +169,18 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # p2p edges are random PE pairs (within subgrids, if any), with send
 # probability 1 in 20, one genome per p2p message, and only infected hosts
 # are sent
-# nine independent runs (one job each, run in job order), each set by its
+# six independent runs (one job each, run in job order), each set by its
 # own runtime config (p2p targets, and per run p2p send probability,
 # mutation rate, seed), from two compiles:
 # 1. full grid, as 2026-11-20 workflow's baseline (no subgrids, mean immunity
 #    100 generations, mutation rate 1e-6, 1 genome per neighbor send, recv
 #    batches of 4, population 6800, infection seeded on corner PE only), but
 #    p2p send probability 1 in 20 (up from 1 in 500)
-# 2-9. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
+# 2-6. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
 #    subgrids occupy (runtime config nestedSubgridSizeFactor 2): 9 x 9 PE
 #    subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
 #    subgrids each of 18, 36, 72, 144, and 288 PEs on a side, and one 576 x
-#    576 subgrid; sweeping mutation rate 2^-16 to 2^-30 by factors of 4
+#    576 subgrid; sweeping mutation rate 2^-16 to 2^-32 by factors of 16
 #    (named runtime config rtc_evoepi_mutationRate); migration between
 #    neighbors 10x the default (10 genomes per send,
 #    received in batches of 40); mean immunity 500 generations; infection
@@ -323,7 +323,7 @@ EOF
         RUN_CONFIGS="fullgrid-p2p0.05:0.05:none:1130"
         nest=""
     else
-        RUN_CONFIGS="nested-mutlog2-16:0.05:16:1131 nested-mutlog2-18:0.05:18:1132 nested-mutlog2-20:0.05:20:1133 nested-mutlog2-22:0.05:22:1134 nested-mutlog2-24:0.05:24:1135 nested-mutlog2-26:0.05:26:1136 nested-mutlog2-28:0.05:28:1137 nested-mutlog2-30:0.05:30:1138"
+        RUN_CONFIGS="nested-mutlog2-16:0.05:16:1131 nested-mutlog2-20:0.05:20:1133 nested-mutlog2-24:0.05:24:1135 nested-mutlog2-28:0.05:28:1137 nested-mutlog2-32:0.05:32:1139"
         nest=", \"nestedSubgridSizeFactor\": 2"
     fi
     for runConfig in ${RUN_CONFIGS}; do
