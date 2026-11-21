@@ -123,16 +123,15 @@ if __name__ == "__main__":
         subgridOriginPe = (subgridOriginRow * nCol + subgridOriginCol).ravel()
 
         # PEs in random order within each subgrid, subgrid by subgrid
-        numPe = nRow * nCol
-        pes = np.lexsort((rng.random(numPe), subgridOriginPe))
+        pes = np.lexsort((rng.random(nRow * nCol), subgridOriginPe))
         origin = subgridOriginPe[pes]
-        rank = np.arange(numPe) - np.searchsorted(origin, origin)  # in subgrid
 
-        # pair ranks 0 and 1, 2 and 3, etc. within each subgrid
-        isPair = (rank[:-1] % 2 == 0) & (origin[:-1] == origin[1:])
-        a, b = pes[:-1][isPair], pes[1:][isPair]
-        p2pTarget = np.full(numPe, -1)  # PE id, -1 for none
-        p2pTarget[a], p2pTarget[b] = b, a
+        # pair 1st and 2nd, 3rd and 4th, etc. PE within each subgrid
+        start = np.searchsorted(origin, origin)
+        partner = start + ((np.arange(pes.size) - start) ^ 1)
+        isPaired = np.append(origin, -1)[partner] == origin  # odd one out
+        p2pTarget = np.full(pes.size, -1)  # PE id, -1 for none
+        p2pTarget[pes[isPaired]] = pes[partner[isPaired]]
 
         # check target's target is self, and not self
         paired = np.flatnonzero(p2pTarget != -1)
