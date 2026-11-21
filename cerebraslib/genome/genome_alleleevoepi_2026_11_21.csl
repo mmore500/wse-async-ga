@@ -100,8 +100,8 @@
 //!         "CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_P:f32", 0.15,
 //!     )), pl.Float32),
 //!     "evoepi_mutation_rate": (float(
-//!         runtimeConfig["rtc_evoepi_mutationRate"].view(np.float32).flat[0]
-//!         if "rtc_evoepi_mutationRate" in runtimeConfig else (
+//!         rtc_data["rtc_evoepi_mutationRate"].view(np.float32).flat[0]
+//!         if "rtc_evoepi_mutationRate" in rtc_data else (
 //!             compconf_data.get("CEREBRASLIB_EVOEPI_MUTATION_RATE:f32", 1e-6)
 //!         )
 //!     ), pl.Float32),
