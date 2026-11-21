@@ -16,6 +16,12 @@ fn test_trample_resident() void {
     }
 }
 
+fn test_is_empty() void {
+    var genome = @zeros(genome.genome_t);
+    @assert(!genome.is_empty(&genome));
+}
+
 fn do_test() void {
+    test_is_empty();
     test_trample_resident();
 }

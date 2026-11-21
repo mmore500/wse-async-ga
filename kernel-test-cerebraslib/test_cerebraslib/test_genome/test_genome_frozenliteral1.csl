@@ -44,7 +44,15 @@ fn test_trample_resident() void {
     }
 }
 
+fn test_is_empty() void {
+    var genome = @zeros(genome_frozenliteral1.genome_t);
+    @assert(!genome_frozenliteral1.is_empty(&genome));
+    genome_frozenliteral1.initialize_one(&genome);
+    @assert(!genome_frozenliteral1.is_empty(&genome));
+}
+
 fn do_test() void {
+    test_is_empty();
     test_calc_fitness_of();
     test_get_trait_value();
     test_elapse_inheritance_of();

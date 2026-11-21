@@ -375,7 +375,13 @@ fn test_trample_resident() void {
     }
 }
 
+fn test_is_empty() void {
+    var genome = @zeros(genome_mls.genome_t);
+    @assert(!genome_mls.is_empty(&genome));
+}
+
 fn do_test() void {
+    test_is_empty();
     test_builtin_random_seeding();
     test_log2_u32();
     test_mls_selection_p();
