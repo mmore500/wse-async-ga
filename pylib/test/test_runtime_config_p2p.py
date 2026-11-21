@@ -347,7 +347,7 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         "globalSeed": 0,
     }
     runtime_config = {
-        "setSymbolValue": {
+        "setSymbolValues": {
             "rtc_foo": "lambda shape: np.full(shape, 2.0**-20, np.float32)",
             "rtc_bar": "lambda shape: np.full(shape, -3, np.int32)",
             "rtc_baz": "lambda shape: np.full(shape, 7, np.uint32)",
@@ -368,12 +368,12 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         assert (data[symbol].view(dtype) == value).all()
 
     for bad in (
-        {"setSymbolValue": {"rtc_foo": "lambda s: np.full(s, 1.0)"}},
-        {"setSymbolValue": {"rtc_foo": "lambda s: np.zeros(2, np.float32)"}},
-        {"setSymbolValue": {"foo": "lambda s: np.zeros(s, np.float32)"}},
+        {"setSymbolValues": {"rtc_foo": "lambda s: np.full(s, 1.0)"}},
+        {"setSymbolValues": {"rtc_foo": "lambda s: np.zeros(2, np.float32)"}},
+        {"setSymbolValues": {"foo": "lambda s: np.zeros(s, np.float32)"}},
         {  # set twice
             "nRowSubgrid": 2,
-            "setSymbolValue": {
+            "setSymbolValues": {
                 "rtc_nRowSubgrid": "lambda s: np.full(s, 2, np.uint32)",
             },
         },
