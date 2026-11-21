@@ -275,8 +275,21 @@ jobs:
           print(df)
           assert len(df) == 3 * 3, len(df)
           assert df['has_p2p_target'].sum() == 8  # 9 PEs, one left unpaired
-          paired = df.filter(pl.col('has_p2p_target'))
-          assert (paired['p2p_imm_count'] > 0).all(), paired['p2p_imm_count']
+          unpaired = df.filter(~pl.col('has_p2p_target'))
+          assert (unpaired['p2p_imm_count'] == 0).all(), unpaired
+          # empty genomes aren't sent, so a PE whose partner's population is
+          # mostly empty may immigrate none; but every pair exchanges some
+          paired = df.filter(pl.col('has_p2p_target')).join(
+              df.select(
+                  p2p_target_row='row',
+                  p2p_target_col='col',
+                  partner_imm_count='p2p_imm_count',
+              ),
+              on=['p2p_target_row', 'p2p_target_col'],
+          )
+          assert len(paired) == 8, paired
+          exchanged = paired['p2p_imm_count'] + paired['partner_imm_count']
+          assert (exchanged > 0).all(), paired
           "
 
   test-sample-populations:
