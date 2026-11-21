@@ -399,6 +399,4 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 
 fn notify_extinct() void { _isExtinct = true; }
 
-/// Is genome an empty slot (e.g., no individual), so not worth sending to
-/// other PEs by p2p?
-fn is_empty(genome: genomePtr_t) bool { return false; }
+fn is_empty(genome: genomePtr_t) bool { return _is_clear(genome); }  // cleared genome

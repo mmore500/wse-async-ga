@@ -349,6 +349,8 @@ fn test_trample_resident() void {
 
 fn test_is_empty() void {
     var g = @zeros(genome_mls.genome_t);
+    @assert(genome_mls.is_empty(&g));  // zeroed genome is cleared
+    for (@range(u16, genome_mls.gSize)) |i| { g[i] = 0xFFFFFFFF; }
     @assert(!genome_mls.is_empty(&g));
 }
 
