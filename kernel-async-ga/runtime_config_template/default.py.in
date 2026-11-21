@@ -118,13 +118,12 @@ if __name__ == "__main__":
 
         subgridHeight = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
         subgridWidth = np.where(colSubgrid, colSubgrid, nCol)
-        subgrid = ["subgridRow", "subgridCol"]  # subgrid's top-left PE
-        pair = [*subgrid, "pair"]
 
         p2pTarget = (
             pl.DataFrame(
                 {
                     "address": (cols << 16 | rows).ravel(),
+                    # subgrid's top-left PE
                     "subgridRow": (rows - rows % subgridHeight).ravel(),
                     "subgridCol": (cols - cols % subgridWidth).ravel(),
                 }
@@ -133,13 +132,23 @@ if __name__ == "__main__":
             # draw lots: within each subgrid, the lowest two pair up, then the
             # next two, etc.
             .with_columns(
-                pair=(pl.col("lot").rank("ordinal").over(subgrid) - 1) // 2,
+                pair=(
+                    pl.col("lot")
+                    .rank("ordinal")
+                    .over("subgridRow", "subgridCol")
+                    - 1
+                )
+                // 2,
             )
             # each PE targets the other PE of its pair; the odd one out targets
             # nothing
             .select(
-                pl.when(pl.len().over(pair) == 2)
-                .then(pl.col("address").reverse().over(pair))
+                pl.when(pl.len().over("subgridRow", "subgridCol", "pair") == 2)
+                .then(
+                    pl.col("address")
+                    .reverse()
+                    .over("subgridRow", "subgridCol", "pair")
+                )
                 .otherwise(0xFFFFFFFF)
                 .cast(pl.UInt32)
             )
