@@ -1,4 +1,5 @@
 const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const opaque = @import_module("cerebraslib/opaque.csl");
 
 // === Test seed and next with pointer-based API ==============================
 fn test_seed_and_next_() void {
@@ -730,14 +731,15 @@ fn test_p_quarter_() void {
     @assert(count < 80);
 }
 
-// globals force runtime evaluation
-var _thresholdProbs = [8]f32{ 0.75, 0.5, 0.9999999403953552, 0.9996529221534729, 0.25, 2.3283064365386963e-10, 0.6000000238418579, 0.8999999761581421 };
-var _thresholdExpected = [8]u32{ 0xC0000000, 0x80000000, 0xFFFFFF00, 0xFFE94100, 0x40000000, 0x00000001, 0x99999A00, 0xE6666600 };
-
 fn test_p_threshold32_runtime_() void {
-    for (@range(u16, 8)) |i| {
-        @assert(rng._p_threshold32(_thresholdProbs[i]) == _thresholdExpected[i]);
-    }
+    @assert(rng._p_threshold32(opaque.opaque_f32(0.75)) == 0xC0000000);
+    @assert(rng._p_threshold32(opaque.opaque_f32(0.5)) == 0x80000000);
+    @assert(rng._p_threshold32(opaque.opaque_f32(0.9999999403953552)) == 0xFFFFFF00);
+    @assert(rng._p_threshold32(opaque.opaque_f32(0.9996529221534729)) == 0xFFE94100);
+    @assert(rng._p_threshold32(opaque.opaque_f32(0.25)) == 0x40000000);
+    @assert(rng._p_threshold32(opaque.opaque_f32(2.3283064365386963e-10)) == 0x00000001);
+    @assert(rng._p_threshold32(opaque.opaque_f32(0.6000000238418579)) == 0x99999A00);
+    @assert(rng._p_threshold32(opaque.opaque_f32(0.8999999761581421)) == 0xE6666600);
 }
 
 fn test_p_threshold32_() void {
