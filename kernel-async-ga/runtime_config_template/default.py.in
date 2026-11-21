@@ -122,13 +122,12 @@ if __name__ == "__main__":
         subgridOriginCol = cols - cols % widths
         subgridOriginPe = (subgridOriginRow * nCol + subgridOriginCol).ravel()
 
-        # PE ids (row-major) grouped by subgrid, split by subgrid size
+        # PE ids (row-major) grouped by subgrid
         pesBySubgrid = np.argsort(subgridOriginPe, kind="stable")
-        _, subgridSizes = np.unique(subgridOriginPe, return_counts=True)
-        subgridStarts = np.cumsum(subgridSizes)[:-1]
+        _, starts = np.unique(subgridOriginPe[pesBySubgrid], return_index=True)
 
         p2pTarget = np.full(nRow * nCol, -1)  # PE id, -1 for none
-        for subgridPes in np.split(pesBySubgrid, subgridStarts):
+        for subgridPes in np.split(pesBySubgrid, starts[1:]):
             shuffledPes = rng.permutation(subgridPes)
             numPaired = len(shuffledPes) // 2 * 2
             a, b = shuffledPes[:numPaired].reshape(-1, 2).T
