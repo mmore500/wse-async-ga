@@ -348,7 +348,22 @@ fn test_calc_fitness_and_trait() void {
     @assert(genome.get_trait_value(&g) < @as(u32, genome.nTraitVals));
 }
 
+fn test_is_empty() void {
+    // messages under a word are zero padded, so all-zero messages must be
+    // empty
+    if (genome.gBitsMsg < 32) {
+        var zeroMsg = @zeros(genome.genome_t);
+        @assert(genome.is_empty(&zeroMsg));
+    }
+    var g = @zeros(genome.genome_t);
+    _make(&g, 0x00, 0, _full_immunity(0x0F));
+    @assert(genome.is_empty(&g));  // uninfected, even if immune
+    _make(&g, 0x03, 1, 0);
+    @assert(!genome.is_empty(&g));  // infected
+}
+
 fn do_test() void {
+    test_is_empty();
     test_enabled_sites();
     test_default_countdowns();
     test_immunity_bits();

@@ -223,11 +223,11 @@ const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
 );
 
 // module config specs ========================================================
-const _gSize: u16 = 1;
-const gWordsPop: u16 = _gSize;  // size used in local population
-const gWordsD2h: u16 = _gSize;  // size copied to host
-const gBitsMsg: u16 = 32 * _gSize;  // size migrated between PEs
-const genome_t = [_gSize]u32;
+const gWordsPop: u16 = 1;  // held in population
+const gWordsD2h: u16 = gWordsPop;  // copied to host
+// only the pathogen (low half-word) is sent to PEs; immunity stays with host
+const gBitsMsg: u16 = 16;
+const genome_t = [gWordsPop]u32;
 const genomePtr_t = [*]u32;
 // bit 0: infected; bit 1 + i: enabled site i's allele
 const nTraitVals: u16 = @as(u16, 1) << (nSites + 1);
@@ -475,7 +475,7 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 
 fn notify_extinct() void {}
 
-// uninfected host?
+// uninfected host? reads only the pathogen, so also works on messages
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
 
 // hook into top-level layout block
