@@ -94,7 +94,15 @@ fn test_trample_resident() void {
     }
 }
 
+fn test_is_empty() void {
+    var g = @zeros(genome.genome_t);
+    @assert(!genome.is_empty(&g));
+    genome.initialize_one(&g);
+    @assert(!genome.is_empty(&g));
+}
+
 fn do_test() void {
+    test_is_empty();
     test_calc_fitness_of();
     test_elapse_inheritance_of();
     test_get_trait_value();

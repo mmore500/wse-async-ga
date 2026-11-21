@@ -368,3 +368,6 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 }
 
 fn notify_extinct() void {}
+
+// uninfected host?
+fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }

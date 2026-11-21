@@ -88,3 +88,6 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 }
 
 fn notify_extinct() void {}
+
+// empty (all zero) genome?
+fn is_empty(genome: genomePtr_t) bool { return _is_empty(genome); }

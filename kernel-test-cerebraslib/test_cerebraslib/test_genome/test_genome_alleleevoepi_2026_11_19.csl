@@ -280,7 +280,17 @@ fn test_calc_fitness_and_trait() void {
     @assert(genome.get_trait_value(&g) < @as(u32, genome.nTraitVals));
 }
 
+fn test_is_empty() void {
+    var g = @zeros(genome.genome_t);
+    @assert(genome.is_empty(&g));  // zeroed host is uninfected
+    _make(&g, 0x00, false, 0xFFFF);
+    @assert(genome.is_empty(&g));  // uninfected, even if immune
+    _make(&g, 0x03, true, 0);
+    @assert(!genome.is_empty(&g));  // infected
+}
+
 fn do_test() void {
+    test_is_empty();
     test_enabled_sites();
     test_calc_allele_bits();
     test_tables();
