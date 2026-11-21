@@ -333,7 +333,7 @@ EOF
             for mutexp in 16 18 20 22 24 26; do
                 mutation="$(python3 -c "print(repr(2.0 ** -${mutexp}))")"  # exact f32
                 seed=$((seed + 1))
-                echo "{\"dispatch_slug\": \"mutlog2-${mutexp}-seed${seed}\", \"p2pMode\": \"${p2pMode}\", \"nestingFactorSubgrid\": 2, \"globalSeed\": ${seed}, \"setSymbolValue\": {\"rtc_evoepi_mutationRate\": \"lambda dims: np.full(dims, ${mutation}, np.float32)\"}}" \
+                echo "{\"dispatch_slug\": \"mutlog2-${mutexp}-seed${seed}\", \"p2pMode\": \"${p2pMode}\", \"nestingFactorSubgrid\": 2, \"globalSeed\": ${seed}, \"setSymbolValue\": {\"rtc_evoepi_mutationRate\": \"lambda shape: np.full(shape, ${mutation}, np.float32)\"}}" \
                     | tee -a "${CONFIG_WORKDIR}/runtime_config.jsonl"
             done
         else
