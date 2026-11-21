@@ -61,6 +61,22 @@ fn test_tables() void {
     @assert(_is_close(genome._get_mutation_p(2), 7.370657955e-04));
 }
 
+fn test_rtc_mutation_rate() void {
+    // named runtime config overrides compconf mutation rate, scaling
+    // mutation probabilities, which cap at 1
+    const default = genome.rtc_evoepi_mutationRate[0];
+    @assert(_is_close(default, 1e-6));
+    genome.rtc_evoepi_mutationRate[0] = 1e-3;
+    @assert(_is_close(genome._get_mutation_p(0), 4.966310265e-03));
+    @assert(_is_close(genome._get_mutation_p(1), 2.500031250e-02));
+    @assert(_is_close(genome._get_mutation_p(2), 7.370657955e-01));
+    genome.rtc_evoepi_mutationRate[0] = 1e-2;
+    @assert(genome._get_mutation_p(2) == 1.0);
+    genome.rtc_evoepi_mutationRate[0] = 0.0;
+    @assert(genome._get_mutation_p(2) == 0.0);
+    genome.rtc_evoepi_mutationRate[0] = default;
+}
+
 fn test_initialize_one_at() void {
     // default seed PE stride 0: every PE is seeded
     _check_seeded_at(0, 0);
@@ -265,10 +281,12 @@ fn test_calc_fitness_and_trait() void {
     _make(&g, 0x00, false, 0xFFFF);
     @assert(genome.calc_fitness_of(&g) == 0.0);
     @assert(genome.get_trait_value(&g) == 0);
+    @assert(genome.is_empty(&g));  // uninfected hosts aren't sent by p2p
     // infected: bit 0 set, then bit 1 + i holds site i's allele
     _make(&g, 0x00, true, 0);
     @assert(genome.calc_fitness_of(&g) == 1.0);
     @assert(genome.get_trait_value(&g) == 1);
+    @assert(!genome.is_empty(&g));
     _make(&g, 0x01, true, 0);
     @assert(genome.get_trait_value(&g) == 3);
     _make(&g, 0x02, true, 0);
@@ -294,6 +312,7 @@ fn do_test() void {
     test_enabled_sites();
     test_calc_allele_bits();
     test_tables();
+    test_rtc_mutation_rate();
     test_initialize_one_at();
     test_initialize_one();
     test_trample_resident();
