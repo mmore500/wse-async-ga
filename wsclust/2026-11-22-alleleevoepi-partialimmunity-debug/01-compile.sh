@@ -182,9 +182,10 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # 3. p2p sends at the normal rate (send probability 1 in 20)
 # 4. 4-bit pathogen nibble messages (CEREBRASLIB_EVOEPI_MSG_BITS 4), so
 #    neighbor sends of 1 genome are padded
-# 5. neighbor sends of 8 genomes (1 wavelet), received 2 sends at a time
+# 5. p2p batches of up to 8 live genomes (1 wavelet)
 # 6. p2p batches of up to 24 live genomes (3 wavelets)
-# 7. neighbors sent only live genomes, each free send thread sending to the
+# 7. neighbor sends of 8 genomes (1 wavelet), received 2 sends at a time
+# 8. neighbors sent only live genomes, each free send thread sending to the
 #    least sent-to direction, with sends quelled for empty hosts passed over
 #    and no recv throttling (all features, as the full workflow)
 # jobs 1-3 share a compile, differing only in runtime p2p send probability
@@ -208,14 +209,15 @@ jobnum=0  # job order, in config names, as run step runs them in name order
 # compile, for each compile config; and write each run config's runtime
 # config, with compiled artifacts, to its own directory (one job per run
 # config in run step)
-for compileConfig in nofeatures packed neighborbatch p2pbatch live; do
+for compileConfig in nofeatures packed p2pbatch8 p2pbatch24 neighborbatch live; do
     # message bits, genomes per neighbor send and recv, genomes per p2p
     # message, live neighbor sends?
     case "${compileConfig}" in
         nofeatures) msgbits=32 sendgenomes=1 recvgenomes=4 p2pbatch=1 live=0 ;;
         packed) msgbits=4 sendgenomes=1 recvgenomes=4 p2pbatch=1 live=0 ;;
-        neighborbatch) msgbits=4 sendgenomes=8 recvgenomes=16 p2pbatch=1 live=0 ;;
-        p2pbatch) msgbits=4 sendgenomes=8 recvgenomes=16 p2pbatch=24 live=0 ;;
+        p2pbatch8) msgbits=4 sendgenomes=1 recvgenomes=4 p2pbatch=8 live=0 ;;
+        p2pbatch24) msgbits=4 sendgenomes=1 recvgenomes=4 p2pbatch=24 live=0 ;;
+        neighborbatch) msgbits=4 sendgenomes=8 recvgenomes=16 p2pbatch=24 live=0 ;;
         live) msgbits=4 sendgenomes=8 recvgenomes=16 p2pbatch=24 live=1 ;;
     esac
     compileseed=$((1140 + jobnum))  # runtime config sets it too
