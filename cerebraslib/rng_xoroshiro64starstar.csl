@@ -75,11 +75,20 @@ fn next_bit_(s: [*]u32, bit_cache: *u32) bool {
     return bit;
 }
 
-// Sample a coin flip with probability p.
+// Sample a coin flip with probability p, at 2^-32 resolution, i.e.,
+// comparing a random 32-bit value to floor(probability * 2^32), so small
+// probabilities (below 2^-24) aren't rounded; draws one 32-bit value.
 fn p_(s: [*]u32, probability: f32) bool {
     const val = next_(s);
-    const f = @as(f32, val >> 8) * (1.0 / 16777216.0);
-    return f < probability;
+    return probability >= 1.0 or val < p_threshold32_(probability);
+}
+
+/// floor(probability * 2^32), with probabilities at least 1 (or at most 0,
+/// or NaN) mapped to 2^32 - 1 (or 0); callers treat at least 1 as always.
+fn p_threshold32_(probability: f32) u32 {
+    if (!(probability > 0.0)) return 0;
+    if (probability >= 1.0) return 0xFFFFFFFF;
+    return @as(u32, probability * 4294967296.0); // exact scaling by 2^32
 }
 
 // Sample a coin flip with probability one in n.
