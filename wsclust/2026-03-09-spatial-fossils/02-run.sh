@@ -103,7 +103,7 @@ echo "VENVDIR ${VENVDIR}"
 
 echo "creating venv"
 source "${VENVDIR}/bin/activate"
-python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt"
+python3 -m uv pip freeze | tee "${RESULTDIR_STEP}/pip-freeze.txt" || :
 python3 -m pylib_cs.cslc_wsclust_shim  # test install
 
 ###############################################################################
@@ -112,12 +112,12 @@ echo "log source -------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
 echo "log revision"
-git -C "${FLOWDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/git-revision.txt"
+git -C "${FLOWDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/git-revision.txt" || :
 echo "log remote"
-git -C "${FLOWDIR}" remote -v > "${RESULTDIR_STEP}/git-remote.txt"
+git -C "${FLOWDIR}" remote -v > "${RESULTDIR_STEP}/git-remote.txt" || :
 echo "log status"
 git -C "$(git -C "${FLOWDIR}" rev-parse --show-toplevel)" status \
-    > "${RESULTDIR_STEP}/git-status.txt"
+    > "${RESULTDIR_STEP}/git-status.txt" || :
 echo "log diff"
 git -C "${FLOWDIR}" --no-pager diff > "${RESULTDIR_STEP}/git-status.diff" || :
 git -C "${FLOWDIR}" ls-files -z --others --exclude-standard --exclude=resultdir --exclude=workdir | xargs -0 -I {} git -C "${FLOWDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/git-status.diff" || :
@@ -125,12 +125,12 @@ git -C "${FLOWDIR}" ls-files -z --others --exclude-standard --exclude=resultdir 
 SRCDIR="${WORKDIR}/src"
 echo "SRCDIR ${SRCDIR}"
 echo "log revision"
-git -C "${SRCDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/src-revision.txt"
+git -C "${SRCDIR}" rev-parse HEAD > "${RESULTDIR_STEP}/src-revision.txt" || :
 echo "log remote"
-git -C "${SRCDIR}" remote -v > "${RESULTDIR_STEP}/src-remote.txt"
+git -C "${SRCDIR}" remote -v > "${RESULTDIR_STEP}/src-remote.txt" || :
 echo "log status"
 git -C "$(git -C "${SRCDIR}" rev-parse --show-toplevel)" status \
-    > "${RESULTDIR_STEP}/src-status.txt"
+    > "${RESULTDIR_STEP}/src-status.txt" || :
 echo "log diff"
 git -C "${SRCDIR}" --no-pager diff > "${RESULTDIR_STEP}/src-status.diff" || :
 git -C "${SRCDIR}" ls-files -z --others --exclude-standard | xargs -0 -I {} git -C "${SRCDIR}" --no-pager diff --no-index /dev/null {} >> "${RESULTDIR_STEP}/src-status.diff" || :
@@ -185,7 +185,7 @@ for genome_flavor in genome_purifyingonly genome_purifyingplus; do
 
     cd "${CONFIG_WORKDIR}"
     echo "PWD ${PWD}"
-    find "./run" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
+    find "./run" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
 
     ###########################################################################
     echo
@@ -317,7 +317,7 @@ with SdkLauncher("./run", disable_version_check=True, job_time_sec=7200) as laun
     logging.info("... done!")
 
     logging.info("recording sha256sum values...")
-    launcher.run("find . -type f -exec sha256sum {} + | tee sha256sums-worker.txt")
+    launcher.run("find . -type f -exec sha256sum {} + | tee sha256sums-worker.txt || :")
 
     logging.info("finding output files...")
     response = launcher.run(
@@ -353,12 +353,13 @@ EOF
             echo "running csctl get job ${WSJOB_ID}..."
             # Write yaml with timestamps
             date -u '+pre_timestamp: "%Y-%m-%dT%H:%M:%SZ"' > "${CONFIG_WORKDIR}/out/csctl-job.yaml"
-            csctl get job "${WSJOB_ID}" -oyaml >> "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
+            # best effort: csctl may wait at a login prompt, so give up after 20 s
+            timeout --kill-after=5 20 csctl get job "${WSJOB_ID}" -oyaml < /dev/null >> "${CONFIG_WORKDIR}/out/csctl-job.yaml" 2>&1 || :
             date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_WORKDIR}/out/csctl-job.yaml"
 
             # Write txt with timestamps as first and last lines
             date -u '+%Y-%m-%dT%H:%M:%SZ' > "${CONFIG_WORKDIR}/out/csctl-job.txt"
-            csctl get job "${WSJOB_ID}" >> "${CONFIG_WORKDIR}/out/csctl-job.txt" 2>&1 || :
+            timeout --kill-after=5 20 csctl get job "${WSJOB_ID}" < /dev/null >> "${CONFIG_WORKDIR}/out/csctl-job.txt" 2>&1 || :
             date -u '+%Y-%m-%dT%H:%M:%SZ' >> "${CONFIG_WORKDIR}/out/csctl-job.txt"
 
             echo "... done!"
@@ -374,16 +375,16 @@ EOF
     echo "inner closeout: ${CONFIG_NAME} -------------------------------------"
     echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
     ###########################################################################
-    find "${CONFIG_WORKDIR}/out" -type f -exec sha256sum {} + | tee "${CONFIG_WORKDIR}/out/sha256sums-host.txt"
-    find "${CONFIG_WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-    du -ah "${CONFIG_WORKDIR}"/out/*
+    find "${CONFIG_WORKDIR}/out" -type f -exec sha256sum {} + | tee "${CONFIG_WORKDIR}/out/sha256sums-host.txt" || :
+    find "${CONFIG_WORKDIR}/out" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+    du -ah "${CONFIG_WORKDIR}"/out/* || :
 
     cp -r "${CONFIG_WORKDIR}"/out/* "${CONFIG_RESULTDIR}"
 
-    find "${CONFIG_RESULTDIR}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-    du -ah "${CONFIG_RESULTDIR}"/*
+    find "${CONFIG_RESULTDIR}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+    du -ah "${CONFIG_RESULTDIR}"/* || :
 
-    env > "${CONFIG_RESULTDIR}/env.txt"
+    env > "${CONFIG_RESULTDIR}/env.txt" || :
 
     echo "Config ${CONFIG_NAME} run complete!"
 done
@@ -393,10 +394,10 @@ echo
 echo "outer closeout ---------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-du -ah "${RESULTDIR_STEP}"/*
+find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
+du -ah "${RESULTDIR_STEP}"/* || :
 
-env > "${RESULTDIR_STEP}/env.txt"
+env > "${RESULTDIR_STEP}/env.txt" || :
 
 ###############################################################################
 echo "done! ------------------------------------------------------------------"

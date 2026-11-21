@@ -118,12 +118,13 @@ for WSJOB_ID_FILE in "${WORKDIR_RUN}"/*/out/wsjob_id.txt; do
 
         # Write yaml with timestamps
         date -u '+pre_timestamp: "%Y-%m-%dT%H:%M:%SZ"' > "${CONFIG_RESULTDIR}/csctl-job.yaml"
-        csctl get job "${WSJOB_ID}" -oyaml >> "${CONFIG_RESULTDIR}/csctl-job.yaml" 2>&1 || :
+        # best effort: csctl may wait at a login prompt, so give up after 20 s
+        timeout --kill-after=5 20 csctl get job "${WSJOB_ID}" -oyaml < /dev/null >> "${CONFIG_RESULTDIR}/csctl-job.yaml" 2>&1 || :
         date -u '+post_timestamp: "%Y-%m-%dT%H:%M:%SZ"' >> "${CONFIG_RESULTDIR}/csctl-job.yaml"
 
         # Write txt with timestamps as first and last lines
         date -u '+%Y-%m-%dT%H:%M:%SZ' > "${CONFIG_RESULTDIR}/csctl-job.txt"
-        csctl get job "${WSJOB_ID}" >> "${CONFIG_RESULTDIR}/csctl-job.txt" 2>&1 || :
+        timeout --kill-after=5 20 csctl get job "${WSJOB_ID}" < /dev/null >> "${CONFIG_RESULTDIR}/csctl-job.txt" 2>&1 || :
         date -u '+%Y-%m-%dT%H:%M:%SZ' >> "${CONFIG_RESULTDIR}/csctl-job.txt"
 
         echo "... done!"
@@ -140,10 +141,10 @@ echo
 echo "closeout ---------------------------------------------------------------"
 echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 ###############################################################################
-find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
+find "${RESULTDIR_STEP}" | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/" || :
 du -ah "${RESULTDIR_STEP}"/* 2>/dev/null || echo "(no files)"
 
-env > "${RESULTDIR_STEP}/env.txt"
+env > "${RESULTDIR_STEP}/env.txt" || :
 
 ###############################################################################
 echo
