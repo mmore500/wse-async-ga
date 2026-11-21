@@ -410,3 +410,5 @@ fn notify_extinct() void { _isExtinct = true; }
 
 // cleared genome?
 fn is_empty(genome: genomePtr_t) bool { return _is_clear(genome); }
+
+fn export_symbol_names() void {}  // hook into top-level layout block

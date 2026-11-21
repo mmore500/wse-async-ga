@@ -832,6 +832,14 @@ else:
     log(f" - comptime config sets {nColSubgrid=}")
 rowSubgrid = rowSubgrid.astype(np.int64)
 colSubgrid = colSubgrid.astype(np.int64)
+if "rtc_p2pSendProbability" in runtimeConfig:
+    runtimeP2pSendProbabilityMean = float(
+        runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
+    )
+    log(f" - runtime config sets {runtimeP2pSendProbabilityMean=}")
+else:
+    runtimeP2pSendProbabilityMean = p2pSendProbability
+    log(f" - comptime config sets {runtimeP2pSendProbabilityMean=}")
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 
@@ -862,7 +870,15 @@ genomeDataRaw = "".join(
     for line in pathlib.Path(genomePath).read_text().split("\n")
     if line.startswith("//!")
 ) or "{}"
-genomeData = eval(genomeDataRaw, {"compconf_data": compconf_data, "pl": pl})
+genomeData = eval(
+    genomeDataRaw,
+    {
+        "compconf_data": compconf_data,
+        "np": np,
+        "pl": pl,
+        "runtimeConfig": runtimeConfig,
+    },
+)
 log(f" - {genomeData=}")
 
 populationFlavor = compconf_data["ASYNC_GA_POPULATION_FLAVOR:comptime_string"]
@@ -885,6 +901,7 @@ metadata = {
     "nColSubgrid": (nColSubgrid, pl.UInt16),
     "nRowSubgrid": (nRowSubgrid, pl.UInt16),
     "nonBlock": (nonBlock, pl.Boolean),
+    "p2pSendProbabilityMean": (runtimeP2pSendProbabilityMean, pl.Float32),
     "tilePopSize": (tilePopSize, pl.UInt16),
     "tournSize": (tournSize, pl.Float32),
     "msec": (msecAtLeast, pl.Float32),

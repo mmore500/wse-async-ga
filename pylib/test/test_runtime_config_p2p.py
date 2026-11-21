@@ -336,3 +336,47 @@ def test_subgrid_validators_reject() -> None:
         assert not _validate_subgrid(
             axis, _to_npz(**{f"rtc_n{axis}Subgrid": mixed}), comptime
         )
+
+
+def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 3,
+        "nCol": 2,
+        "nRowSubgrid": 0,
+        "nColSubgrid": 0,
+        "globalSeed": 0,
+    }
+    runtime_config = {
+        "setSymbolValues": {
+            "rtc_foo": "lambda shape: np.full(shape, 2.0**-20, np.float32)",
+            "rtc_bar": "lambda shape: np.full(shape, -3, np.int32)",
+            "rtc_baz": "lambda shape: np.full(shape, 7, np.uint32)",
+            "rtc_qux": "lambda shape: np.arange(6, dtype=np.uint32)"
+            ".reshape(shape)",
+        },
+    }
+    data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
+    assert sorted(data.files) == ["rtc_bar", "rtc_baz", "rtc_foo", "rtc_qux"]
+    for symbol, dtype, value in (
+        ("rtc_foo", np.float32, 2.0**-20),
+        ("rtc_bar", np.int32, -3),
+        ("rtc_baz", np.uint32, 7),
+        ("rtc_qux", np.uint32, np.arange(6).reshape(3, 2, 1)),
+    ):
+        assert data[symbol].shape == (3, 2, 1)
+        assert data[symbol].dtype == np.uint32  # raw bits, as client copies
+        assert (data[symbol].view(dtype) == value).all()
+
+    for bad in (
+        {"setSymbolValues": {"rtc_foo": "lambda s: np.full(s, 1.0)"}},
+        {"setSymbolValues": {"rtc_foo": "lambda s: np.zeros(2, np.float32)"}},
+        {"setSymbolValues": {"foo": "lambda s: np.zeros(s, np.float32)"}},
+        {  # set twice
+            "nRowSubgrid": 2,
+            "setSymbolValues": {
+                "rtc_nRowSubgrid": "lambda s: np.full(s, 2, np.uint32)",
+            },
+        },
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)
