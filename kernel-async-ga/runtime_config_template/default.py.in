@@ -122,16 +122,21 @@ if __name__ == "__main__":
         subgridOriginCol = cols - cols % widths
         subgridOriginPe = (subgridOriginRow * nCol + subgridOriginCol).ravel()
 
-        # PE ids (row-major) grouped by subgrid
-        pesBySubgrid = np.argsort(subgridOriginPe, kind="stable")
-        _, starts = np.unique(subgridOriginPe[pesBySubgrid], return_index=True)
+        # PEs shuffled within subgrids: sorted by subgrid, then random key
+        numPe = nRow * nCol
+        shuffledPes = np.lexsort((rng.random(numPe), subgridOriginPe))
+        shuffledOrigin = subgridOriginPe[shuffledPes]
+        position = np.arange(numPe)
+        subgridStart = np.searchsorted(shuffledOrigin, shuffledOrigin, "left")
+        subgridEnd = np.searchsorted(shuffledOrigin, shuffledOrigin, "right")
 
-        p2pTarget = np.full(nRow * nCol, -1)  # PE id, -1 for none
-        for subgridPes in np.split(pesBySubgrid, starts[1:]):
-            shuffledPes = rng.permutation(subgridPes)
-            numPaired = len(shuffledPes) // 2 * 2
-            a, b = shuffledPes[:numPaired].reshape(-1, 2).T
-            p2pTarget[a], p2pTarget[b] = b, a
+        # pair 1st with 2nd, 3rd with 4th, etc. shuffled PE in each subgrid
+        isFirst = (position - subgridStart) % 2 == 0
+        hasNext = position + 1 < subgridEnd
+        a = shuffledPes[isFirst & hasNext]
+        b = shuffledPes[np.flatnonzero(isFirst & hasNext) + 1]
+        p2pTarget = np.full(numPe, -1)  # PE id, -1 for none
+        p2pTarget[a], p2pTarget[b] = b, a
 
         # check target's target is self, and not self
         paired = np.flatnonzero(p2pTarget != -1)
