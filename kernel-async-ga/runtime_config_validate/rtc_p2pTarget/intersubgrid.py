@@ -21,8 +21,9 @@ def validate_rtc_p2pTarget_within_subgrid(
     # subgrids identified by their top-left PE's row and col
     subgridTopRow = rows - rows % np.where(nRowSubgrid, nRowSubgrid, nRow)
     subgridLeftCol = cols - cols % np.where(nColSubgrid, nColSubgrid, nCol)
-    has_target = data[:, :, 0] != 0xFFFFFFFF
-    col, row = data[:, :, 0] >> 16, data[:, :, 0] & 0xFFFF
+    target = data.squeeze(axis=2)  # errors unless 1 deep
+    has_target = target != 0xFFFFFFFF
+    col, row = target >> 16, target & 0xFFFF
     col, row = col[has_target], row[has_target]
     is_intersubgrid = (
         subgridTopRow[row, col] != subgridTopRow[has_target]
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     # subgrid sizes are runtime config too, defaulting to comptime_config
     nRowSubgrid, nColSubgrid = (
         (
-            runtime_config[f"rtc_{key}"][:, :, 0]
+            runtime_config[f"rtc_{key}"].squeeze(axis=2)
             if f"rtc_{key}" in runtime_config
             else np.array(comptime_config[key])
         )

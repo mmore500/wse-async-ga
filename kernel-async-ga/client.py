@@ -150,17 +150,17 @@ def with_subgrid_columns(
     """Add subgrid columns, joined on `row` and `col` columns, given per-PE
     subgrid sizes (0 for no partitioning along that axis).
 
-    Adds `subgrid` (contiguous index, row-major by top-left PE), `subgrid_y`
+    Adds `subgrid` (contiguous index, row-major), `subgrid_y`
     and `subgrid_x` (top-left PE's row and col), `subgrid_row` and
     `subgrid_col` (top-left PE in units of smallest subgrid size), and
     `subgrid_height` and `subgrid_width` (sizes, in PEs).
     """
     nRow, nCol = rowSubgrid.shape
     rows, cols = np.indices((nRow, nCol))
-    height = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
-    width = np.where(colSubgrid, colSubgrid, nCol)
-    subgridY, subgridX = rows - rows % height, cols - cols % width
-    rowUnit, colUnit = int(height.min()), int(width.min())  # smallest size
+    heights = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+    widths = np.where(colSubgrid, colSubgrid, nCol)
+    subgridY, subgridX = rows - rows % heights, cols - cols % widths
+    rowUnit, colUnit = int(heights.min()), int(widths.min())  # smallest
     _, subgrid = np.unique(subgridY * nCol + subgridX, return_inverse=True)
     log(f" - {rowUnit=} {colUnit=} subgrids={subgrid.max() + 1}")
     subgrids = pl.DataFrame(
@@ -176,11 +176,10 @@ def with_subgrid_columns(
             "subgrid_col": pl.Series(
                 (subgridX // colUnit).ravel(), dtype=pl.UInt16
             ),
-            "subgrid_height": pl.Series(height.ravel(), dtype=pl.UInt16),
-            "subgrid_width": pl.Series(width.ravel(), dtype=pl.UInt16),
+            "subgrid_height": pl.Series(heights.ravel(), dtype=pl.UInt16),
+            "subgrid_width": pl.Series(widths.ravel(), dtype=pl.UInt16),
         },
     )
-    # join, rather than gather by tile id, so that streaming sinks work
     return df.join(
         subgrids.lazy(), on=["row", "col"], how="left", maintain_order="left"
     )
@@ -817,7 +816,6 @@ if "rtc_nCycleAtLeast" in runtimeConfig:
     nCycleAtLeast = np.unique(runtimeConfig["rtc_nCycleAtLeast"]).item()
     log(f" - runtime config sets {nCycleAtLeast=}")
 
-# subgrid sizes may vary between PEs (e.g., runtime config nestingFactorSubgrid)
 if "rtc_nRowSubgrid" in runtimeConfig:
     rowSubgrid = runtimeConfig["rtc_nRowSubgrid"].reshape(nRow, nCol)
     nRowSubgrid = int(rowSubgrid.min())  # smallest, if they vary
