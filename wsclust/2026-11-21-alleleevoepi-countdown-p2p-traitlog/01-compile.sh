@@ -163,8 +163,9 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # 10 generations (countdown cap 10, step probability 1), and immunity to each
 # allele a sum of 15 geometric waits (countdown cap 15), mean 100 or 500
 # generations, renewed on reinfection's recovery; within-host evolution is
-# neutral (WITHINHOST_B 0), so each site of a new infection mutates with
-# probability 25 times the mutation rate, regardless of host immunity
+# neutral (WITHINHOST_B 0), with WITHINHOST_T 1, so each site of a new
+# infection mutates with probability equal to the mutation rate, regardless
+# of host immunity (i.e., mutation rate is per site per transmission)
 # p2p edges are random PE pairs (within subgrids, if any), one genome per p2p
 # message, and only infected hosts are sent
 # seven independent runs (one job each), each set by its own runtime config
@@ -264,6 +265,7 @@ export COMPCONFENV_CEREBRASLIB_EVOEPI_INFECTION_COUNTDOWN_P__f32="1.0"
 export COMPCONFENV_CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_CAP__u16=15
 export COMPCONFENV_CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_P__f32="${immunityp}"
 export COMPCONFENV_CEREBRASLIB_EVOEPI_WITHINHOST_B__f32="0.0"
+export COMPCONFENV_CEREBRASLIB_EVOEPI_WITHINHOST_T__f32="1.0"
 export COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32="1e-6"  # runtime config overrides
 export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${p2p}"
 export COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16=${sendgenomes}
@@ -298,6 +300,7 @@ echo "COMPCONFENV_CEREBRASLIB_EVOEPI_INFECTION_COUNTDOWN_P__f32 \${COMPCONFENV_C
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_CAP__u16 \${COMPCONFENV_CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_CAP__u16}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_P__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_IMMUNITY_COUNTDOWN_P__f32}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_WITHINHOST_B__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_WITHINHOST_B__f32}"
+echo "COMPCONFENV_CEREBRASLIB_EVOEPI_WITHINHOST_T__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_WITHINHOST_T__f32}"
 echo "COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32 \${COMPCONFENV_CEREBRASLIB_EVOEPI_MUTATION_RATE__f32}"
 echo "COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32 \${COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32}"
 echo "COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16 \${COMPCONFENV_ASYNC_GA_SEND_NUM_GENOMES__u16}"
