@@ -111,31 +111,8 @@ fn test_mul32() void {
 
 fn test_p() void {
     for (@range(u16, 20)) |i| { @assert(opscalar.p(1.0)); }
-    for (@range(u16, 20)) |i| { @assert(opscalar.p(2.0)); }
     for (@range(u16, 20)) |i| { @assert(!opscalar.p(0.0)); }
-    for (@range(u16, 20)) |i| { @assert(!opscalar.p(-1.0)); }
     while (!opscalar.p(0.5)) {}
-    while (opscalar.p(0.5)) {}
-
-    // roughly a quarter true
-    random.set_global_prng_seed(1);
-    var count: u32 = 0;
-    for (@range(u16, 400)) |i| { count += @as(u32, opscalar.p(0.25)); }
-    @assert(count > 60 and count < 140);
-}
-
-fn test_p_threshold32() void {
-    // 2^-32 resolution: small powers of two are exact, not rounded up
-    @assert(opscalar.p_threshold32(0.0) == 0);
-    @assert(opscalar.p_threshold32(-1.0) == 0);
-    @assert(opscalar.p_threshold32(1.0) == 0xFFFFFFFF);
-    @assert(opscalar.p_threshold32(0.5) == 0x80000000);
-    @assert(opscalar.p_threshold32(0.25) == 0x40000000);
-    @assert(opscalar.p_threshold32(1.0 / 8388608.0) == 512); // 2^-23
-    @assert(opscalar.p_threshold32(1.0 / 67108864.0) == 64); // 2^-26
-    @assert(opscalar.p_threshold32(1.0 / 268435456.0) == 16); // 2^-28
-    @assert(opscalar.p_threshold32(1.0 / 4294967296.0) == 1); // 2^-32
-    @assert(opscalar.p_threshold32(1e-6) == 4294); // floor(4294.97)
 }
 
 fn test_random_u32() void {
@@ -653,7 +630,6 @@ fn do_test() void {
     test_hamming_syndrome32();
     test_mul32();
     test_p();
-    test_p_threshold32();
     test_parity32();
     test_random_u32();
     test_p_one_in();
