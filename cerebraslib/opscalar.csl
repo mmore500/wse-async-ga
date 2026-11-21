@@ -8,9 +8,13 @@ const _dsd_as16 = @get_dsd(mem1d_dsd, .{
 
 /// Clamp x to [lower, upper], as C++ std::clamp: NaN stays NaN.
 fn clamp(x: anytype, lower: @type_of(x), upper: @type_of(x)) @type_of(x) {
-    if (x < lower) { return lower; }
-    if (upper < x) { return upper; }
-    return x;
+    if (x < lower) {
+        return lower;
+    } else if (upper < x) {
+        return upper;
+    } else {
+        return x;
+    }
 }
 
 /// Clamp x to [lower, upper]; NaN clamps to lower.
