@@ -371,3 +371,5 @@ fn notify_extinct() void {}
 
 // uninfected host?
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
+
+fn export_symbol_names() void {}  // hook into top-level layout block

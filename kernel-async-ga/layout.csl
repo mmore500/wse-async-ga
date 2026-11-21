@@ -11,6 +11,13 @@ param popSize: u32;
 param tournSizeNumerator: u32;
 param tournSizeDenominator: u32;
 
+const compconf_raw = @import_module("<compconf_raw>");
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const genome_ = @import_module(
+  @strcat("cerebraslib/genome/", compconf_raw.ASYNC_GA_GENOME_FLAVOR, ".csl"),
+  .{ .rng = rng },
+);
+
 const tournSize = @as(f32, tournSizeNumerator) / @as(f32, tournSizeDenominator);
 
 // Color used by memcpy for RPC mechanism
@@ -83,6 +90,7 @@ layout {
   @export_name("rtc_nRowSubgrid", [*]u32, true);
   @export_name("rtc_nColSubgrid", [*]u32, true);
   @export_name("rtc_nCycleAtLeast", [*]u32, true);
+  genome_.export_symbol_names();
   @export_name("tscControlBuffer", [*]u32, true);
   @export_name("tscEndBuffer", [*]u32, true);
   @export_name("tscStartBuffer", [*]u32, true);

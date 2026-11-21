@@ -17,6 +17,30 @@ If no runtime config value is specified, symbols keep compile time default.
 - `nColSubgrid`
   - no migration every n cols, 0 for none
   - sets `rtc_nColSubgrid`
+- `nestingFactorSubgrid`
+  - positive integer, default 1 (uniform subgrids); if more, subgrids grow by
+    this factor outward from PE (0, 0), e.g., 2 with b x b base subgrids
+    (`nRowSubgrid` x `nColSubgrid`):
+    ```
+    +---+---+-------+---------------+
+    | b | b |       |               |
+    +---+---+  2b   |               |
+    | b | b |       |               |
+    +---+---+-------+      4b       |
+    |       |       |               |
+    |  2b   |  2b   |               |
+    |       |       |               |
+    +-------+-------+---------------+
+    |               |               |
+    |               |               |
+    |               |               |
+    |      4b       |      4b       |
+    |               |               |
+    |               |               |
+    |               |               |
+    +---------------+---------------+
+    ```
+  - sets `rtc_nRowSubgrid` and `rtc_nColSubgrid` per PE
 - `nCycleAtLeast`
   - how many cycles to run for
   - sets `rtc_nCycleAtLeast`
@@ -27,7 +51,12 @@ If no runtime config value is specified, symbols keep compile time default.
   - how p2p targets are assigned
   - `"none"` (default): no PE has a target, `rtc_p2pTarget` is not set
   - `"pairs"`: PEs target each other in random pairs within subgrid, one
-    may be left unpaired; sets `rtc_p2pTarget`
+    per subgrid may be left unpaired; sets `rtc_p2pTarget`
 - `p2pSeed`
   - seeds random choice of targets
   - if not specified, `globalSeed`
+- `setSymbolValues`
+  - device symbols set from a Python lambda of symbol `shape` (nRow, nCol,
+    1) giving 32-bit values, e.g., `f32`, `i32`, or `u32`:
+    `{"rtc_foo": "lambda shape: np.full(shape, 0.5, np.float32)"}`
+  - each symbol must be exported (e.g., via genome `export_symbol_names`)

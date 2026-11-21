@@ -1,4 +1,5 @@
 import io
+from collections import Counter
 import json
 import pathlib
 import string
@@ -176,9 +177,9 @@ def test_default_template_p2p_modes(tmp_path: pathlib.Path) -> None:
 )
 def test_p2p_send_probability_validator(probability: float, ok: bool) -> None:
     npz = _to_npz(
-        rtc_p2pSendProbability=np.full((2, 2, 1), probability, np.float32).view(
-            np.uint32
-        )
+        rtc_p2pSendProbability=np.full(
+            (2, 2, 1), probability, np.float32
+        ).view(np.uint32)
     )
     result = subprocess.run(
         [
@@ -216,3 +217,166 @@ def test_p2p_send_probability_validator_compiled_in(
         check=False,
     )
     assert (result.returncode == 0) == ok
+
+
+def _validate_subgrid(axis: str, npz: bytes, comptime: dict) -> bool:
+    """Does npz pass rtc_n{axis}Subgrid validator?"""
+    return not subprocess.run(
+        [
+            sys.executable,
+            validate_dir.with_name(f"rtc_n{axis}Subgrid") / "default.py",
+            json.dumps(comptime),
+        ],
+        input=npz,
+        capture_output=True,
+        check=False,
+    ).returncode
+
+
+@pytest.mark.parametrize("growth", [2, 3, 4])
+@pytest.mark.parametrize(
+    "nRow, nCol, baseRow, baseCol",
+    [(30, 19, 1, 1), (70, 45, 2, 2), (70, 45, 3, 2)],
+)
+def test_subgrid_growth_template(
+    tmp_path: pathlib.Path,
+    growth: int,
+    nRow: int,
+    nCol: int,
+    baseRow: int,
+    baseCol: int,
+) -> None:
+    comptime = {
+        "nRow": nRow,
+        "nCol": nCol,
+        "nRowSubgrid": baseRow,
+        "nColSubgrid": baseCol,
+        "globalSeed": 0,
+    }
+    runtime_config = {"nestingFactorSubgrid": growth, "p2pMode": "pairs"}
+    npz = _generate(tmp_path, comptime, runtime_config)
+    data = np.load(io.BytesIO(npz))
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    width = data["rtc_nColSubgrid"][:, :, 0].astype(int)
+    assert (height * baseCol == width * baseRow).all()  # same nesting level
+
+    # subgrids aligned to their own size, so PEs agree on walls
+    rows, cols = np.indices((nRow, nCol))
+    top, left = rows - rows % height, cols - cols % width
+    for row, col in zip(*np.indices((nRow, nCol)).reshape(2, -1)):
+        h, w = height[row, col], width[row, col]
+        t, l = top[row, col], left[row, col]
+        assert (height[t : t + h, l : l + w] == h).all()
+        assert (width[t : t + h, l : l + w] == w).all()
+
+    # smallest at corner, then growth^2 - 1 subgrids per size, growing out
+    assert baseRow * growth**2 <= nRow and baseCol * growth**2 <= nCol
+    corners = {
+        (t, l, h) for t, l, h in zip(top.flat, left.flat, height.flat)
+    }
+    full = Counter(
+        h
+        for t, l, h in corners
+        if t + h <= nRow and l + h * baseCol // baseRow <= nCol
+    )
+    assert height[0, 0] == baseRow and full[baseRow] == growth**2
+    assert full[baseRow * growth] == growth**2 - 1
+
+    for axis in "Row", "Col":
+        assert _validate_subgrid(axis, npz, comptime)
+    for validator in "default.py", "intersubgrid.py":
+        assert _validate(validator, npz, comptime), validator
+
+    # p2p pairs stay within (variable-size) subgrids
+    target = data["rtc_p2pTarget"][:, :, 0]
+    has = target != 0xFFFFFFFF
+    trow, tcol = target[has] & 0xFFFF, target[has] >> 16
+    assert (top[trow, tcol] == top[has]).all()
+    assert (left[trow, tcol] == left[has]).all()
+    assert has.sum() >= nRow * nCol - len(corners)
+
+
+def test_subgrid_growth_one_is_uniform(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 9,
+        "nCol": 7,
+        "nRowSubgrid": 2,
+        "nColSubgrid": 3,
+        "globalSeed": 0,
+    }
+    pairs = {"p2pMode": "pairs"}
+    assert _generate(tmp_path, comptime, pairs) == _generate(
+        tmp_path, comptime, {**pairs, "nestingFactorSubgrid": 1}
+    )
+    for bad in (
+        {"nestingFactorSubgrid": 0},
+        {"nestingFactorSubgrid": 1.5},
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)
+    with pytest.raises(subprocess.CalledProcessError):  # no base subgrids
+        _generate(
+            tmp_path,
+            {**comptime, "nColSubgrid": 0},
+            {"nestingFactorSubgrid": 2},
+        )
+
+
+def test_subgrid_validators_reject() -> None:
+    comptime = {"nRow": 4, "nCol": 4, "nRowSubgrid": 0, "nColSubgrid": 0}
+    uniform = np.full((4, 4, 1), 2, np.uint32)
+    for axis in "Row", "Col":
+        assert _validate_subgrid(
+            axis, _to_npz(**{f"rtc_n{axis}Subgrid": uniform}), comptime
+        )
+    # size 2 PEs above/left of size 3 PEs disagree on walls
+    mixed = uniform.copy()
+    mixed[2:, 2:] = 3
+    for axis in "Row", "Col":
+        assert not _validate_subgrid(
+            axis, _to_npz(**{f"rtc_n{axis}Subgrid": mixed}), comptime
+        )
+
+
+def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 3,
+        "nCol": 2,
+        "nRowSubgrid": 0,
+        "nColSubgrid": 0,
+        "globalSeed": 0,
+    }
+    runtime_config = {
+        "setSymbolValues": {
+            "rtc_foo": "lambda shape: np.full(shape, 2.0**-20, np.float32)",
+            "rtc_bar": "lambda shape: np.full(shape, -3, np.int32)",
+            "rtc_baz": "lambda shape: np.full(shape, 7, np.uint32)",
+            "rtc_qux": "lambda shape: np.arange(6, dtype=np.uint32)"
+            ".reshape(shape)",
+        },
+    }
+    data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
+    assert sorted(data.files) == ["rtc_bar", "rtc_baz", "rtc_foo", "rtc_qux"]
+    for symbol, dtype, value in (
+        ("rtc_foo", np.float32, 2.0**-20),
+        ("rtc_bar", np.int32, -3),
+        ("rtc_baz", np.uint32, 7),
+        ("rtc_qux", np.uint32, np.arange(6).reshape(3, 2, 1)),
+    ):
+        assert data[symbol].shape == (3, 2, 1)
+        assert data[symbol].dtype == np.uint32  # raw bits, as client copies
+        assert (data[symbol].view(dtype) == value).all()
+
+    for bad in (
+        {"setSymbolValues": {"rtc_foo": "lambda s: np.full(s, 1.0)"}},
+        {"setSymbolValues": {"rtc_foo": "lambda s: np.zeros(2, np.float32)"}},
+        {"setSymbolValues": {"foo": "lambda s: np.zeros(s, np.float32)"}},
+        {  # set twice
+            "nRowSubgrid": 2,
+            "setSymbolValues": {
+                "rtc_nRowSubgrid": "lambda s: np.full(s, 2, np.uint32)",
+            },
+        },
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)

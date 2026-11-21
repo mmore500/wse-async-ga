@@ -65,3 +65,5 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 fn notify_extinct() void {}
 
 fn is_empty(genome: genomePtr_t) bool { return false; }  // never empty
+
+fn export_symbol_names() void {}  // hook into top-level layout block
