@@ -730,6 +730,16 @@ fn test_p_quarter_() void {
     @assert(count < 80);
 }
 
+// globals force runtime evaluation
+var _thresholdProbs = [8]f32{ 0.75, 0.5, 0.9999999403953552, 0.9996529221534729, 0.25, 2.3283064365386963e-10, 0.6000000238418579, 0.8999999761581421 };
+var _thresholdExpected = [8]u32{ 0xC0000000, 0x80000000, 0xFFFFFF00, 0xFFE94100, 0x40000000, 0x00000001, 0x99999A00, 0xE6666600 };
+
+fn test_p_threshold32_runtime_() void {
+    for (@range(u16, 8)) |i| {
+        @assert(rng._p_threshold32(_thresholdProbs[i]) == _thresholdExpected[i]);
+    }
+}
+
 fn test_p_threshold32_() void {
     // 2^-32 resolution: small powers of two are exact, not rounded up
     @assert(rng._p_threshold32(0.0) == 0);
@@ -874,6 +884,7 @@ fn do_test() void {
     test_p_half_();
     test_p_quarter_();
     test_p_threshold32_();
+    test_p_threshold32_runtime_();
     test_p_global_zero();
     test_p_global_one();
     test_p_global_half();
