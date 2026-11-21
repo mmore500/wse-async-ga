@@ -150,30 +150,34 @@ def with_subgrid_columns(
     """Add subgrid columns, joined on `row` and `col` columns, given per-PE
     subgrid sizes (0 for no partitioning along that axis).
 
-    Adds `subgrid_row` and `subgrid_col` (subgrid's top-left PE, in units of
-    smallest subgrid size), `subgrid` (unique row-major index), and
-    `subgrid_nrow` and `subgrid_ncol` (sizes).
+    Adds `subgrid` (contiguous index, row-major by top-left PE), `subgrid_y`
+    and `subgrid_x` (top-left PE's row and col), `subgrid_row` and
+    `subgrid_col` (top-left PE in units of smallest subgrid size), and
+    `subgrid_height` and `subgrid_width` (sizes, in PEs).
     """
     nRow, nCol = rowSubgrid.shape
     rows, cols = np.indices((nRow, nCol))
-    rowUnit = int(rowSubgrid[rowSubgrid > 0].min(initial=nRow))
-    colUnit = int(colSubgrid[colSubgrid > 0].min(initial=nCol))
-    rowSize = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
-    colSize = np.where(colSubgrid, colSubgrid, nCol)
-    subgridRow = (rows - rows % rowSize) // rowUnit
-    subgridCol = (cols - cols % colSize) // colUnit
+    height = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+    width = np.where(colSubgrid, colSubgrid, nCol)
+    subgridY, subgridX = rows - rows % height, cols - cols % width
+    rowUnit, colUnit = int(height.min()), int(width.min())  # smallest size
+    _, subgrid = np.unique(subgridY * nCol + subgridX, return_inverse=True)
+    log(f" - {rowUnit=} {colUnit=} subgrids={subgrid.max() + 1}")
     subgrids = pl.DataFrame(
         {
             "row": pl.Series(rows.ravel(), dtype=pl.UInt16),
             "col": pl.Series(cols.ravel(), dtype=pl.UInt16),
-            "subgrid_row": pl.Series(subgridRow.ravel(), dtype=pl.UInt16),
-            "subgrid_col": pl.Series(subgridCol.ravel(), dtype=pl.UInt16),
-            "subgrid": pl.Series(
-                (subgridRow * -(-nCol // colUnit) + subgridCol).ravel(),
-                dtype=pl.UInt32,
+            "subgrid": pl.Series(subgrid.ravel(), dtype=pl.UInt32),
+            "subgrid_y": pl.Series(subgridY.ravel(), dtype=pl.UInt16),
+            "subgrid_x": pl.Series(subgridX.ravel(), dtype=pl.UInt16),
+            "subgrid_row": pl.Series(
+                (subgridY // rowUnit).ravel(), dtype=pl.UInt16
             ),
-            "subgrid_nrow": pl.Series(rowSubgrid.ravel(), dtype=pl.UInt16),
-            "subgrid_ncol": pl.Series(colSubgrid.ravel(), dtype=pl.UInt16),
+            "subgrid_col": pl.Series(
+                (subgridX // colUnit).ravel(), dtype=pl.UInt16
+            ),
+            "subgrid_height": pl.Series(height.ravel(), dtype=pl.UInt16),
+            "subgrid_width": pl.Series(width.ravel(), dtype=pl.UInt16),
         },
     )
     # join, rather than gather by tile id, so that streaming sinks work
@@ -814,16 +818,22 @@ if "rtc_nCycleAtLeast" in runtimeConfig:
     log(f" - runtime config sets {nCycleAtLeast=}")
 
 # subgrid sizes may vary between PEs (e.g., runtime config nestingFactorSubgrid)
-rowSubgrid = np.full((nRow, nCol), nRowSubgrid, dtype=np.int64)
-colSubgrid = np.full((nRow, nCol), nColSubgrid, dtype=np.int64)
 if "rtc_nRowSubgrid" in runtimeConfig:
-    rowSubgrid[:] = runtimeConfig["rtc_nRowSubgrid"].reshape(nRow, nCol)
+    rowSubgrid = runtimeConfig["rtc_nRowSubgrid"].reshape(nRow, nCol)
     nRowSubgrid = int(rowSubgrid.min())  # smallest, if they vary
     log(f" - runtime config sets {np.unique(rowSubgrid)=}")
+else:
+    rowSubgrid = np.full((nRow, nCol), nRowSubgrid)
+    log(f" - comptime config sets {nRowSubgrid=}")
 if "rtc_nColSubgrid" in runtimeConfig:
-    colSubgrid[:] = runtimeConfig["rtc_nColSubgrid"].reshape(nRow, nCol)
+    colSubgrid = runtimeConfig["rtc_nColSubgrid"].reshape(nRow, nCol)
     nColSubgrid = int(colSubgrid.min())  # smallest, if they vary
     log(f" - runtime config sets {np.unique(colSubgrid)=}")
+else:
+    colSubgrid = np.full((nRow, nCol), nColSubgrid)
+    log(f" - comptime config sets {nColSubgrid=}")
+rowSubgrid = rowSubgrid.astype(np.int64)
+colSubgrid = colSubgrid.astype(np.int64)
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 

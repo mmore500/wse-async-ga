@@ -18,8 +18,9 @@ If no runtime config value is specified, symbols keep compile time default.
   - no migration every n cols, 0 for none
   - sets `rtc_nColSubgrid`
 - `nestingFactorSubgrid`
-  - integer, default 1 (uniform subgrids); if more, subgrids grow by this
-    factor outward from PE (0, 0), needing square `nRowSubgrid` (b), e.g., 2:
+  - positive integer, default 1 (uniform subgrids); if more, subgrids grow by
+    this factor outward from PE (0, 0), e.g., 2 with b x b base subgrids
+    (`nRowSubgrid` x `nColSubgrid`):
     ```
     +---+---+-------+---------------+
     | b | b |       |               |

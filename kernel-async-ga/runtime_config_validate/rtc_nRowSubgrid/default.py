@@ -13,12 +13,7 @@ import numpy as np
 def validate_rtc_nRowSubgrid_boundaries(
     data: np.ndarray, comptime_config: dict
 ) -> None:
-    """Check vertically adjacent PEs agree on whether they can migrate.
-
-    Subgrid sizes may differ between PEs (e.g., nestingFactorSubgrid), but
-    kernel.csl disables migration per PE, at y % n == 0 (N) and
-    y % n == n - 1 (S).
-    """
+    """Check that vertically adjacent PEs agree on whether connected."""
     size = data[:, :, 0].astype(np.int64)
     y = np.indices(size.shape)[0]
     first = (size != 0) & (y % np.maximum(size, 1) == 0)  # 0: no subgrids

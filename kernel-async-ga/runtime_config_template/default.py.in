@@ -55,24 +55,28 @@ if __name__ == "__main__":
     # |               |               |
     # |               |               |
     # +---------------+---------------+
-    # PE (0, 0) at top left; subgrids overhanging the grid are clipped
+    # PE (0, 0) at top left; subgrids may overhang PE array
     factor = runtime_config.get("nestingFactorSubgrid", 1)
     if not isinstance(factor, int) or factor < 1:
         raise ValueError(f"nestingFactorSubgrid {factor=} not positive int")
     if factor > 1:
-        base = nRowSubgrid
-        if base < 1 or nColSubgrid != base:
+        if not nRowSubgrid or not nColSubgrid:
             raise ValueError(
-                f"nestingFactorSubgrid needs square subgrids, {nRowSubgrid=} "
-                f"{nColSubgrid=}",
+                f"nestingFactorSubgrid needs {nRowSubgrid=}, {nColSubgrid=} "
+                "nonzero",
             )
         rows, cols = np.indices((nRow, nCol))
-        shell = np.maximum(rows, cols) // base  # base-sized steps from corner
-        # subgrid size is base * factor^k, for k the largest power of factor
-        # that shell reaches
-        powers = factor ** np.arange(1, int(shell.max()).bit_length() + 1)
-        k = (shell[..., None] >= powers).sum(axis=-1)
-        rowSubgrid = colSubgrid = base * factor**k
+        # how many base (nRowSubgrid x nColSubgrid) subgrids from the corner
+        baseSubgridsOut = np.maximum(rows // nRowSubgrid, cols // nColSubgrid)
+        # nesting level: how many of factor, factor^2, factor^3, ... that
+        # distance reaches; subgrids there are factor^level times base size
+        maxLevel = int(baseSubgridsOut.max()).bit_length()
+        level = sum(
+            (baseSubgridsOut >= factor**j for j in range(1, maxLevel + 1)),
+            np.zeros_like(baseSubgridsOut),
+        )
+        rowSubgrid = nRowSubgrid * factor**level
+        colSubgrid = nColSubgrid * factor**level
         for key, value in zip(
             ("nRowSubgrid", "nColSubgrid"), (rowSubgrid, colSubgrid)
         ):
@@ -92,9 +96,9 @@ if __name__ == "__main__":
         rng = np.random.default_rng(runtime_config.get("p2pSeed", globalSeed))
         # subgrids, by tile id of their top-left PE, in row-major order
         rows, cols = np.indices((nRow, nCol))
-        top = rows - rows % np.where(rowSubgrid, rowSubgrid, nRow)
-        left = cols - cols % np.where(colSubgrid, colSubgrid, nCol)
-        corner = (top * nCol + left).ravel()
+        subgridTopRow = rows - rows % np.where(rowSubgrid, rowSubgrid, nRow)
+        subgridLeftCol = cols - cols % np.where(colSubgrid, colSubgrid, nCol)
+        corner = (subgridTopRow * nCol + subgridLeftCol).ravel()
         order = np.argsort(corner, kind="stable")  # row-major within subgrid
         bounds = np.flatnonzero(np.diff(corner[order])) + 1
         target = np.full(nRow * nCol, -1)  # tile id, -1 for none
