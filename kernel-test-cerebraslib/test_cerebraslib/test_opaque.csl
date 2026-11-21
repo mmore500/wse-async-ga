@@ -1,17 +1,17 @@
 const opaque = @import_module("cerebraslib/opaque.csl");
 
-fn test_u32_() void {
-    @assert(opaque.u32_(0) == 0);
-    @assert(opaque.u32_(0x12345678) == 0x12345678);
-    @assert(opaque.u32_(0xFFFFFFFF) == 0xFFFFFFFF);
+fn test_opaque_u32() void {
+    @assert(opaque.opaque_u32(0) == 0);
+    @assert(opaque.opaque_u32(0x12345678) == 0x12345678);
+    @assert(opaque.opaque_u32(0xFFFFFFFF) == 0xFFFFFFFF);
 }
 
-fn test_f32_() void {
-    @assert(opaque.f32_(1.5) == 1.5);
-    @assert(opaque.f32_(-0.75) == -0.75);
+fn test_opaque_f32() void {
+    @assert(opaque.opaque_f32(1.5) == 1.5);
+    @assert(opaque.opaque_f32(-0.75) == -0.75);
 }
 
 fn do_test() void {
-    test_u32_();
-    test_f32_();
+    test_opaque_u32();
+    test_opaque_f32();
 }

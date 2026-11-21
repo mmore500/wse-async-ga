@@ -1,7 +1,3 @@
-// Identity functions in assembly, opaque to the compiler, so it can't fold
-// (precompute at compile time) expressions using their results, e.g., in tests
-// of runtime behavior.
-
 comptime {
   asm (
     @strcat(".global _opaque32\n",
@@ -16,8 +12,8 @@ comptime {
 
 extern fn _opaque32(x: u32) u32;
 
-/// Return x, opaque to the compiler.
-fn u32_(x: u32) u32 { return _opaque32(x); }
+/// Return x, (as below).
+fn opaque_u32(x: u32) u32 { return _opaque32(x); }
 
-/// Return x, opaque to the compiler.
-fn f32_(x: f32) f32 { return @bitcast(f32, _opaque32(@bitcast(u32, x))); }
+/// Return x, guaranteeing runtime evaluation.
+fn opaque_f32(x: f32) f32 { return @bitcast(f32, _opaque32(@bitcast(u32, x))); }

@@ -731,12 +731,11 @@ fn test_p_quarter_() void {
     @assert(count < 80);
 }
 
-const _thresholdProbs = [8]f32{ 0.75, 0.5, 0.9999999403953552, 0.9996529221534729, 0.25, 2.3283064365386963e-10, 0.6000000238418579, 0.8999999761581421 };
-const _thresholdExpected = [8]u32{ 0xC0000000, 0x80000000, 0xFFFFFF00, 0xFFE94100, 0x40000000, 0x00000001, 0x99999A00, 0xE6666600 };
-
 fn test_p_threshold32_runtime_() void {
+    const probs = [8]f32{ 0.75, 0.5, 0.9999999403953552, 0.9996529221534729, 0.25, 2.3283064365386963e-10, 0.6000000238418579, 0.8999999761581421 };
+    const expected = [8]u32{ 0xC0000000, 0x80000000, 0xFFFFFF00, 0xFFE94100, 0x40000000, 0x00000001, 0x99999A00, 0xE6666600 };
     for (@range(u16, 8)) |i| {
-        @assert(rng._p_threshold32(opaque.f32_(_thresholdProbs[i])) == _thresholdExpected[i]);
+        @assert(rng._p_threshold32(opaque.opaque_f32(probs[i])) == expected[i]);
     }
 }
 
