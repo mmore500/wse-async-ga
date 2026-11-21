@@ -37,26 +37,42 @@ if __name__ == "__main__":
     rowSubgrid = np.full((nRow, nCol), nRowSubgrid)
     colSubgrid = np.full((nRow, nCol), nColSubgrid)
 
-    # nested subgrids, smallest (nRowSubgrid x nColSubgrid) at PE (0, 0),
-    # growing outward in L-shaped shells of growth^2 - 1 subgrids per size;
-    # subgrid sizes base * growth^k, with overhanging subgrids clipped by grid
-    nestedSubgridSizeFactor = runtime_config.get("nestedSubgridSizeFactor", 1)
-    if not isinstance(nestedSubgridSizeFactor, int) or nestedSubgridSizeFactor < 1:
-        raise ValueError(f"{nestedSubgridSizeFactor=} must be a positive integer")
-    if nestedSubgridSizeFactor > 1:
+    # nested subgrids, e.g., nestingFactorSubgrid 2, with b = nRowSubgrid:
+    # +---+---+-------+---------------+
+    # | b | b |       |               |
+    # +---+---+  2b   |               |
+    # | b | b |       |               |
+    # +---+---+-------+      4b       |
+    # |       |       |               |
+    # |  2b   |  2b   |               |
+    # |       |       |               |
+    # +-------+-------+---------------+
+    # |               |               |
+    # |               |               |
+    # |               |               |
+    # |      4b       |      4b       |
+    # |               |               |
+    # |               |               |
+    # |               |               |
+    # +---------------+---------------+
+    # PE (0, 0) at top left; subgrids overhanging the grid are clipped
+    factor = runtime_config.get("nestingFactorSubgrid", 1)
+    if not isinstance(factor, int) or factor < 1:
+        raise ValueError(f"nestingFactorSubgrid {factor=} not positive int")
+    if factor > 1:
         base = nRowSubgrid
         if base < 1 or nColSubgrid != base:
             raise ValueError(
-                f"nestedSubgridSizeFactor needs square subgrids, {nRowSubgrid=} "
+                f"nestingFactorSubgrid needs square subgrids, {nRowSubgrid=} "
                 f"{nColSubgrid=}",
             )
         rows, cols = np.indices((nRow, nCol))
         shell = np.maximum(rows, cols) // base  # base-sized steps from corner
-        while (shell >= nestedSubgridSizeFactor).any():
-            grow = shell >= nestedSubgridSizeFactor
-            rowSubgrid[grow] *= nestedSubgridSizeFactor
-            shell[grow] //= nestedSubgridSizeFactor
-        colSubgrid = rowSubgrid
+        # subgrid size is base * factor^k, for k the largest power of factor
+        # that shell reaches
+        powers = factor ** np.arange(1, int(shell.max()).bit_length() + 1)
+        k = (shell[..., None] >= powers).sum(axis=-1)
+        rowSubgrid = colSubgrid = base * factor**k
         for key, value in zip(
             ("nRowSubgrid", "nColSubgrid"), (rowSubgrid, colSubgrid)
         ):
