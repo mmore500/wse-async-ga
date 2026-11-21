@@ -54,7 +54,15 @@ fn test_trample_resident() void {
     }
 }
 
+fn test_is_empty() void {
+    var g = @zeros(genome_bitdrift.genome_t);
+    @assert(!genome_bitdrift.is_empty(&g));
+    genome_bitdrift.initialize_one(&g);
+    @assert(!genome_bitdrift.is_empty(&g));
+}
+
 fn do_test() void {
+    test_is_empty();
     test_builtin_random_seeding();
     test_calc_fitness_of();
     test_get_trait_value();
