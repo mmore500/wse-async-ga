@@ -77,19 +77,16 @@ fn next_bit_(s: [*]u32, bit_cache: *u32) bool {
 }
 
 /// floor(probability * 2^32), the threshold a uniform random 32-bit integer
-/// falls below with that probability, for probability in [0, 1).
+/// falls below with given probability, for probability in [0, 1).
 fn _p_threshold32(probability: f32) u32 {
-    return @as(u32, probability * 4294967296.0); // exact scaling by 2^32
+    @assert(probability >= 0.0 and probability < 1.0);
+    return @as(u32, probability * 4294967296.0);
 }
 
-// Sample a coin flip with probability p, clamped to [0, 1], at 2^-32
-// resolution: compares a random 32-bit value to floor(p * 2^32), so small
-// probabilities (below 2^-24) aren't rounded; p of 1, whose threshold 2^32
-// doesn't fit in 32 bits, is always true.
+// Sample a coin flip with probability p.
 fn p_(s: [*]u32, probability: f32) bool {
-    const val = next_(s);
-    const clamped = opscalar.clamp(probability, 0.0, 1.0); // NaN to 0
-    return clamped == 1.0 or val < _p_threshold32(clamped);
+    @assert(opscalar.clamp(probability, 0.0, 1.0) == probability);
+    return probability == 1.0 or next_(s) < _p_threshold32(probability);
 }
 
 // Sample a coin flip with probability one in n.
