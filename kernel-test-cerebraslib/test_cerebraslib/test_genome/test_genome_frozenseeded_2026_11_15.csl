@@ -119,8 +119,8 @@ fn test_trample_resident() void {
 
 fn test_is_empty() void {
     var g = @zeros(genome_frozenseeded.genome_t);
-    @assert(!genome_frozenseeded.is_empty(&g));
-    genome_frozenseeded.initialize_one(&g);
+    @assert(genome_frozenseeded.is_empty(&g));  // zero is the empty value
+    g[0] = genome_frozenseeded.valFull;
     @assert(!genome_frozenseeded.is_empty(&g));
 }
 

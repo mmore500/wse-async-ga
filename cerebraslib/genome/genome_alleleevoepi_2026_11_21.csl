@@ -472,6 +472,4 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 
 fn notify_extinct() void {}
 
-/// Is genome an empty slot (e.g., no individual), so not worth sending to
-/// other PEs by p2p? Uninfected hosts carry no pathogen to transmit.
-fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
+fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }  // uninfected host

@@ -802,9 +802,8 @@ task cycleTask() void {
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
     population.emigrate_genomes(sendGenomeDsd_P, 1);
-    if (!genome_.is_empty(@ptrcast([*]u32, &sendBuf_P[1]))) {
-      if (dispatchSend_P()) { sendFlag_P = 0; }
-    }
+    const isEmpty = genome_.is_empty(@ptrcast([*]u32, &sendBuf_P[1]));
+    if (!isEmpty and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
