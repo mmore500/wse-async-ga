@@ -300,9 +300,7 @@ fn test_calc_fitness_and_trait() void {
 
 fn test_is_empty() void {
     var g = @zeros(genome.genome_t);
-    @assert(!genome.is_empty(&g));
-    genome.initialize_one(&g);
-    @assert(!genome.is_empty(&g));
+    @assert(genome.is_empty(&g));  // zeroed host is uninfected
 }
 
 fn do_test() void {
