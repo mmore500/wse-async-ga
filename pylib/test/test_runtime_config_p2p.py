@@ -348,11 +348,11 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
     }
     runtime_config = {
         "setSymbolValue": {
-            "rtc_foo": "lambda dims: np.full(dims, 2.0**-20, np.float32)",
-            "rtc_bar": "lambda dims: np.full(dims, -3, np.int32)",
-            "rtc_baz": "np.full(dims, 7, np.uint32)",  # expression of dims
-            "rtc_qux": "lambda dims: np.arange(6, dtype=np.uint32)"
-            ".reshape(dims)",
+            "rtc_foo": "lambda shape: np.full(shape, 2.0**-20, np.float32)",
+            "rtc_bar": "lambda shape: np.full(shape, -3, np.int32)",
+            "rtc_baz": "lambda shape: np.full(shape, 7, np.uint32)",
+            "rtc_qux": "lambda shape: np.arange(6, dtype=np.uint32)"
+            ".reshape(shape)",
         },
     }
     data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
@@ -368,13 +368,13 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         assert (data[symbol].view(dtype) == value).all()
 
     for bad in (
-        {"setSymbolValue": {"rtc_foo": "lambda dims: np.full(dims, 1.0)"}},
-        {"setSymbolValue": {"rtc_foo": "np.zeros(2, np.float32)"}},
-        {"setSymbolValue": {"foo": "lambda dims: np.zeros(dims, np.float32)"}},
+        {"setSymbolValue": {"rtc_foo": "lambda s: np.full(s, 1.0)"}},
+        {"setSymbolValue": {"rtc_foo": "lambda s: np.zeros(2, np.float32)"}},
+        {"setSymbolValue": {"foo": "lambda s: np.zeros(s, np.float32)"}},
         {  # set twice
             "nRowSubgrid": 2,
             "setSymbolValue": {
-                "rtc_nRowSubgrid": "lambda dims: np.full(dims, 2, np.uint32)",
+                "rtc_nRowSubgrid": "lambda s: np.full(s, 2, np.uint32)",
             },
         },
     ):
