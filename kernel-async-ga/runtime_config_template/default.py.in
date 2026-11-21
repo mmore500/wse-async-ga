@@ -94,7 +94,8 @@ def pair_p2p_targets(
     return (
         pl.DataFrame(
             {
-                "address": (cols << 16 | rows).ravel(),
+                "row": rows.ravel(),
+                "col": cols.ravel(),
                 # subgrids identified by their top-left PE
                 "subgridRow": (rows - rows % subgridHeight).ravel(),
                 "subgridCol": (cols - cols % subgridWidth).ravel(),
@@ -108,14 +109,21 @@ def pair_p2p_targets(
             )
             // 2
         )
-        # each PE targets the other PE of its pair, i.e., pair's address sum
-        # less its own; odd one out targets nothing
+        # each PE targets the other PE of its pair, i.e., pair's sum less own
+        .with_columns(
+            targetRow=pl.col("row")
+            .sum()
+            .over("subgridRow", "subgridCol", "pair")
+            - pl.col("row"),
+            targetCol=pl.col("col")
+            .sum()
+            .over("subgridRow", "subgridCol", "pair")
+            - pl.col("col"),
+        )
+        # address col << 16 | row; odd one out targets nothing
         .select(
             pl.when(pl.len().over("subgridRow", "subgridCol", "pair") == 2)
-            .then(
-                pl.col("address").sum().over("subgridRow", "subgridCol", "pair")
-                - pl.col("address")
-            )
+            .then(pl.col("targetCol") * 0x10000 | pl.col("targetRow"))
             .otherwise(0xFFFFFFFF)
             .cast(pl.UInt32)
         )
