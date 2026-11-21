@@ -12,7 +12,7 @@ comptime {
 
 extern fn _opaque32(x: u32) u32;
 
-/// Return x, (as below).
+/// Return x, guaranteeing runtime evaluation.
 fn opaque_u32(x: u32) u32 { return _opaque32(x); }
 
 /// Return x, guaranteeing runtime evaluation.
