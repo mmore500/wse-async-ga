@@ -255,6 +255,27 @@ fn _immigrate_messages(fromBuf: [*]u32, nGenomes: u16) u32 {
     return nClobbers;
 }
 
+/// Pack messages of up to nGenomes live (non-empty) genomes into toBuf,
+/// returning how many. Samples one random population member, and if it is
+/// live, scans on from it (wrapping) until nGenomes are found or the whole
+/// population is scanned; so with p live genomes, nonzero with probability p.
+fn emigrate_live_genomes(toBuf: [*]u32, nGenomes: u16) u16 {
+    for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
+    const start = opscalar.unif16(popSize);
+    if (genome.is_empty(_get_ith_genome(start))) { return 0; }
+
+    var nFound: u16 = 0;
+    var offset: u16 = 0;
+    while (nFound < nGenomes and offset < popSize) : (offset += 1) {
+        const candidate = _get_ith_genome((start + offset) % popSize);
+        if (!genome.is_empty(candidate)) {
+            message.pack(candidate, toBuf, nFound);
+            nFound += 1;
+        }
+    }
+    return nFound;
+}
+
 fn init_module() void { _initialize_all(); }
 
 fn do_generation() void {
