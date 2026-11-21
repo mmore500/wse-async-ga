@@ -150,9 +150,9 @@ def with_subgrid_columns(
     """Add subgrid columns, joined on `row` and `col` columns, given per-PE
     subgrid sizes (0 for no partitioning along that axis).
 
-    Adds `subgrid` (contiguous index, row-major), `subgrid_y`
-    and `subgrid_x` (top-left PE's row and col), `subgrid_row` and
-    `subgrid_col` (top-left PE in units of smallest subgrid size), and
+    Adds `subgrid` (contiguous index, row-major), `subgrid_origin_row` and
+    `subgrid_origin_col` (top-left PE's row and col), `subgrid_index_row` and
+    `subgrid_index_col` (top-left PE in units of smallest subgrid size), and
     `subgrid_height` and `subgrid_width` (sizes, in PEs).
     """
     nRow, nCol = rowSubgrid.shape
@@ -168,12 +168,12 @@ def with_subgrid_columns(
             "row": pl.Series(rows.ravel(), dtype=pl.UInt16),
             "col": pl.Series(cols.ravel(), dtype=pl.UInt16),
             "subgrid": pl.Series(subgrid.ravel(), dtype=pl.UInt32),
-            "subgrid_y": pl.Series(subgridY.ravel(), dtype=pl.UInt16),
-            "subgrid_x": pl.Series(subgridX.ravel(), dtype=pl.UInt16),
-            "subgrid_row": pl.Series(
+            "subgrid_origin_row": pl.Series(subgridY.ravel(), dtype=pl.UInt16),
+            "subgrid_origin_col": pl.Series(subgridX.ravel(), dtype=pl.UInt16),
+            "subgrid_index_row": pl.Series(
                 (subgridY // rowUnit).ravel(), dtype=pl.UInt16
             ),
-            "subgrid_col": pl.Series(
+            "subgrid_index_col": pl.Series(
                 (subgridX // colUnit).ravel(), dtype=pl.UInt16
             ),
             "subgrid_height": pl.Series(heights.ravel(), dtype=pl.UInt16),
@@ -830,8 +830,6 @@ if "rtc_nColSubgrid" in runtimeConfig:
 else:
     colSubgrid = np.full((nRow, nCol), nColSubgrid)
     log(f" - comptime config sets {nColSubgrid=}")
-rowSubgrid = rowSubgrid.astype(np.int64)
-colSubgrid = colSubgrid.astype(np.int64)
 if "rtc_p2pSendProbability" in runtimeConfig:
     runtimeP2pSendProbabilityMean = float(
         runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
@@ -876,7 +874,7 @@ genomeData = eval(
         "compconf_data": compconf_data,
         "np": np,
         "pl": pl,
-        "runtimeConfig": runtimeConfig,
+        "rtc_data": runtimeConfig,
     },
 )
 log(f" - {genomeData=}")

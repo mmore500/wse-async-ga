@@ -14,7 +14,7 @@ def validate_rtc_nColSubgrid_boundaries(
     data: np.ndarray, comptime_config: dict
 ) -> None:
     """Check that horizontally adjacent PEs agree on whether connected."""
-    size = data.squeeze(axis=2).astype(np.int64)  # errors unless 1 deep
+    size = data.squeeze(axis=2).astype(np.int64)  # enforce depth exactly 1
     x = np.indices(size.shape)[1]
     first = (size != 0) & (x % np.maximum(size, 1) == 0)  # 0: no subgrids
     last = (size != 0) & (x % np.maximum(size, 1) == size - 1)
