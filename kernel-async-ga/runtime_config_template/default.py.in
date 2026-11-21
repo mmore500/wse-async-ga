@@ -123,25 +123,19 @@ if __name__ == "__main__":
             pl.DataFrame(
                 {
                     "address": (cols << 16 | rows).ravel(),
-                    # subgrid's top-left PE
+                    # subgrids identified by their top-left PE
                     "subgridRow": (rows - rows % subgridHeight).ravel(),
                     "subgridCol": (cols - cols % subgridWidth).ravel(),
                 }
-            )
-            .with_columns(lot=pl.int_range(pl.len()).shuffle(seed=p2pSeed))
-            # draw lots: within each subgrid, the lowest two pair up, then the
-            # next two, etc.
+            ).with_columns(lot=pl.int_range(pl.len()).shuffle(seed=p2pSeed))
+            # draw lots: in each subgrid, lowest two pair, then next two, etc.
             .with_columns(
-                pair=(
-                    pl.col("lot")
-                    .rank("ordinal")
-                    .over("subgridRow", "subgridCol")
-                    - 1
+                pair=(pl.col("lot").rank("ordinal") - 1).over(
+                    "subgridRow", "subgridCol"
                 )
-                // 2,
+                // 2
             )
-            # each PE targets the other PE of its pair; the odd one out targets
-            # nothing
+            # each PE targets its pair's other PE; odd one out targets nothing
             .select(
                 pl.when(pl.len().over("subgridRow", "subgridCol", "pair") == 2)
                 .then(
