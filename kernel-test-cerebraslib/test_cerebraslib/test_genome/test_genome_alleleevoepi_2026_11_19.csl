@@ -299,10 +299,10 @@ fn test_calc_fitness_and_trait() void {
 }
 
 fn test_is_empty() void {
-    var genome = @zeros(genome.genome_t);
-    @assert(!genome.is_empty(&genome));
-    genome.initialize_one(&genome);
-    @assert(!genome.is_empty(&genome));
+    var g = @zeros(genome.genome_t);
+    @assert(!genome.is_empty(&g));
+    genome.initialize_one(&g);
+    @assert(!genome.is_empty(&g));
 }
 
 fn do_test() void {

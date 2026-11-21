@@ -369,8 +369,8 @@ fn test_trample_resident() void {
 }
 
 fn test_is_empty() void {
-    var genome = @zeros(genome_mls.genome_t);
-    @assert(!genome_mls.is_empty(&genome));
+    var g = @zeros(genome_mls.genome_t);
+    @assert(!genome_mls.is_empty(&g));
 }
 
 fn do_test() void {

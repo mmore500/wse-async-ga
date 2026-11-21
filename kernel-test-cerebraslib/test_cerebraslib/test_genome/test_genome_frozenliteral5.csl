@@ -45,10 +45,10 @@ fn test_trample_resident() void {
 }
 
 fn test_is_empty() void {
-    var genome = @zeros(genome_frozenliteral5.genome_t);
-    @assert(!genome_frozenliteral5.is_empty(&genome));
-    genome_frozenliteral5.initialize_one(&genome);
-    @assert(!genome_frozenliteral5.is_empty(&genome));
+    var g = @zeros(genome_frozenliteral5.genome_t);
+    @assert(!genome_frozenliteral5.is_empty(&g));
+    genome_frozenliteral5.initialize_one(&g);
+    @assert(!genome_frozenliteral5.is_empty(&g));
 }
 
 fn do_test() void {
