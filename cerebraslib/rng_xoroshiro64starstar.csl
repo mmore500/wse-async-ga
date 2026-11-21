@@ -1,6 +1,7 @@
 // XOROSHIRO64** (StarStar) PRNG (Blackman and Vigna)
 
 const fabric_uid = @import_module("cerebraslib/fabric_uid.csl");
+const math = @import_module("<math>");
 
 // global state ===============================================================
 var _state = [2]u32{ 0x12345678, 0x9ABCDEF0 }; // default non-zero state
@@ -75,20 +76,20 @@ fn next_bit_(s: [*]u32, bit_cache: *u32) bool {
     return bit;
 }
 
-// Sample a coin flip with probability p, at 2^-32 resolution, i.e.,
-// comparing a random 32-bit value to floor(probability * 2^32), so small
-// probabilities (below 2^-24) aren't rounded; draws one 32-bit value.
-fn p_(s: [*]u32, probability: f32) bool {
-    const val = next_(s);
-    return probability >= 1.0 or val < p_threshold32_(probability);
+/// floor(probability * 2^32), the threshold a uniform random 32-bit integer
+/// falls below with that probability, for probability in [0, 1).
+fn _p_threshold32(probability: f32) u32 {
+    return @as(u32, probability * 4294967296.0); // exact scaling by 2^32
 }
 
-/// floor(probability * 2^32), with probabilities at least 1 (or at most 0,
-/// or NaN) mapped to 2^32 - 1 (or 0); callers treat at least 1 as always.
-fn p_threshold32_(probability: f32) u32 {
-    if (!(probability > 0.0)) return 0;
-    if (probability >= 1.0) return 0xFFFFFFFF;
-    return @as(u32, probability * 4294967296.0); // exact scaling by 2^32
+// Sample a coin flip with probability p, clamped to [0, 1], at 2^-32
+// resolution: compares a random 32-bit value to floor(p * 2^32), so small
+// probabilities (below 2^-24) aren't rounded; p of 1, whose threshold 2^32
+// doesn't fit in 32 bits, is always true.
+fn p_(s: [*]u32, probability: f32) bool {
+    const val = next_(s);
+    const clamped = math.min(math.max(probability, 0.0), 1.0); // NaN to 0
+    return clamped == 1.0 or val < _p_threshold32(clamped);
 }
 
 // Sample a coin flip with probability one in n.
