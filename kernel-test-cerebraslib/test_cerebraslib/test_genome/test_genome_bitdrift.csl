@@ -55,10 +55,10 @@ fn test_trample_resident() void {
 }
 
 fn test_is_empty() void {
-    var genome = @zeros(genome_bitdrift.genome_t);
-    @assert(!genome_bitdrift.is_empty(&genome));
-    genome_bitdrift.initialize_one(&genome);
-    @assert(!genome_bitdrift.is_empty(&genome));
+    var g = @zeros(genome_bitdrift.genome_t);
+    @assert(!genome_bitdrift.is_empty(&g));
+    genome_bitdrift.initialize_one(&g);
+    @assert(!genome_bitdrift.is_empty(&g));
 }
 
 fn do_test() void {
