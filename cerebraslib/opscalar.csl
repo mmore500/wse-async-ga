@@ -66,13 +66,18 @@ fn mul32(a: u32, b: u32) u32 { return a * b; }
 /// falls below with given probability, for probability in [0, 1).
 fn _p_threshold32(probability: f32) u32 {
     @assert(probability >= 0.0 and probability < 1.0);
-    return @as(u32, probability * 4294967296.0);
+    // workaround: f32 to u32 conversion saturates at 2^31 - 1
+    if (probability < 0.5) {
+        return @as(u32, probability * 4294967296.0);
+    } else {
+        return 0x80000000 | @as(u32, (probability - 0.5) * 4294967296.0);
+    }
 }
 
 // Sample a coin flip with probability p.
 fn p(probability: f32) bool {
-    const clamped = clamp_nanmin(probability, 0.0, 1.0); // NaN to 0
-    return clamped == 1.0 or random_u32() < _p_threshold32(clamped);
+    @assert(clamp(probability, 0.0, 1.0) == probability);
+    return probability == 1.0 or random_u32() < _p_threshold32(probability);
 }
 
 /// Draw a random 32-bit integer.
