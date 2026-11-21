@@ -1,6 +1,6 @@
 // Named runtime configs: per-PE values the host copies to device before
-// launch, e.g., set uniformly across the device by runtime config jsonl keys
-// "rtc_<name>:<type>" (see kernel-async-ga/runtime_config_options.md).
+// launch, e.g., set uniformly across the device by runtime config key
+// uniformConstant (see kernel-async-ga/runtime_config_options.md).
 //
 // A module (e.g., a genome) declares, exports, and reads each one, e.g.,
 //   var rtc_foo = [1]f32{ compconf_default };
