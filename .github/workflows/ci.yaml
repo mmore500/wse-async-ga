@@ -97,6 +97,7 @@ jobs:
           - genome_frozenseeded_2026_11_15
           - genome_alleleevoepi_2026_11_19
           - genome_alleleevoepi_2026_11_21
+          - genome_alleleevoepi_2026_11_22
         p2p:
           - 0
         include:
