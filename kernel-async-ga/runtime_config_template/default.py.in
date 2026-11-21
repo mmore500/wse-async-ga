@@ -29,17 +29,18 @@ if __name__ == "__main__":
         )
     }
 
-    # device symbols set to the same value on every PE, as raw 32-bit bits,
+    # device symbols set to the same value on every PE,
     # e.g., "fillSymbolValue": {"rtc_foo": {"value": 0.5, "type": "f32"}}
     dtypes = {"f32": np.float32, "i32": np.int32, "u32": np.uint32}
-    for symbol, spec in sorted(runtime_config.get("fillSymbolValue", {}).items()):
+    fills = runtime_config.get("fillSymbolValue", {})
+    for symbol, spec in sorted(fills.items()):
         if not symbol.startswith("rtc_") or symbol in symbols:
             raise ValueError(f"fillSymbolValue {symbol=} invalid or double set")
         if spec.keys() != {"value", "type"} or spec["type"] not in dtypes:
             raise ValueError(f"fillSymbolValue {symbol=} needs value and type")
         symbols[symbol] = np.full(
             shape, spec["value"], dtypes[spec["type"]]
-        ).view(np.uint32)
+        ).view(np.uint32)  # sent as raw word bits
 
     # per-PE subgrid sizes, 0 for no partitioning along that axis
     nRowSubgrid, nColSubgrid = (

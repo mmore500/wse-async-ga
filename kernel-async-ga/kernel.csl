@@ -467,7 +467,7 @@ fn dispatchSend_W() bool {
 // asynchronously accept genomes from neighbors,
 // which are then harvested from buffer & immigrated into the population
 ///////////////////////////////////////////////////////////////////////////////
-// how many genomes to batch together?
+// how many genomes to batch receiving together?
 const recvNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );

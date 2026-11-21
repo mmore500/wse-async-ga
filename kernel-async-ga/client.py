@@ -825,12 +825,12 @@ if "rtc_nColSubgrid" in runtimeConfig:
     nColSubgrid = int(colSubgrid.min())  # smallest, if they vary
     log(f" - runtime config sets {np.unique(colSubgrid)=}")
 # runtime config may set p2p send probability; mean over PEs if varied
-runtimeP2pSendProbability = p2pSendProbability
+runtimeP2pSendProbabilityMean = p2pSendProbability
 if "rtc_p2pSendProbability" in runtimeConfig:
-    runtimeP2pSendProbability = float(
+    runtimeP2pSendProbabilityMean = float(
         runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
     )
-    log(f" - runtime config sets {runtimeP2pSendProbability=}")
+    log(f" - runtime config sets {runtimeP2pSendProbabilityMean=}")
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 
@@ -893,7 +893,7 @@ metadata = {
     "nColSubgrid": (nColSubgrid, pl.UInt16),
     "nRowSubgrid": (nRowSubgrid, pl.UInt16),
     "nonBlock": (nonBlock, pl.Boolean),
-    "p2pSendProbability": (runtimeP2pSendProbability, pl.Float32),
+    "p2pSendProbabilityMean": (runtimeP2pSendProbabilityMean, pl.Float32),
     "tilePopSize": (tilePopSize, pl.UInt16),
     "tournSize": (tournSize, pl.Float32),
     "msec": (msecAtLeast, pl.Float32),
