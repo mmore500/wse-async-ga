@@ -234,36 +234,53 @@ def _validate_subgrid(axis: str, npz: bytes, comptime: dict) -> bool:
 
 
 @pytest.mark.parametrize("growth", [2, 3, 4])
-@pytest.mark.parametrize("nRow, nCol, base", [(30, 19, 1), (70, 45, 2)])
+@pytest.mark.parametrize(
+    "nRow, nCol, baseRow, baseCol",
+    [(30, 19, 1, 1), (70, 45, 2, 2), (70, 45, 3, 2)],
+)
 def test_subgrid_growth_template(
-    tmp_path: pathlib.Path, growth: int, nRow: int, nCol: int, base: int
+    tmp_path: pathlib.Path,
+    growth: int,
+    nRow: int,
+    nCol: int,
+    baseRow: int,
+    baseCol: int,
 ) -> None:
     comptime = {
         "nRow": nRow,
         "nCol": nCol,
-        "nRowSubgrid": base,
-        "nColSubgrid": base,
+        "nRowSubgrid": baseRow,
+        "nColSubgrid": baseCol,
         "globalSeed": 0,
     }
     runtime_config = {"nestingFactorSubgrid": growth, "p2pMode": "pairs"}
     npz = _generate(tmp_path, comptime, runtime_config)
     data = np.load(io.BytesIO(npz))
-    size = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
-    assert (size == data["rtc_nColSubgrid"][:, :, 0]).all()
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    width = data["rtc_nColSubgrid"][:, :, 0].astype(int)
+    assert (height * baseCol == width * baseRow).all()  # same nesting level
 
-    # subgrids are squares aligned to their own size, so PEs agree on walls
+    # subgrids aligned to their own size, so PEs agree on walls
     rows, cols = np.indices((nRow, nCol))
-    top, left = rows - rows % size, cols - cols % size
+    top, left = rows - rows % height, cols - cols % width
     for row, col in zip(*np.indices((nRow, nCol)).reshape(2, -1)):
-        n, t, l = size[row, col], top[row, col], left[row, col]
-        assert (size[t : t + n, l : l + n] == n).all()
+        h, w = height[row, col], width[row, col]
+        t, l = top[row, col], left[row, col]
+        assert (height[t : t + h, l : l + w] == h).all()
+        assert (width[t : t + h, l : l + w] == w).all()
 
     # smallest at corner, then growth^2 - 1 subgrids per size, growing out
-    assert base * growth**2 <= min(nRow, nCol)  # next shell fits whole
-    corners = {(t, l, n) for t, l, n in zip(top.flat, left.flat, size.flat)}
-    full = Counter(n for t, l, n in corners if t + n <= nRow and l + n <= nCol)
-    assert size[0, 0] == base and full[base] == growth**2
-    assert full[base * growth] == growth**2 - 1
+    assert baseRow * growth**2 <= nRow and baseCol * growth**2 <= nCol
+    corners = {
+        (t, l, h) for t, l, h in zip(top.flat, left.flat, height.flat)
+    }
+    full = Counter(
+        h
+        for t, l, h in corners
+        if t + h <= nRow and l + h * baseCol // baseRow <= nCol
+    )
+    assert height[0, 0] == baseRow and full[baseRow] == growth**2
+    assert full[baseRow * growth] == growth**2 - 1
 
     for axis in "Row", "Col":
         assert _validate_subgrid(axis, npz, comptime)
@@ -294,10 +311,15 @@ def test_subgrid_growth_one_is_uniform(tmp_path: pathlib.Path) -> None:
     for bad in (
         {"nestingFactorSubgrid": 0},
         {"nestingFactorSubgrid": 1.5},
-        {"nestingFactorSubgrid": 2},
     ):
-        with pytest.raises(subprocess.CalledProcessError):  # non-square
+        with pytest.raises(subprocess.CalledProcessError):
             _generate(tmp_path, comptime, bad)
+    with pytest.raises(subprocess.CalledProcessError):  # no base subgrids
+        _generate(
+            tmp_path,
+            {**comptime, "nColSubgrid": 0},
+            {"nestingFactorSubgrid": 2},
+        )
 
 
 def test_subgrid_validators_reject() -> None:

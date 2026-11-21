@@ -18,15 +18,15 @@ def validate_rtc_p2pTarget_within_subgrid(
     rows, cols = np.indices((nRow, nCol))
     nRowSubgrid = np.broadcast_to(nRowSubgrid, (nRow, nCol)).astype(np.int64)
     nColSubgrid = np.broadcast_to(nColSubgrid, (nRow, nCol)).astype(np.int64)
-    # subgrids identified by their top-left PE
-    top = rows - rows % np.where(nRowSubgrid, nRowSubgrid, nRow)
-    left = cols - cols % np.where(nColSubgrid, nColSubgrid, nCol)
+    # subgrids identified by their top-left PE's row and col
+    subgridTopRow = rows - rows % np.where(nRowSubgrid, nRowSubgrid, nRow)
+    subgridLeftCol = cols - cols % np.where(nColSubgrid, nColSubgrid, nCol)
     has_target = data[:, :, 0] != 0xFFFFFFFF
     col, row = data[:, :, 0] >> 16, data[:, :, 0] & 0xFFFF
     col, row = col[has_target], row[has_target]
-    is_intersubgrid = (top[row, col] != top[has_target]) | (
-        left[row, col] != left[has_target]
-    )
+    is_intersubgrid = (
+        subgridTopRow[row, col] != subgridTopRow[has_target]
+    ) | (subgridLeftCol[row, col] != subgridLeftCol[has_target])
     num_bad = is_intersubgrid.sum()
     assert not num_bad, f"{num_bad} PEs have target in another subgrid"
 
