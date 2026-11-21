@@ -1,3 +1,4 @@
+const math = @import_module("<math>");
 const random = @import_module("<random>");
 
 const opscalar = @import_module("cerebraslib/opscalar.csl");
@@ -116,11 +117,8 @@ fn test_clamp() void {
     @assert(opscalar.clamp(@as(f32, 0.0), 0.0, 1.0) == 0.0);
     @assert(opscalar.clamp(@as(f32, 1.0), 0.0, 1.0) == 1.0);
     const nan = @bitcast(f32, @as(u32, 0x7FC00000));
-    // NaN stays NaN (checked by bits, as x != x on a NaN isn't reliable)
-    const c = @bitcast(u32, opscalar.clamp(nan, 0.0, 1.0));
-    @assert((c & 0x7FFFFFFF) > 0x7F800000);
-    const cn = @bitcast(u32, opscalar.clamp(-nan, 0.0, 1.0));
-    @assert((cn & 0x7FFFFFFF) > 0x7F800000);
+    @assert(math.isNaN(opscalar.clamp(nan, 0.0, 1.0)));
+    @assert(math.isNaN(opscalar.clamp(-nan, 0.0, 1.0)));
     @assert(opscalar.clamp(@as(u32, 7), 2, 5) == 5);
     @assert(opscalar.clamp(@as(u32, 1), 2, 5) == 2);
     @assert(opscalar.clamp(@as(u32, 3), 2, 5) == 3);
@@ -133,7 +131,7 @@ fn test_clamp_nanmin() void {
     @assert(opscalar.clamp_nanmin(@as(f32, 0.0), 0.0, 1.0) == 0.0);
     @assert(opscalar.clamp_nanmin(@as(f32, 1.0), 0.0, 1.0) == 1.0);
     const nan = @bitcast(f32, @as(u32, 0x7FC00000));
-    @assert(opscalar.clamp_nanmin(nan, 0.0, 1.0) == 0.0); // NaN to lower
+    @assert(opscalar.clamp_nanmin(nan, 0.0, 1.0) == 0.0);
     @assert(opscalar.clamp_nanmin(nan, -1.0, 1.0) == -1.0);
     @assert(opscalar.clamp_nanmin(-nan, 0.0, 1.0) == 0.0);
     @assert(opscalar.clamp_nanmin(@as(u32, 7), 2, 5) == 5);
@@ -148,7 +146,7 @@ fn test_clamp_nanmax() void {
     @assert(opscalar.clamp_nanmax(@as(f32, 0.0), 0.0, 1.0) == 0.0);
     @assert(opscalar.clamp_nanmax(@as(f32, 1.0), 0.0, 1.0) == 1.0);
     const nan = @bitcast(f32, @as(u32, 0x7FC00000));
-    @assert(opscalar.clamp_nanmax(nan, 0.0, 1.0) == 1.0); // NaN to upper
+    @assert(opscalar.clamp_nanmax(nan, 0.0, 1.0) == 1.0);
     @assert(opscalar.clamp_nanmax(nan, -1.0, 2.0) == 2.0);
     @assert(opscalar.clamp_nanmax(-nan, 0.0, 1.0) == 1.0);
     @assert(opscalar.clamp_nanmax(@as(u32, 7), 2, 5) == 5);
@@ -162,15 +160,13 @@ fn test_p() void {
     while (!opscalar.p(0.5)) {}
     while (opscalar.p(0.5)) {}
 
-    // roughly a quarter true
     random.set_global_prng_seed(1);
     var count: u32 = 0;
     for (@range(u16, 400)) |i| { count += @as(u32, opscalar.p(0.25)); }
     @assert(count > 60 and count < 140);
 }
 
-// probabilities and their thresholds, as globals so thresholds are computed
-// at runtime (runtime f32 to u32 conversion saturates at 2^31 - 1)
+// globals force runtime evaluation
 var _thresholdProbs = [8]f32{ 0.75, 0.5, 0.9999999403953552, 0.9996529221534729, 0.25, 2.3283064365386963e-10, 0.6000000238418579, 0.8999999761581421 };
 var _thresholdExpected = [8]u32{ 0xC0000000, 0x80000000, 0xFFFFFF00, 0xFFE94100, 0x40000000, 0x00000001, 0x99999A00, 0xE6666600 };
 
