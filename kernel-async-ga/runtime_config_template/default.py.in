@@ -29,17 +29,15 @@ if __name__ == "__main__":
         )
     }
 
-    # device symbols set from Python expressions of dims (symbol shape), e.g.,
-    # "setSymbolValue": {"rtc_foo": "lambda dims: np.zeros(dims, np.float32)"}
-    dims = shape
+    # device symbols set from Python lambdas of symbol shape, e.g.,
+    # "setSymbolValue": {"rtc_foo": "lambda shape: np.zeros(shape, np.int32)"}
     exprs = runtime_config.get("setSymbolValue", {})
     for symbol, expr in sorted(exprs.items()):
         if not symbol.startswith("rtc_") or symbol in symbols:
             raise ValueError(f"setSymbolValue {symbol=} invalid or double set")
-        values = eval(expr, {"np": np, "dims": dims})
-        values = np.asarray(values(dims) if callable(values) else values)
-        if values.shape != dims or values.dtype.itemsize != 4:
-            raise ValueError(f"setSymbolValue {symbol=} needs 32-bit {dims=}")
+        values = eval(expr, {"np": np, "shape": shape})(shape)
+        if values.shape != shape or values.dtype.itemsize != 4:
+            raise ValueError(f"setSymbolValue {symbol=} needs 32-bit {shape=}")
         symbols[symbol] = values.view(np.uint32)  # sent as raw word bits
 
     # per-PE subgrid sizes, 0 for no partitioning along that axis

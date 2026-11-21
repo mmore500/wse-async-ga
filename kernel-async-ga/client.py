@@ -834,7 +834,6 @@ else:
     log(f" - comptime config sets {nColSubgrid=}")
 rowSubgrid = rowSubgrid.astype(np.int64)
 colSubgrid = colSubgrid.astype(np.int64)
-# runtime config may set p2p send probability; mean over PEs if varied
 if "rtc_p2pSendProbability" in runtimeConfig:
     runtimeP2pSendProbabilityMean = float(
         runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
