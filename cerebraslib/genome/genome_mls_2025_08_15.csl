@@ -217,4 +217,5 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 
 fn notify_extinct() void {}
 
-fn is_empty(genome: genomePtr_t) bool { return _is_clear(genome); }  // cleared genome
+// cleared genome?
+fn is_empty(genome: genomePtr_t) bool { return _is_clear(genome); }
