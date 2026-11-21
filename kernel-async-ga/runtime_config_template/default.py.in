@@ -79,11 +79,13 @@ if __name__ == "__main__":
             f"nestingFactorSubgrid needs {nRowSubgrid=}, {nColSubgrid=} "
             "nonzero",
         )
+
     rows, cols = np.indices((nRow, nCol))
     # how many base (nRowSubgrid x nColSubgrid) subgrids from the corner
     baseSubgridsOut = np.maximum(
         rows // max(nRowSubgrid, 1), cols // max(nColSubgrid, 1)
     )
+
     # nesting level: how many of factor, factor^2, factor^3, ... are at most
     # baseSubgridsOut; subgrids there are factor^level times base size
     maxLevel = int(baseSubgridsOut.max()).bit_length()
@@ -91,12 +93,14 @@ if __name__ == "__main__":
     level = np.sum(baseSubgridsOut[..., np.newaxis] >= powers, axis=-1)
     rowSubgrid = nRowSubgrid * nestingFactor**level
     colSubgrid = nColSubgrid * nestingFactor**level
+
     if nestingFactor == 1:  # uniform subgrids, as without nesting
         assert (rowSubgrid == nRowSubgrid).all()
         assert (colSubgrid == nColSubgrid).all()
     else:
         symbols["rtc_nRowSubgrid"] = rowSubgrid[..., None].astype(np.uint32)
         symbols["rtc_nColSubgrid"] = colSubgrid[..., None].astype(np.uint32)
+
     if "p2pSendProbability" in runtime_config:  # float32, copied as raw bits
         symbols["rtc_p2pSendProbability"] = np.full(
             shape, runtime_config["p2pSendProbability"], np.float32
@@ -110,15 +114,18 @@ if __name__ == "__main__":
             "globalSeed", comptime_config["globalSeed"]
         )
         rng = np.random.default_rng(runtime_config.get("p2pSeed", globalSeed))
-        # each PE's subgrid, by PE id (tile) of the subgrid's top-left PE
-        subgridTopRow = rows - rows % np.where(rowSubgrid, rowSubgrid, nRow)
-        subgridLeftCol = cols - cols % np.where(colSubgrid, colSubgrid, nCol)
-        subgridCorners = (subgridTopRow * nCol + subgridLeftCol).ravel()
-        # PE ids grouped by subgrid, row-major within each subgrid
-        pesBySubgrid = np.argsort(subgridCorners, kind="stable")
-        subgridStarts = (
-            np.flatnonzero(np.diff(subgridCorners[pesBySubgrid])) + 1
-        )
+
+        # each PE's subgrid, identified by its top-left (origin) PE
+        heights = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+        widths = np.where(colSubgrid, colSubgrid, nCol)
+        subgridOriginRow = rows - rows % heights
+        subgridOriginCol = cols - cols % widths
+        subgridOrigin = (subgridOriginRow * nCol + subgridOriginCol).ravel()
+
+        # PE ids (row-major) grouped by subgrid
+        pesBySubgrid = np.argsort(subgridOrigin, kind="stable")
+        subgridStarts = np.flatnonzero(np.diff(subgridOrigin[pesBySubgrid])) + 1
+
         p2pTarget = np.full(nRow * nCol, -1)  # PE id, -1 for none
         for subgridPes in np.split(pesBySubgrid, subgridStarts):
             shuffledPes = rng.permutation(subgridPes)

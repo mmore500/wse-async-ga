@@ -159,22 +159,28 @@ def with_subgrid_columns(
     rows, cols = np.indices((nRow, nCol))
     heights = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
     widths = np.where(colSubgrid, colSubgrid, nCol)
-    subgridY, subgridX = rows - rows % heights, cols - cols % widths
+    subgridOriginRow = rows - rows % heights
+    subgridOriginCol = cols - cols % widths
     rowUnit, colUnit = int(heights.min()), int(widths.min())  # smallest
-    _, subgrid = np.unique(subgridY * nCol + subgridX, return_inverse=True)
+    subgridOrigin = subgridOriginRow * nCol + subgridOriginCol
+    _, subgrid = np.unique(subgridOrigin, return_inverse=True)
     log(f" - {rowUnit=} {colUnit=} subgrids={subgrid.max() + 1}")
     subgrids = pl.DataFrame(
         {
             "row": pl.Series(rows.ravel(), dtype=pl.UInt16),
             "col": pl.Series(cols.ravel(), dtype=pl.UInt16),
             "subgrid": pl.Series(subgrid.ravel(), dtype=pl.UInt32),
-            "subgrid_origin_row": pl.Series(subgridY.ravel(), dtype=pl.UInt16),
-            "subgrid_origin_col": pl.Series(subgridX.ravel(), dtype=pl.UInt16),
+            "subgrid_origin_row": pl.Series(
+                subgridOriginRow.ravel(), dtype=pl.UInt16
+            ),
+            "subgrid_origin_col": pl.Series(
+                subgridOriginCol.ravel(), dtype=pl.UInt16
+            ),
             "subgrid_index_row": pl.Series(
-                (subgridY // rowUnit).ravel(), dtype=pl.UInt16
+                (subgridOriginRow // rowUnit).ravel(), dtype=pl.UInt16
             ),
             "subgrid_index_col": pl.Series(
-                (subgridX // colUnit).ravel(), dtype=pl.UInt16
+                (subgridOriginCol // colUnit).ravel(), dtype=pl.UInt16
             ),
             "subgrid_height": pl.Series(heights.ravel(), dtype=pl.UInt16),
             "subgrid_width": pl.Series(widths.ravel(), dtype=pl.UInt16),
