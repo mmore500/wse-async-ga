@@ -162,8 +162,8 @@ def with_subgrid_columns(
     subgridOriginRow = rows - rows % heights
     subgridOriginCol = cols - cols % widths
     rowUnit, colUnit = int(heights.min()), int(widths.min())  # smallest
-    subgridOrigin = subgridOriginRow * nCol + subgridOriginCol
-    _, subgrid = np.unique(subgridOrigin, return_inverse=True)
+    subgridOriginPe = subgridOriginRow * nCol + subgridOriginCol
+    _, subgrid = np.unique(subgridOriginPe, return_inverse=True)
     log(f" - {rowUnit=} {colUnit=} subgrids={subgrid.max() + 1}")
     subgrids = pl.DataFrame(
         {

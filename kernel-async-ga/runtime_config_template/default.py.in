@@ -120,11 +120,12 @@ if __name__ == "__main__":
         widths = np.where(colSubgrid, colSubgrid, nCol)
         subgridOriginRow = rows - rows % heights
         subgridOriginCol = cols - cols % widths
-        subgridOrigin = (subgridOriginRow * nCol + subgridOriginCol).ravel()
+        subgridOriginPe = (subgridOriginRow * nCol + subgridOriginCol).ravel()
 
-        # PE ids (row-major) grouped by subgrid
-        pesBySubgrid = np.argsort(subgridOrigin, kind="stable")
-        subgridStarts = np.flatnonzero(np.diff(subgridOrigin[pesBySubgrid])) + 1
+        # PE ids (row-major) grouped by subgrid, split by subgrid size
+        pesBySubgrid = np.argsort(subgridOriginPe, kind="stable")
+        _, subgridSizes = np.unique(subgridOriginPe, return_counts=True)
+        subgridStarts = np.cumsum(subgridSizes)[:-1]
 
         p2pTarget = np.full(nRow * nCol, -1)  # PE id, -1 for none
         for subgridPes in np.split(pesBySubgrid, subgridStarts):
