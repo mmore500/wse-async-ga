@@ -475,8 +475,7 @@ fn notify_extinct() void {}
 // uninfected host?
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
 
-/// Export names of symbols the host sets (e.g., runtime config), from a
-/// layout block.
+// hook into top-level layout block
 fn export_symbol_names() void {
   @export_name("rtc_evoepi_mutationRate", [*]f32, true);
 }
