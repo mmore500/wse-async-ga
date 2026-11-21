@@ -624,7 +624,6 @@ fn tryDispatchSend_P(thread: u8) bool {
   if (busyThreads[thread] == 1) { return false; }
   busyThreads[thread] = 1;  // mark thread as busy
   sendThread_P = thread;
-  population.emigrate_genomes(sendGenomeDsd_P, 1);
   switch (thread) {  // thread 3 is reserved for p2p recv
     0 => doDispatchSend_P(0),
     1 => doDispatchSend_P(1),
@@ -799,9 +798,12 @@ task cycleTask() void {
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
   // p2p send goes first, so neighbor sends can't starve it of threads
+  // sample one genome into the send buffer, and send unless it is empty
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
-    if (dispatchSend_P()) { sendFlag_P = 0; }
+    population.emigrate_genomes(sendGenomeDsd_P, 1);
+    const isEmpty = genome_.is_empty(@ptrcast([*]u32, &sendBuf_P[1]));
+    if (!isEmpty and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
