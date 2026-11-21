@@ -144,15 +144,41 @@ def assemble_genome_bookend_data(
     return assemble_binary_data(data, nWav=nWav + 2, verbose=verbose)
 
 
-def with_subgrid_columns(df: "pl.LazyFrame") -> "pl.LazyFrame":
-    """Add each PE's subgrid columns (see subgridFrame), joined on `row` and
-    `col` columns."""
+def with_subgrid_columns(
+    df: "pl.LazyFrame", rowSubgrid: "np.ndarray", colSubgrid: "np.ndarray"
+) -> "pl.LazyFrame":
+    """Add subgrid columns, joined on `row` and `col` columns, given per-PE
+    subgrid sizes (0 for no partitioning along that axis).
+
+    Adds `subgrid_row` and `subgrid_col` (subgrid's top-left PE, in units of
+    smallest subgrid size), `subgrid` (unique row-major index), and
+    `subgrid_nrow` and `subgrid_ncol` (sizes).
+    """
+    nRow, nCol = rowSubgrid.shape
+    rows, cols = np.indices((nRow, nCol))
+    rowUnit = int(rowSubgrid[rowSubgrid > 0].min(initial=nRow))
+    colUnit = int(colSubgrid[colSubgrid > 0].min(initial=nCol))
+    rowSize = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+    colSize = np.where(colSubgrid, colSubgrid, nCol)
+    subgridRow = (rows - rows % rowSize) // rowUnit
+    subgridCol = (cols - cols % colSize) // colUnit
+    subgrids = pl.DataFrame(
+        {
+            "row": pl.Series(rows.ravel(), dtype=pl.UInt16),
+            "col": pl.Series(cols.ravel(), dtype=pl.UInt16),
+            "subgrid_row": pl.Series(subgridRow.ravel(), dtype=pl.UInt16),
+            "subgrid_col": pl.Series(subgridCol.ravel(), dtype=pl.UInt16),
+            "subgrid": pl.Series(
+                (subgridRow * -(-nCol // colUnit) + subgridCol).ravel(),
+                dtype=pl.UInt32,
+            ),
+            "subgrid_nrow": pl.Series(rowSubgrid.ravel(), dtype=pl.UInt16),
+            "subgrid_ncol": pl.Series(colSubgrid.ravel(), dtype=pl.UInt16),
+        },
+    )
     # join, rather than gather by tile id, so that streaming sinks work
     return df.join(
-        subgridFrame.lazy(),
-        on=["row", "col"],
-        how="left",
-        maintain_order="left",
+        subgrids.lazy(), on=["row", "col"], how="left", maintain_order="left"
     )
 
 
@@ -277,7 +303,7 @@ def process_fossils(nWav: int) -> None:
         ).lazy()
         del layer, layer_T, position
         gc.collect()
-        df_indices = with_subgrid_columns(df_indices)
+        df_indices = with_subgrid_columns(df_indices, rowSubgrid, colSubgrid)
 
         log(" - saving indices...")  # separate for sink compat
         fi_len = df_indices.select(pl.len()).collect().item()
@@ -798,31 +824,6 @@ if "rtc_nColSubgrid" in runtimeConfig:
     colSubgrid[:] = runtimeConfig["rtc_nColSubgrid"].reshape(nRow, nCol)
     nColSubgrid = int(colSubgrid.min())  # smallest, if they vary
     log(f" - runtime config sets {np.unique(colSubgrid)=}")
-_rows, _cols = np.indices((nRow, nCol))
-_rowUnit = int(rowSubgrid[rowSubgrid > 0].min(initial=nRow))
-_colUnit = int(colSubgrid[colSubgrid > 0].min(initial=nCol))
-_subgridRow = _rows - _rows % np.where(rowSubgrid, rowSubgrid, nRow)
-_subgridRow //= _rowUnit  # top-left PE, in units of smallest subgrid
-_subgridCol = _cols - _cols % np.where(colSubgrid, colSubgrid, nCol)
-_subgridCol //= _colUnit
-# per-PE subgrid columns, joined onto outputs by with_subgrid_columns:
-# subgrid_row and subgrid_col, top-left PE in units of smallest subgrid size;
-# subgrid, unique row-major index; subgrid_nrow and subgrid_ncol, sizes
-subgridFrame = pl.DataFrame(
-    {
-        "row": pl.Series(_rows.ravel(), dtype=pl.UInt16),
-        "col": pl.Series(_cols.ravel(), dtype=pl.UInt16),
-        "subgrid_row": pl.Series(_subgridRow.ravel(), dtype=pl.UInt16),
-        "subgrid_col": pl.Series(_subgridCol.ravel(), dtype=pl.UInt16),
-        "subgrid": pl.Series(
-            (_subgridRow * -(-nCol // _colUnit) + _subgridCol).ravel(),
-            dtype=pl.UInt32,
-        ),
-        "subgrid_nrow": pl.Series(rowSubgrid.ravel(), dtype=pl.UInt16),
-        "subgrid_ncol": pl.Series(colSubgrid.ravel(), dtype=pl.UInt16),
-    },
-)
-del _rows, _cols, _rowUnit, _colUnit, _subgridRow, _subgridCol
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:
     warnings.warn("p2p is enabled, but runtime config has no rtc_p2pTarget")
 
@@ -1481,7 +1482,7 @@ df = pl.DataFrame({
     "row": pl.Series(whereami_y_data.ravel(), dtype=pl.UInt16),
     "col": pl.Series(whereami_x_data.ravel(), dtype=pl.UInt16),
 })
-df = with_subgrid_columns(df.lazy()).collect()
+df = with_subgrid_columns(df.lazy(), rowSubgrid, colSubgrid).collect()
 log(f" - data_raw: {df['data_raw'].head(3)}")
 assert (df["data_raw"].bin.size(unit="b") == nWav * 4).all()
 df = df.with_columns(
@@ -1853,7 +1854,7 @@ if p2pEnabled:
             "p2p_imm_count": pl.Series(immP.ravel(), dtype=pl.UInt32),
         }
     )
-    df = with_subgrid_columns(df.lazy()).collect()
+    df = with_subgrid_columns(df.lazy(), rowSubgrid, colSubgrid).collect()
     df = df.with_columns(
         *(
             pl.lit(value, dtype=dtype).alias(key)
