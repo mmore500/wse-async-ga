@@ -325,7 +325,7 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         "globalSeed": 0,
     }
     runtime_config = {
-        "uniformConstant": {
+        "fillSymbolValue": {
             "rtc_foo": {"value": 2.0**-20, "type": "f32"},
             "rtc_bar": {"value": -3, "type": "i32"},
             "rtc_baz": {"value": 7, "type": "u32"},
@@ -343,12 +343,12 @@ def test_named_runtime_configs(tmp_path: pathlib.Path) -> None:
         assert (data[symbol].view(dtype) == value).all()
 
     for bad in (
-        {"uniformConstant": {"rtc_foo": {"value": 1.0}}},  # no type
-        {"uniformConstant": {"rtc_foo": {"value": 1.0, "type": "f64"}}},
-        {"uniformConstant": {"foo": {"value": 1.0, "type": "f32"}}},  # no rtc_
+        {"fillSymbolValue": {"rtc_foo": {"value": 1.0}}},  # no type
+        {"fillSymbolValue": {"rtc_foo": {"value": 1.0, "type": "f64"}}},
+        {"fillSymbolValue": {"foo": {"value": 1.0, "type": "f32"}}},  # no rtc_
         {  # set twice
             "nRowSubgrid": 2,
-            "uniformConstant": {"rtc_nRowSubgrid": {"value": 2, "type": "u32"}},
+            "fillSymbolValue": {"rtc_nRowSubgrid": {"value": 2, "type": "u32"}},
         },
     ):
         with pytest.raises(subprocess.CalledProcessError):

@@ -30,13 +30,13 @@ if __name__ == "__main__":
     }
 
     # device symbols set to the same value on every PE, as raw 32-bit bits,
-    # e.g., "uniformConstant": {"rtc_foo": {"value": 0.5, "type": "f32"}}
+    # e.g., "fillSymbolValue": {"rtc_foo": {"value": 0.5, "type": "f32"}}
     dtypes = {"f32": np.float32, "i32": np.int32, "u32": np.uint32}
-    for symbol, spec in sorted(runtime_config.get("uniformConstant", {}).items()):
+    for symbol, spec in sorted(runtime_config.get("fillSymbolValue", {}).items()):
         if not symbol.startswith("rtc_") or symbol in symbols:
-            raise ValueError(f"uniformConstant {symbol=} invalid or set twice")
+            raise ValueError(f"fillSymbolValue {symbol=} invalid or double set")
         if spec.keys() != {"value", "type"} or spec["type"] not in dtypes:
-            raise ValueError(f"uniformConstant {symbol=} needs value and type")
+            raise ValueError(f"fillSymbolValue {symbol=} needs value and type")
         symbols[symbol] = np.full(
             shape, spec["value"], dtypes[spec["type"]]
         ).view(np.uint32)

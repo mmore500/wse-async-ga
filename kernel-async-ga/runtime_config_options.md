@@ -54,7 +54,7 @@ If no runtime config value is specified, symbols keep compile time default.
 - `p2pSeed`
   - seeds random choice of targets
   - if not specified, `globalSeed`
-- `uniformConstant`
+- `fillSymbolValue`
   - device symbols set to the same value on every PE, as `type` `f32`,
     `i32`, or `u32`, e.g., `{"rtc_foo": {"value": 0.5, "type": "f32"}}`
-  - each symbol must be listed in `cerebraslib/rtc_named_exports.csl`
+  - each symbol must be exported (e.g., via genome `export_symbol_names`)

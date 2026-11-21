@@ -823,14 +823,11 @@ subgridFrame = pl.DataFrame(
     },
 )
 del _rows, _cols, _rowUnit, _colUnit, _subgridRow, _subgridCol
-# runtime config may set p2p send probability, e.g., uniformly; NaN if varied
+# runtime config may set p2p send probability; mean over PEs if varied
 runtimeP2pSendProbability = p2pSendProbability
 if "rtc_p2pSendProbability" in runtimeConfig:
-    _values = np.unique(
-        runtimeConfig["rtc_p2pSendProbability"].view(np.float32),
-    )
     runtimeP2pSendProbability = float(
-        _values.item() if len(_values) == 1 else np.nan,
+        runtimeConfig["rtc_p2pSendProbability"].view(np.float32).mean(),
     )
     log(f" - runtime config sets {runtimeP2pSendProbability=}")
 if p2pEnabled and "rtc_p2pTarget" not in runtimeConfig:

@@ -263,7 +263,7 @@ const padTaskID_P: control_task_id = @get_control_task_id(38);
 ///////////////////////////////////////////////////////////////////////////////
 // how many genomes to batch sending together?
 const sendNumGenomes: u16 = comptime compconf.get_value_or(
-  "ASYNC_GA_SEND_NUM_GENOMES", @as(u16, 1)
+  "ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES", @as(u16, 1)
 );
 comptime { @comptime_assert(sendNumGenomes >= 1); }
 const sendBufSize: u16 = sendNumGenomes * genome_.gSize;
@@ -469,7 +469,7 @@ fn dispatchSend_W() bool {
 ///////////////////////////////////////////////////////////////////////////////
 // how many genomes to batch together?
 const recvNumGenomes: u16 = comptime compconf.get_value_or(
-  "ASYNC_GA_RECV_NUM_GENOMES", @as(u16, 4)
+  "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );
 comptime { @comptime_assert(recvNumGenomes >= 1); }
 const recvBufSize: u16 = recvNumGenomes * genome_.gSize;
