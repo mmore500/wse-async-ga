@@ -29,6 +29,22 @@ if __name__ == "__main__":
             & runtime_config.keys()
         )
     }
+
+    # device symbols set from Python lambdas of symbol shape, e.g.,
+    # "setSymbolValues": {"rtc_foo": "lambda shape: np.zeros(shape, np.int32)"}
+    exprs = runtime_config.get("setSymbolValues", {})
+    for symbol, expr in sorted(exprs.items()):
+        if not symbol.startswith("rtc_") or symbol in symbols:
+            raise ValueError(
+                f"setSymbolValues {symbol=} invalid or double set",
+            )
+        values = eval(expr, {"np": np, "shape": shape})(shape)
+        if values.shape != shape or values.dtype.itemsize != 4:
+            raise ValueError(
+                f"setSymbolValues {symbol=} needs 32-bit {shape=}",
+            )
+        symbols[symbol] = values.view(np.uint32)  # sent as raw word bits
+
     if "p2pSendProbability" in runtime_config:  # float32, copied as raw bits
         symbols["rtc_p2pSendProbability"] = np.full(
             shape, runtime_config["p2pSendProbability"], np.float32
