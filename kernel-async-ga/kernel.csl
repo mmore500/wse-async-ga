@@ -143,7 +143,10 @@ var ptr_traitCycles: [*]u32 = &traitCycles;
 var traitValues = @zeros([nTraitVals]u32);
 var ptr_traitValues: [*]u32 = &traitValues;
 
-var genome = @zeros([genome_.gSize]u32);  // samples 0th population element
+comptime {  // host copies at most the population genome
+  @comptime_assert(genome_.gWordsD2h <= genome_.gWordsPop);
+}
+var genome = @zeros([genome_.gWordsD2h]u32);  // samples 0th pop element
 var ptr_genome : [*]u32 = &genome;  // (which is convenient)
 
 var fitness = @zeros([1]f32);  // samples 0th population element (convenient)
@@ -266,14 +269,14 @@ const sendNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES", @as(u16, 1)
 );
 comptime { @comptime_assert(sendNumGenomes >= 1); }
-const sendBufSize: u16 = sendNumGenomes * genome_.gSize;
+const sendBufWords: u16 = (sendNumGenomes * genome_.gBitsMsg + 31) / 32;
 
 // send NORTH =================================================================
 var sendFlag_N: u8; // need refill? initialized at startup
 var sendThread_N: u8;  // which thread is sending?
-var sendBuf_N = @zeros([sendBufSize]u32);  // hold genomes being sent
+var sendBuf_N = @zeros([sendBufWords]u32);  // hold genomes being sent
 const sendBufDsd_N = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{sendBufSize} -> sendBuf_N[i], });
+  .tensor_access = |i|{sendBufWords} -> sendBuf_N[i], });
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_N() void {
@@ -285,7 +288,7 @@ fn doDispatchSend_N(comptime thread: u8) void {
   population.emigrate_genomes(sendBufDsd_N, sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_N;
   const sendDsd_N = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_N,
-    .extent = sendBufSize, .output_queue = oq, });
+    .extent = sendBufWords, .output_queue = oq, });
   @fmovs(sendDsd_N, sendBufDsd_N,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = sendFinalizeTaskID_N, }
     else .{ .async = true, .activate = sendFinalizeTaskID_N,
@@ -319,9 +322,9 @@ fn dispatchSend_N() bool {
 // send SOUTH =================================================================
 var sendFlag_S: u8; // need refill? initialized at startup
 var sendThread_S: u8;  // which thread is sending?
-var sendBuf_S = @zeros([sendBufSize]u32);  // hold genomes being sent
+var sendBuf_S = @zeros([sendBufWords]u32);  // hold genomes being sent
 const sendBufDsd_S = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{sendBufSize} -> sendBuf_S[i], });
+  .tensor_access = |i|{sendBufWords} -> sendBuf_S[i], });
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_S() void {
@@ -333,7 +336,7 @@ fn doDispatchSend_S(comptime thread: u8) void {
   population.emigrate_genomes(sendBufDsd_S, sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_S;
   const sendDsd_S = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_S,
-    .extent = sendBufSize, .output_queue = oq, });
+    .extent = sendBufWords, .output_queue = oq, });
   @fmovs(sendDsd_S, sendBufDsd_S,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = sendFinalizeTaskID_S, }
     else .{ .async = true, .activate = sendFinalizeTaskID_S,
@@ -367,9 +370,9 @@ fn dispatchSend_S() bool {
 // send EAST =================================================================
 var sendFlag_E: u8; // need refill? initialized at startup
 var sendThread_E: u8;  // which thread is sending?
-var sendBuf_E = @zeros([sendBufSize]u32);  // hold genomes being sent
+var sendBuf_E = @zeros([sendBufWords]u32);  // hold genomes being sent
 const sendBufDsd_E = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{sendBufSize} -> sendBuf_E[i], });
+  .tensor_access = |i|{sendBufWords} -> sendBuf_E[i], });
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_E() void {
@@ -381,7 +384,7 @@ fn doDispatchSend_E(comptime thread: u8) void {
   population.emigrate_genomes(sendBufDsd_E, sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_E;
   const sendDsd_E = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_E,
-    .extent = sendBufSize, .output_queue = oq, });
+    .extent = sendBufWords, .output_queue = oq, });
   @fmovs(sendDsd_E, sendBufDsd_E,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = sendFinalizeTaskID_E, }
     else .{ .async = true, .activate = sendFinalizeTaskID_E,
@@ -415,9 +418,9 @@ fn dispatchSend_E() bool {
 // send WEST =================================================================
 var sendFlag_W: u8; // need refill? initialized at startup
 var sendThread_W: u8;  // which thread is sending?
-var sendBuf_W = @zeros([sendBufSize]u32);  // hold genomes being sent
+var sendBuf_W = @zeros([sendBufWords]u32);  // hold genomes being sent
 const sendBufDsd_W = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{sendBufSize} -> sendBuf_W[i], });
+  .tensor_access = |i|{sendBufWords} -> sendBuf_W[i], });
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_W() void {
@@ -429,7 +432,7 @@ fn doDispatchSend_W(comptime thread: u8) void {
   population.emigrate_genomes(sendBufDsd_W, sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_W;
   const sendDsd_W = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_W,
-    .extent = sendBufSize, .output_queue = oq, });
+    .extent = sendBufWords, .output_queue = oq, });
   @fmovs(sendDsd_W, sendBufDsd_W,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = sendFinalizeTaskID_W, }
     else .{ .async = true, .activate = sendFinalizeTaskID_W,
@@ -472,13 +475,13 @@ const recvNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );
 comptime { @comptime_assert(recvNumGenomes >= 1); }
-const recvBufSize: u16 = recvNumGenomes * genome_.gSize;
+const recvBufWords: u16 = (recvNumGenomes * genome_.gBitsMsg + 31) / 32;
 
 // recv NORTH =================================================================
 var recvFlag_N: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_N = @zeros([recvBufSize]u32);  // hold genomes being received
+var recvBuf_N = @zeros([recvBufWords]u32);  // hold genomes being received
 const recvBufDsd_N = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{recvBufSize} -> recvBuf_N[i], });
+  .tensor_access = |i|{recvBufWords} -> recvBuf_N[i], });
 
 // callback when recv is complete, set flag to
 // 1) trigger immigration from recv buffer into pop and 2) request next recv
@@ -488,7 +491,7 @@ task recvFinalizeTask_N() void { recvFlag_N = 1; recvCounter_N[0] += 1;
 
 fn dispatchRecv_N() void {  // open async microthread to recv ing recvBuf
   const recvDsd_N = @get_dsd(fabin_dsd, .{ .fabric_color = recvColor_N,
-    .extent = recvBufSize, .input_queue = q_in_N, });
+    .extent = recvBufWords, .input_queue = q_in_N, });
   @fmovs(recvBufDsd_N, recvDsd_N,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = recvFinalizeTaskID_N }
     else .{ .async = true, .activate = recvFinalizeTaskID_N,
@@ -500,9 +503,9 @@ fn dispatchRecv_N() void {  // open async microthread to recv ing recvBuf
 
 // recv SOUTH =================================================================
 var recvFlag_S: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_S = @zeros([recvBufSize]u32);  // hold genomes being received
+var recvBuf_S = @zeros([recvBufWords]u32);  // hold genomes being received
 const recvBufDsd_S = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{recvBufSize} -> recvBuf_S[i],
+  .tensor_access = |i|{recvBufWords} -> recvBuf_S[i],
 });
 
 // callback when recv is complete, set flag to
@@ -514,7 +517,7 @@ task recvFinalizeTask_S() void { recvFlag_S = 1; recvCounter_S[0] += 1;
 // open an async microthread to recv from neighbor into recvBuf
 fn dispatchRecv_S() void {  // open async microthread to recv ing recvBuf
   const recvDsd_S = @get_dsd(fabin_dsd, .{ .fabric_color = recvColor_S,
-    .extent = recvBufSize, .input_queue = q_in_S, });
+    .extent = recvBufWords, .input_queue = q_in_S, });
   @fmovs(recvBufDsd_S, recvDsd_S,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = recvFinalizeTaskID_S }
     else .{ .async = true, .activate = recvFinalizeTaskID_S,
@@ -526,9 +529,9 @@ fn dispatchRecv_S() void {  // open async microthread to recv ing recvBuf
 
 // recv EAST ==================================================================
 var recvFlag_E: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_E = @zeros([recvBufSize]u32);  // hold genomes being received
+var recvBuf_E = @zeros([recvBufWords]u32);  // hold genomes being received
 const recvBufDsd_E = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{recvBufSize} -> recvBuf_E[i], });
+  .tensor_access = |i|{recvBufWords} -> recvBuf_E[i], });
 
 // callback when recv is complete, set flag to
 // 1) trigger immigration from recv buffer into pop and 2) request next recv
@@ -538,7 +541,7 @@ task recvFinalizeTask_E() void { recvFlag_E = 1; recvCounter_E[0] += 1;
 
 fn dispatchRecv_E() void {  // open an async microthread to recv into recvBuf
   const recvDsd_E = @get_dsd(fabin_dsd, .{  .fabric_color = recvColor_E,
-    .extent = recvBufSize, .input_queue = q_in_E, });
+    .extent = recvBufWords, .input_queue = q_in_E, });
   @fmovs(recvBufDsd_E, recvDsd_E,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = recvFinalizeTaskID_E }
     else .{ .async = true, .activate = recvFinalizeTaskID_E,
@@ -550,9 +553,9 @@ fn dispatchRecv_E() void {  // open an async microthread to recv into recvBuf
 
 // recv WEST ==================================================================
 var recvFlag_W: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_W = @zeros([recvBufSize]u32);  // hold genomes being received
+var recvBuf_W = @zeros([recvBufWords]u32);  // hold genomes being received
 const recvBufDsd_W = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{recvBufSize} -> recvBuf_W[i], });
+  .tensor_access = |i|{recvBufWords} -> recvBuf_W[i], });
 
 // callback when recv is complete, set flag to
 // 1) trigger immigration from recv buffer into pop and 2) request next recv
@@ -562,7 +565,7 @@ task recvFinalizeTask_W() void { recvFlag_W = 1; recvCounter_W[0] += 1;
 
 fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
   const recvDsd_W = @get_dsd(fabin_dsd, .{ .fabric_color = recvColor_W,
-    .extent = recvBufSize, .input_queue = q_in_W, });
+    .extent = recvBufWords, .input_queue = q_in_W, });
   @fmovs(recvBufDsd_W, recvDsd_W,  // callback on complete
     if (@is_arch("wse2")) .{ .async = true, .activate = recvFinalizeTaskID_W }
     else .{ .async = true, .activate = recvFinalizeTaskID_W,
@@ -580,7 +583,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // each message is a header wavelet, one genome, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
-const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 0;
+const p2pMsgSize: u16 = if (p2pEnabled) 2 + (genome_.gBitsMsg + 31) / 32 else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
 const p2pPadWavelet: u32 = @as(u32, @get_int(padTaskID_P)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
@@ -852,7 +855,7 @@ task cycleTask() void {
 
     // sample 0th element of population for telemetry
     const genome_ptr = population._get_ith_genome(0);
-    for(@range(u16, genome_.gSize)) |i| {
+    for(@range(u16, genome_.gWordsD2h)) |i| {
       genome[i] = genome_ptr[i];
     }
 

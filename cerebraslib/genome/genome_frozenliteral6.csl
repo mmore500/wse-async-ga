@@ -30,8 +30,11 @@
 //! }
 
 // module config specs ========================================================
-const gSize: u16 = 6;
-const genome_t = [gSize]u32;
+const _gSize: u16 = 6;
+const gWordsPop: u16 = _gSize;  // size used in local population
+const gWordsD2h: u16 = _gSize;  // size copied to host
+const gBitsMsg: u16 = 32 * _gSize;  // size migrated between PEs
+const genome_t = [_gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 1;
 const hasImmClobber: bool = false;
@@ -39,7 +42,7 @@ const hasNotifyExtinct: bool = false;
 
 // memory layout struct =======================================================
 const fields_t = extern struct {
-    literal: [gSize]u32, // byte 0
+    literal: [_gSize]u32, // byte 0
 };
 
 /// View genome words through memory layout struct.
@@ -90,7 +93,7 @@ fn initialize_one(genome: genomePtr_t) void {
 fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool { return false; }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
-    for (@range(u16, gSize)) |i| { resident[i] = spawn[i]; }
+    for (@range(u16, _gSize)) |i| { resident[i] = spawn[i]; }
 }
 
 fn notify_extinct() void {}

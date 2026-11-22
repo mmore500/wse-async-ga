@@ -102,7 +102,7 @@ fn test_elapse_inheritance_of() void {
 
     // clear genomes are unaffected
     genome_mls.elapse_inheritance_of(genome_ptr);
-    for (@range(u16, genome_mls.gSize)) |i| { @assert(genome[i] == 0); }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { @assert(genome[i] == 0); }
 
     genome_mls.initialize_one(genome_ptr);
     @assert(genome_mls._get_counter(genome_ptr) == 128);
@@ -116,15 +116,15 @@ fn test_elapse_inheritance_of() void {
     // mutation with p = 1 flips exactly the 8 neutral flag sites, and not MLS
     // sites, counter, or bitfield
     var snapshot = @zeros(genome_mls.genome_t);
-    for (@range(u16, genome_mls.gSize)) |i| { snapshot[i] = genome[i]; }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { snapshot[i] = genome[i]; }
     genome_mls._apply_mutation(genome_ptr, 1.0);
     @assert((genome[0] ^ snapshot[0]) == genome_mls.neutralMask);
-    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
+    for (@range(u16, 1, genome_mls.gWordsPop, 1)) |i| {
         @assert(genome[i] == snapshot[i]);
     }
 
     // within-host selection does not touch neutral sites, counter, or bitfield
-    for (@range(u16, genome_mls.gSize)) |i| { snapshot[i] = genome[i]; }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { snapshot[i] = genome[i]; }
     for (@range(u16, 64)) |_| {
         genome_mls._apply_withinhost_selection(genome_ptr);
     }
@@ -132,7 +132,7 @@ fn test_elapse_inheritance_of() void {
         (genome[0] & ~genome_mls.mlsMask)
         == (snapshot[0] & ~genome_mls.mlsMask)
     );
-    for (@range(u16, 1, genome_mls.gSize, 1)) |i| {
+    for (@range(u16, 1, genome_mls.gWordsPop, 1)) |i| {
         @assert(genome[i] == snapshot[i]);
     }
 
@@ -255,7 +255,7 @@ fn test_clobber_immigrant() void {
         genome_mls.initialize_one(imm_ptr);
         imm[0] |= (@as(u32, i) << genome_mls.mlsShift) & genome_mls.mlsMask;
         @assert(genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
-        for (@range(u16, genome_mls.gSize)) |w| {
+        for (@range(u16, genome_mls.gWordsPop)) |w| {
             @assert(imm[w] == resident[w]);
         }
     }
@@ -263,7 +263,7 @@ fn test_clobber_immigrant() void {
     // empty immigrant is not clobbered, but does not clear resident
     genome_mls._clear(imm_ptr);
     @assert(!genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
-    for (@range(u16, genome_mls.gSize)) |w| { @assert(imm[w] == resident[w]); }
+    for (@range(u16, genome_mls.gWordsPop)) |w| { @assert(imm[w] == resident[w]); }
     genome_mls._clear(imm_ptr);
     @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
     @assert(genome_mls._is_clear(imm_ptr));
@@ -285,7 +285,7 @@ fn test_clobber_immigrant() void {
     for (@range(u16, genome_mls.nMlsSites)) |site| {
         var nClobber: u16 = 0;
         for (@range(u16, nTrials)) |_| {
-            for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
+            for (@range(u16, genome_mls.gWordsPop)) |w| { imm[w] = template[w]; }
             imm[0] |= @as(u32, 1) << (genome_mls.mlsShift + @as(u32, site));
             const clobbered = genome_mls.clobber_immigrant(
                 empty_resident_ptr, imm_ptr
@@ -322,7 +322,7 @@ fn test_trample_resident() void {
     for (@range(u16, 32)) |_| {
         genome_mls._clear(resident_ptr);
         genome_mls.trample_resident(resident_ptr, spawn_ptr);
-        for (@range(u16, genome_mls.gSize)) |i| {
+        for (@range(u16, genome_mls.gWordsPop)) |i| {
             @assert(resident[i] == spawn[i]);
         }
     }
@@ -336,7 +336,7 @@ fn test_trample_resident() void {
     }
     spawn[0] &= ~@as(u32, 0x00010000);
     var spawnSnapshot = @zeros(genome_mls.genome_t);
-    for (@range(u16, genome_mls.gSize)) |i| { spawnSnapshot[i] = spawn[i]; }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { spawnSnapshot[i] = spawn[i]; }
 
     // infected resident is never overwritten, but is cleared with expected
     // probability
@@ -347,13 +347,13 @@ fn test_trample_resident() void {
     const nTrials: u16 = 200;
     var nClear: u16 = 0;
     for (@range(u16, nTrials)) |_| {
-        for (@range(u16, genome_mls.gSize)) |w| { resident[w] = template[w]; }
+        for (@range(u16, genome_mls.gWordsPop)) |w| { resident[w] = template[w]; }
         genome_mls.trample_resident(resident_ptr, spawn_ptr);
         if (genome_mls._is_clear(resident_ptr)) {
-            for (@range(u16, genome_mls.gSize)) |w| { @assert(resident[w] == 0); }
+            for (@range(u16, genome_mls.gWordsPop)) |w| { @assert(resident[w] == 0); }
             nClear += 1;
         } else {
-            for (@range(u16, genome_mls.gSize)) |w| {
+            for (@range(u16, genome_mls.gWordsPop)) |w| {
                 @assert(resident[w] == template[w]);
             }
         }
@@ -363,7 +363,7 @@ fn test_trample_resident() void {
     @assert(math.abs(@as(f32, nClear) - expected) < tol);
 
     // spawn is never modified
-    for (@range(u16, genome_mls.gSize)) |i| {
+    for (@range(u16, genome_mls.gWordsPop)) |i| {
         @assert(spawn[i] == spawnSnapshot[i]);
     }
 }
@@ -371,7 +371,7 @@ fn test_trample_resident() void {
 fn test_is_empty() void {
     var g = @zeros(genome_mls.genome_t);
     @assert(genome_mls.is_empty(&g));  // zeroed genome is cleared
-    for (@range(u16, genome_mls.gSize)) |i| { g[i] = 0xFFFFFFFF; }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { g[i] = 0xFFFFFFFF; }
     @assert(!genome_mls.is_empty(&g));
 }
 

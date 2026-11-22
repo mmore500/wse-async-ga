@@ -223,8 +223,11 @@ const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
 );
 
 // module config specs ========================================================
-const gSize: u16 = 1;
-const genome_t = [gSize]u32;
+const _gSize: u16 = 1;
+const gWordsPop: u16 = _gSize;  // size used in local population
+const gWordsD2h: u16 = _gSize;  // size copied to host
+const gBitsMsg: u16 = 32 * _gSize;  // size migrated between PEs
+const genome_t = [_gSize]u32;
 const genomePtr_t = [*]u32;
 // bit 0: infected; bit 1 + i: enabled site i's allele
 const nTraitVals: u16 = @as(u16, 1) << (nSites + 1);

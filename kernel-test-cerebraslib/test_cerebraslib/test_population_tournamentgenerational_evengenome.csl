@@ -19,10 +19,10 @@ fn check_sample_n2(n: u16) void {
     population2._sample_n(n);
     for (@range(u16, n)) |k| {
         const base = population2.indexBuf[k];
-        @assert(base % genome2.gSize == 0);
+        @assert(base % genome2.gWordsPop == 0);
         @assert(base < population2.bufSize);
-        for (@range(u16, genome2.gSize)) |w| {
-            @assert(population2.swap[k * genome2.gSize + w] == base + w);
+        for (@range(u16, genome2.gWordsPop)) |w| {
+            @assert(population2.swap[k * genome2.gWordsPop + w] == base + w);
         }
     }
 }
@@ -31,10 +31,10 @@ fn check_sample_n4(n: u16) void {
     population4._sample_n(n);
     for (@range(u16, n)) |k| {
         const base = population4.indexBuf[k];
-        @assert(base % genome4.gSize == 0);
+        @assert(base % genome4.gWordsPop == 0);
         @assert(base < population4.bufSize);
-        for (@range(u16, genome4.gSize)) |w| {
-            @assert(population4.swap[k * genome4.gSize + w] == base + w);
+        for (@range(u16, genome4.gWordsPop)) |w| {
+            @assert(population4.swap[k * genome4.gWordsPop + w] == base + w);
         }
     }
 }

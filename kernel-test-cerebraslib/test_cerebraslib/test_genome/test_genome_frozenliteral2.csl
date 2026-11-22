@@ -31,14 +31,14 @@ fn test_initialize_one() void {
 fn test_trample_resident() void {
     var resident = @zeros(genome_frozenliteral2.genome_t);
     var spawn = @zeros(genome_frozenliteral2.genome_t);
-    for (@range(u16, genome_frozenliteral2.gSize)) |i| {
+    for (@range(u16, genome_frozenliteral2.gWordsPop)) |i| {
         spawn[i] = 0x01234567 ^ (@as(u32, i) << 8);
         resident[i] = ~spawn[i];
     }
     genome_frozenliteral2.trample_resident(
         @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
     );
-    for (@range(u16, genome_frozenliteral2.gSize)) |i| {
+    for (@range(u16, genome_frozenliteral2.gWordsPop)) |i| {
         @assert(resident[i] == spawn[i]);
         @assert(spawn[i] == 0x01234567 ^ (@as(u32, i) << 8));
     }
