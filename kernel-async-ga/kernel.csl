@@ -94,6 +94,7 @@ const fossil = @import_module(
 const wildtypeLogger = @import_module(
   "cerebraslib/traitlogger.csl", .{ .symbolName = "wildtypeLoggerRecord" }
 );
+const opscalar = @import_module("cerebraslib/opscalar.csl");
 const optime = @import_module("cerebraslib/optime.csl");
 
 // global output variables ====================================================
@@ -270,27 +271,9 @@ const sendNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES", @as(u16, 1)
 );
 comptime { @comptime_assert(sendNumGenomes >= 1); }
-const sendBufWords: u16 = (sendNumGenomes * genome_.gBitsMsg + 31) / 32;
-
-// for bandwidth efficiency, exclude empty genomes from sends
-// for fairness skip a send after skipping a full batch's worth of sends
-const neighborSendExcludeEmpty: bool = 0 != comptime compconf.get_value_or(
-  "ASYNC_GA_NEIGHBOR_SEND_EXCLUDE_EMPTY", @as(u16, 0)
+const sendBufWords: u16 = comptime opscalar.divceil16(
+  sendNumGenomes * genome_.gBitsMsg, 32
 );
-comptime {  // batches are filled from the population
-  if (neighborSendExcludeEmpty) @comptime_assert(sendNumGenomes <= popSize);
-}
-var skippedEmptyGenomes: u32 = 0;  // not yet offset by a skipped send
-var neighborSendCounts = @zeros([4]u32);  // sends dispatched: N, S, E, W
-
-// fill send buffer, returning how many empty genomes were skipped
-fn fillSendBuf(sendBuf: [*]u32) u32 {
-  if (neighborSendExcludeEmpty) {
-    return population.emigrate_live_batch(sendBuf, sendNumGenomes);
-  }
-  population.emigrate_genomes(sendBuf, sendNumGenomes);
-  return 0;
-}
 
 // send NORTH =================================================================
 var sendFlag_N: u8; // need refill? initialized at startup
@@ -306,7 +289,7 @@ task sendFinalizeTask_N() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_N(comptime thread: u8) void {
-  skippedEmptyGenomes += fillSendBuf(@ptrcast([*]u32, &sendBuf_N));
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_N), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_N;
   const sendDsd_N = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_N,
     .extent = sendBufWords, .output_queue = oq, });
@@ -354,7 +337,7 @@ task sendFinalizeTask_S() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_S(comptime thread: u8) void {
-  skippedEmptyGenomes += fillSendBuf(@ptrcast([*]u32, &sendBuf_S));
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_S), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_S;
   const sendDsd_S = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_S,
     .extent = sendBufWords, .output_queue = oq, });
@@ -402,7 +385,7 @@ task sendFinalizeTask_E() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_E(comptime thread: u8) void {
-  skippedEmptyGenomes += fillSendBuf(@ptrcast([*]u32, &sendBuf_E));
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_E), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_E;
   const sendDsd_E = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_E,
     .extent = sendBufWords, .output_queue = oq, });
@@ -450,7 +433,7 @@ task sendFinalizeTask_W() void {
 
 // open async uthread to send from sendBuf
 fn doDispatchSend_W(comptime thread: u8) void {
-  skippedEmptyGenomes += fillSendBuf(@ptrcast([*]u32, &sendBuf_W));
+  population.emigrate_genomes(@ptrcast([*]u32, &sendBuf_W), sendNumGenomes);
   const oq = if (@is_arch("wse2")) @get_output_queue(thread) else q_out_W;
   const sendDsd_W = @get_dsd(fabout_dsd, .{ .fabric_color = sendColor_W,
     .extent = sendBufWords, .output_queue = oq, });
@@ -500,8 +483,6 @@ comptime { @comptime_assert(recvNumGenomes >= 1); }
 comptime { @comptime_assert(recvNumGenomes % sendNumGenomes == 0); }
 const recvNumSends: u16 = recvNumGenomes / sendNumGenomes;
 const recvBufWords: u16 = recvNumSends * sendBufWords;
-// sends without padding make a recv batch one contiguous run
-const isSendUnpadded: bool = (sendNumGenomes * genome_.gBitsMsg) % 32 == 0;
 
 // how many times to immigrate each neighbor and p2p immigrant? 1: as received
 const immEnrichNeigh: u16 = comptime compconf.get_value_or(
@@ -523,7 +504,9 @@ fn immigrateEnriched(batch: [*]u32, nGenomes: u16, enrichment: u16) u32 {
 
 // immigrate a recv batch, send by send, returning clobber count
 fn immigrateRecvBatch(recvBuf: [*]u32) u32 {
-  if (isSendUnpadded) {
+  // sends filling whole words make the batch one contiguous run of messages;
+  // else each send ends in padding, so sends are immigrated one by one
+  if ((sendNumGenomes * genome_.gBitsMsg) % 32 == 0) {
     return immigrateEnriched(recvBuf, recvNumGenomes, immEnrichNeigh);
   }
   var nClobbers: u32 = 0;
@@ -647,9 +630,9 @@ const p2pBatchSize: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_BATCH_SIZE", @as(u16, 1)
 );
 comptime { @comptime_assert(1 <= p2pBatchSize and p2pBatchSize <= popSize); }
-const p2pMsgSize: u16 = (  // header, count, batch, and pad
-  if (p2pEnabled) 3 + (p2pBatchSize * genome_.gBitsMsg + 31) / 32 else 0
-);
+const p2pMsgSize: u16 = if (p2pEnabled) (  // header, count, batch, and pad
+  3 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
+) else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
 const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
@@ -720,9 +703,7 @@ const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
   .activate_push = ignRecvTaskID_P,  // blocked until closeout
 } else .{});
 const p2pPayloadWords: u16 = if (p2pEnabled) p2pMsgSize - 2 else 0;
-var recvBuf_P = @zeros([  // payload: batch count, then batch
-  if (p2pEnabled) p2pPayloadWords else 1
-]u32);
+var recvBuf_P = @zeros([p2pPayloadWords]u32);  // batch count, then batch
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{1} -> recvBuf_P[i], });
 var recvFill_P: u16 = 0;  // words of current message popped
@@ -749,7 +730,7 @@ fn drainRecv_P() void {
     if (recvFill_P == p2pMsgSize) recvFill_P = 0;  // reset for next msg
   }
 }
-task recvFinalizeTask_P() void { dispatchRecv_P(); }  // belt and suspenders
+task recvFinalizeTask_P() void { dispatchRecv_P(); }
 
 // (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
 // synchronous move and doesn't allow microthread selection)
@@ -758,7 +739,8 @@ fn dispatchRecv_P() void {  // open async microthread to recv into FIFO
     .extent = INFINITE_DSD_LEN,  // longest possible
     .input_queue = mp.mp_input_queue, });
   @mov32(recvFifo_P, recvDsd_P, .{ .async = true,  // callback on complete
-    .activate = recvFinalizeTaskID_P, .ut_id = @get_ut_id(p2pRecvThread), });
+    .activate = recvFinalizeTaskID_P,  // belt and suspenders
+    .ut_id = @get_ut_id(p2pRecvThread), });
 }
 
 task ignRecvTask_P() void { while (@mov32(recvBufDsd_P, recvFifo_P)) {} }
@@ -822,52 +804,13 @@ fn shouldHalt(cycle: u32) bool {
 // cycle task =================================================================
 // main program loop: self-activate with incrementing values until nCycleAtLeast
 ///////////////////////////////////////////////////////////////////////////////
-// send to neighbor j (N, S, E, W) if buffer ready and thread free; sent?
-fn sendToNeighbor(j: u16) bool {
-  if (j == 0 and sendFlag_N == 1 and dispatchSend_N()) { sendFlag_N = 0; }
-  else if (j == 1 and sendFlag_S == 1 and dispatchSend_S()) { sendFlag_S = 0; }
-  else if (j == 2 and sendFlag_E == 1 and dispatchSend_E()) { sendFlag_E = 0; }
-  else if (j == 3 and sendFlag_W == 1 and dispatchSend_W()) { sendFlag_W = 0; }
-  else { return false; }
-  return true;
-}
-
-// per free thread, skip a send (see neighborSendExcludeEmpty) or send to the
-// least sent-to ready direction (ties broken from shuf)
-fn sendLiveToNeighbors(shuf: u16) void {
-  const numBusy = (
-    busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
-  );
-  const numFree = 4 - @as(u16, numBusy);
-  for (@range(u16, 4)) |t| {
-    if (t >= numFree) break;
-    if (skippedEmptyGenomes >= sendNumGenomes) {  // skip, using this turn
-      skippedEmptyGenomes -= sendNumGenomes;
-      continue;
-    }
-    const sendFlags = [4]u8{ sendFlag_N, sendFlag_S, sendFlag_E, sendFlag_W };
-    var best: u16 = 4;  // none ready
-    for (@range(u16, 4)) |i| {
-      const j = (i + shuf) & 3;
-      const isLeast = (
-        best == 4 or neighborSendCounts[j] < neighborSendCounts[best]
-      );
-      if (sendFlags[j] == 1 and isLeast) { best = j; }
-    }
-    if (!sendToNeighbor(best)) break;  // no direction ready, or no thread free
-    neighborSendCounts[best] += 1;
-  }
-}
-
 task cycleTask() void {
   // handle recv flags, pull recv buffer into pop and start next async recv
   // note: never-filled recv requests on PE array edges ok
   // --------------------------------------------------------------------------
 
   const shuf1 = @random16() & 3;
-  // no throttle if excluding empty: send rates differ between directions
-  const noThrottle: u32 = 0xFFFFFFFF;
-  const throttleThresh = if (neighborSendExcludeEmpty) noThrottle else math.min(
+  const throttleThresh = math.min(
     math.min(
       if (immCounter_N[0] > 0) immCounter_N[0] else 0xFFFFFFFF,
       if (immCounter_S[0] > 0) immCounter_S[0] else 0xFFFFFFFF,
@@ -936,13 +879,21 @@ task cycleTask() void {
     if (sendCount_P > 0 and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
-  if (neighborSendExcludeEmpty) { sendLiveToNeighbors(shuf2); }
-  else for (@range(u16, 4)) |i| {  // send to all neighbors
+  for (@range(u16, 4)) |i| {  // send to all neighbors
     const numBusy = (
       busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
     );
     if (numBusy == 4) break;
-    if (!sendToNeighbor((i + shuf2) & 3)) continue;  // round-robin order
+    const j = (i + shuf2) & 3;  // round-robin order
+    if (j == 0 and sendFlag_N == 1) {
+      if (dispatchSend_N()) { sendFlag_N = 0; }
+    } else if (j == 1 and sendFlag_S == 1) {
+      if (dispatchSend_S()) { sendFlag_S = 0; }
+    } else if (j == 2 and sendFlag_E == 1) {
+      if (dispatchSend_E()) { sendFlag_E = 0; }
+    } else if (j == 3 and sendFlag_W == 1) {
+      if (dispatchSend_W()) { sendFlag_W = 0; }
+    }
   }
 
   // update telemetry

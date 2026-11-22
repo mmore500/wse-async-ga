@@ -120,12 +120,11 @@ jobs:
             nonBlock: 0
             genome: genome_alleleevoepi_2026_11_19
             p2p: 0.5
-          - arch: wse3  # p2p batches, neighbor sends exclude empty
+          - arch: wse3  # p2p batches
             nonBlock: 1
             genome: genome_alleleevoepi_2026_11_19
             p2p: 0.5
             p2pBatch: 4
-            neighborSendExcludeEmpty: 1
     env:
       CSLC: cslc
       CS_PYTHON: cs_python
@@ -221,7 +220,6 @@ jobs:
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
           export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${{ matrix.p2p }}"
           export COMPCONFENV_ASYNC_GA_P2P_BATCH_SIZE__u16="${{ matrix.p2pBatch || 1 }}"
-          export COMPCONFENV_ASYNC_GA_NEIGHBOR_SEND_EXCLUDE_EMPTY__u16="${{ matrix.neighborSendExcludeEmpty || 0 }}"
           # before compile, so it is the only runtime config
           if [ "${{ matrix.p2p }}" != "0" ]; then
             echo '{"dispatch_slug": "ci-p2p-pairs", "p2pMode": "pairs"}' \

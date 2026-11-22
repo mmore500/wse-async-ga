@@ -108,6 +108,14 @@ fn test_addmod16() void {
     @assert(opscalar.addmod16(65534, 3, 65535) == 2);
 }
 
+fn test_divceil16() void {
+    @assert(opscalar.divceil16(0, 32) == 0);
+    @assert(opscalar.divceil16(1, 32) == 1);
+    @assert(opscalar.divceil16(32, 32) == 1);
+    @assert(opscalar.divceil16(33, 32) == 2);
+    @assert(opscalar.divceil16(7, 1) == 7);
+}
+
 fn test_mul32() void {
     @assert(opscalar.mul32(0, 0) == 0);
     @assert(opscalar.mul32(0, 1) == 0);
@@ -712,6 +720,7 @@ fn do_test() void {
     test_incr32();
     test_incrmod32();
     test_addmod16();
+    test_divceil16();
     test_hamming_syndrome32();
     test_mul32();
     test_clamp();

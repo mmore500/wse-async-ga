@@ -25,18 +25,18 @@ var g = @zeros([3]u32);
 
 fn _clear_buf() void { for (@range(u16, 8)) |i| { buf[i] = 0; } }
 
-fn test_calc_buf_words() void {
-    @assert(message1.calc_buf_words(1) == 1);
-    @assert(message1.calc_buf_words(32) == 1);
-    @assert(message1.calc_buf_words(33) == 2);
-    @assert(message4.calc_buf_words(8) == 1);
-    @assert(message4.calc_buf_words(9) == 2);
-    @assert(message16.calc_buf_words(1) == 1);
-    @assert(message16.calc_buf_words(4) == 2);
-    @assert(message24.calc_buf_words(4) == 3);
-    @assert(message24.calc_buf_words(5) == 4);
-    @assert(message64.calc_buf_words(3) == 6);
-    @assert(message96.calc_buf_words(2) == 6);
+fn test_calc_words_to_fit() void {
+    @assert(message1.calc_words_to_fit(1) == 1);
+    @assert(message1.calc_words_to_fit(32) == 1);
+    @assert(message1.calc_words_to_fit(33) == 2);
+    @assert(message4.calc_words_to_fit(8) == 1);
+    @assert(message4.calc_words_to_fit(9) == 2);
+    @assert(message16.calc_words_to_fit(1) == 1);
+    @assert(message16.calc_words_to_fit(4) == 2);
+    @assert(message24.calc_words_to_fit(4) == 3);
+    @assert(message24.calc_words_to_fit(5) == 4);
+    @assert(message64.calc_words_to_fit(3) == 6);
+    @assert(message96.calc_words_to_fit(2) == 6);
 }
 
 fn test_pack_unpack_1() void {
@@ -137,7 +137,7 @@ fn test_pack_unpack_64() void {
 }
 
 fn do_test() void {
-    test_calc_buf_words();
+    test_calc_words_to_fit();
     test_pack_unpack_1();
     test_pack_unpack_4();
     test_pack_unpack_16();

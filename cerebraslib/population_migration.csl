@@ -63,30 +63,3 @@ fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
     }
     return nFound;
 }
-
-// pack messages of nGenomes live genomes into destBuf, from a sampled genome
-// on (wrapping), returning how many empty genomes were skipped; if too few
-// are live, the batch is filled out with empty genomes
-fn emigrate_live_batch(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
-    const start = opscalar.unif16(popSize);
-
-    var nFound: u16 = 0;
-    var nEmpty: u16 = 0;
-    var emptyIdx: u16 = start;  // most recent empty genome skipped
-    var offset: u16 = 0;
-    while (nFound < nGenomes and offset < popSize) : (offset += 1) {
-        const i = opscalar.addmod16(start, offset, popSize);
-        const candidate = _get_ith_genome(pop, i);
-        if (genome.is_empty(candidate)) {
-            nEmpty += 1;
-            emptyIdx = i;
-        } else {
-            genome.msg_pack(candidate, destBuf, nFound);
-            nFound += 1;
-        }
-    }
-    while (nFound < nGenomes) : (nFound += 1) {
-        genome.msg_pack(_get_ith_genome(pop, emptyIdx), destBuf, nFound);
-    }
-    return nEmpty;
-}

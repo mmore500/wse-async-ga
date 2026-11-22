@@ -96,33 +96,8 @@ fn test_emigrate_live_genomes() void {
     @assert(0 < nSent and nSent < 64);  // sent about 1 in 4 times
 }
 
-fn test_emigrate_live_batch() void {
-    // all live: full batch, no empty genomes skipped
-    _setup(0xFF);
-    @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) == 0);
-    @assert(_count_live_messages(0xFF) == nMsg);
-
-    // none live: whole population skipped, batch of empty genomes
-    _setup(0x00);
-    @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) == 8);
-    @assert(_count_live_messages(0x00) == 0);
-
-    // two live: both sent, rest of batch empty, all 6 empty skipped
-    _setup(0x24);
-    @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) == 6);
-    @assert(_count_live_messages(0x24) == 2);
-
-    // six live: full batch, skipping between 0 and 2 empty genomes
-    _setup(0x7E);
-    for (@range(u16, 16)) |rep| {
-        @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) <= 2);
-        @assert(_count_live_messages(0x7E) == nMsg);
-    }
-}
-
 fn do_test() void {
     test_emigrate_genomes();
     test_immigrate_genomes();
     test_emigrate_live_genomes();
-    test_emigrate_live_batch();
 }

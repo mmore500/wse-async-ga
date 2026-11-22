@@ -111,12 +111,6 @@ fn emigrate_live_genomes(destBuf: [*]u32, nGenomes: u16) u16 {
     );
 }
 
-fn emigrate_live_batch(destBuf: [*]u32, nGenomes: u16) u16 {
-    return migration.emigrate_live_batch(
-        @ptrcast([*]u32, &buffer), destBuf, nGenomes
-    );
-}
-
 fn init_module() void { _initialize_all(); }
 
 fn do_generation() void {

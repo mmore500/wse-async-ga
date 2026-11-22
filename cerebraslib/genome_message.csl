@@ -13,7 +13,7 @@ comptime {
 
 // copy unit: largest power of two, up to a word, dividing gBitsMsg, so copy
 // units divide words evenly (maintaining alignment)
-const unitBits: u16 = (
+const unitBits: u16 = comptime (
     if (gBitsMsg % 32 == 0) 32
     else if (gBitsMsg % 16 == 0) 16
     else if (gBitsMsg % 8 == 0) 8
@@ -39,7 +39,7 @@ fn _copy_unit(src: [*]u32, srcBit: u16, dest: [*]u32, destBit: u16) void {
 
 // public API =================================================================
 // how many words hold nMsgs packed messages?
-fn calc_buf_words(nMsgs: u16) u16 { return (nMsgs * gBitsMsg + 31) / 32; }
+fn calc_words_to_fit(nMsgs: u16) u16 { return (nMsgs * gBitsMsg + 31) / 32; }
 
 // pack genome's message into buf as buf's ith message
 fn pack_msg(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {
