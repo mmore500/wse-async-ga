@@ -241,6 +241,14 @@ jobs:
           ./.github/scripts/retry_on_kernel_stall.sh \
             sudo -E env PATH=$PATH ./kernel-async-ga/execute.sh
 
+      - name: Upload kernel stall diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stall-diagnostics-${{ github.job }}-${{ strategy.job-index }}
+          path: ./stall_diagnostics/
+          if-no-files-found: ignore
+
       - name: Check runtime config dispatch
         if: matrix.genome == 'genome_bitdrift' && matrix.nonBlock == 1 && matrix.p2p == 0
         run: |
@@ -397,6 +405,14 @@ jobs:
           ./.github/scripts/retry_on_kernel_stall.sh \
             sudo -E env PATH=$PATH \
             ./kernel-async-ga/generate_sample_tagged_populations.sh
+
+      - name: Upload kernel stall diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stall-diagnostics-${{ github.job }}-${{ strategy.job-index }}
+          path: ./stall_diagnostics/
+          if-no-files-found: ignore
 
       - name: Upload output as artifact
         uses: actions/upload-artifact@v4
@@ -589,6 +605,14 @@ jobs:
           # retry up to 4 times on simulator kernel stall
           ./.github/scripts/retry_on_kernel_stall.sh \
             sudo -E env PATH=$PATH ./kernel-async-ga/execute.sh
+
+      - name: Upload kernel stall diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stall-diagnostics-${{ github.job }}-${{ strategy.job-index }}
+          path: ./stall_diagnostics/
+          if-no-files-found: ignore
 
       - name: Build tree from end-state genomes
         run: |
