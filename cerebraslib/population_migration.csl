@@ -6,23 +6,15 @@ param popSize: u16;
 
 // module imports =============================================================
 const opscalar = @import_module("cerebraslib/opscalar.csl");
-const message = @import_module("cerebraslib/genome_message.csl", .{
-    .gWordsPop = genome.gWordsPop, .gBitsMsg = genome.gBitsMsg,
-});
 
 // internal functions =========================================================
 fn _get_ith_genome(pop: [*]u32, i: u16) [*]u32 {
     return @ptrcast([*]u32, &pop[i * genome.gWordsPop]);
 }
 
-fn _clear_messages(destBuf: [*]u32, nGenomes: u16) void {
-    for (@range(u16, message.calc_buf_words(nGenomes))) |w| { destBuf[w] = 0; }
-}
-
 // public API =================================================================
 // pack messages of nGenomes uniformly sampled genomes into destBuf
 fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) void {
-    _clear_messages(destBuf, nGenomes);
     for (@range(u16, nGenomes)) |i| {
         const sampled = _get_ith_genome(pop, opscalar.unif16(popSize));
         genome.msg_pack(sampled, destBuf, i);
@@ -56,7 +48,6 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
 // many: if a sampled genome is live, it and those after it (wrapping), so
 // nonzero with probability equal to the live fraction
 fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
-    _clear_messages(destBuf, nGenomes);
     const start = opscalar.unif16(popSize);
     if (genome.is_empty(_get_ith_genome(pop, start))) { return 0; }
 
@@ -77,7 +68,6 @@ fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
 // on (wrapping), returning how many empty genomes were skipped; if too few
 // are live, the batch is filled out with empty genomes
 fn emigrate_live_batch(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
-    _clear_messages(destBuf, nGenomes);
     const start = opscalar.unif16(popSize);
 
     var nFound: u16 = 0;

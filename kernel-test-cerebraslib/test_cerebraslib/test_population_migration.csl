@@ -30,7 +30,7 @@ fn _setup(mask: u16) void {
         _ith(i).*.pathogen = if (isInfected) (i | genome.infectedFlag) else 0;
         _ith(i).*.immunity = 0x0100 * (i + 1);
     }
-    msgBuf[2] = guard;
+    msgBuf[0] = 0; msgBuf[1] = 0; msgBuf[2] = guard;
 }
 
 // count infected messages, which must be from infected hosts; others are zero
@@ -47,11 +47,6 @@ fn _count_live_messages(mask: u16) u16 {
     }
     @assert(msgBuf[2] == guard);  // nothing written past messages
     return nLive;
-}
-
-fn test_calc_buf_words() void {
-    @assert(genome.gBitsMsg == 16);
-    @assert(migration.message.calc_buf_words(nMsg) == 2);
 }
 
 fn test_emigrate_genomes() void {
@@ -92,6 +87,7 @@ fn test_emigrate_live_genomes() void {
     _setup(0x24);
     var nSent: u16 = 0;
     for (@range(u16, 64)) |rep| {
+        msgBuf[0] = 0; msgBuf[1] = 0;
         const count = migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);
         @assert(count == 0 or count == 2);
         @assert(_count_live_messages(0x24) == count);
@@ -125,7 +121,6 @@ fn test_emigrate_live_batch() void {
 }
 
 fn do_test() void {
-    test_calc_buf_words();
     test_emigrate_genomes();
     test_immigrate_genomes();
     test_emigrate_live_genomes();

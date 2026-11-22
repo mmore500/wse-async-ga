@@ -27,29 +27,32 @@ const unitMask: u32 = (
     else (@as(u32, 1) << unitBits) - 1
 );
 
+// internal functions =========================================================
+// copy unit of src at bit offset srcBit over unit of dest at bit offset destBit
+fn _copy_unit(src: [*]u32, srcBit: u16, dest: [*]u32, destBit: u16) void {
+    const unit = (src[srcBit / 32] >> (srcBit % 32)) & unitMask;
+    dest[destBit / 32] = (
+        (dest[destBit / 32] & ~(unitMask << (destBit % 32)))
+        | (unit << (destBit % 32))
+    );
+}
+
 // public API =================================================================
 // how many words hold nMsgs packed messages?
 fn calc_buf_words(nMsgs: u16) u16 { return (nMsgs * gBitsMsg + 31) / 32; }
 
-// pack genome's message into buf as buf's ith message; buf must start zeroed
+// pack genome's message into buf as buf's ith message
 fn pack_msg(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {
     for (@range(u16, gSizeUnits)) |k| {
-        const srcBit = k * unitBits;  // bit offset into genome
-        const destBit = (i * gSizeUnits + k) * unitBits;  // bit offset into buf
-        const unit = (srcPtr[srcBit / 32] >> (srcBit % 32)) & unitMask;
-        destBuf[destBit / 32] |= unit << (destBit % 32);
+        const bufBit = (i * gSizeUnits + k) * unitBits;
+        _copy_unit(srcPtr, k * unitBits, destBuf, bufBit);
     }
 }
 
 // overwrite genome's message bits with buf's ith message
 fn unpack_msg(srcBuf: [*]u32, i: u16, destPtr: [*]u32) void {
     for (@range(u16, gSizeUnits)) |k| {
-        const srcBit = (i * gSizeUnits + k) * unitBits;  // bit offset into buf
-        const destBit = k * unitBits;  // bit offset into genome
-        const unit = (srcBuf[srcBit / 32] >> (srcBit % 32)) & unitMask;
-        destPtr[destBit / 32] = (
-            (destPtr[destBit / 32] & ~(unitMask << (destBit % 32)))
-            | (unit << (destBit % 32))
-        );
+        const bufBit = (i * gSizeUnits + k) * unitBits;
+        _copy_unit(srcBuf, bufBit, destPtr, k * unitBits);
     }
 }
