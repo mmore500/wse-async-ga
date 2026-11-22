@@ -41,6 +41,22 @@ If no runtime config value is specified, symbols keep compile time default.
     +---------------+---------------+
     ```
   - sets `rtc_nRowSubgrid` and `rtc_nColSubgrid` per PE
+- `nestingLevelPeriodSubgrid`
+  - if L > 0, repeats the first L nesting levels as tiles over the PE array
+  - default 0, no repeat
+  - e.g., `nestingFactorSubgrid` 2 with L 2, b = `nRowSubgrid`:
+    ```
+    +---+---+-------+---+---+-------+
+    | b | b |       | b | b |       |
+    +---+---+  2b   +---+---+  2b   |
+    | b | b |       | b | b |       |
+    +---+---+-------+---+---+-------+
+    |       |       |       |       |
+    |  2b   |  2b   |  2b   |  2b   |
+    |       |       |       |       |
+    +-------+-------+-------+-------+
+    ```
+  - sets `rtc_nRowSubgrid` and `rtc_nColSubgrid` per PE
 - `nCycleAtLeast`
   - how many cycles to run for
   - sets `rtc_nCycleAtLeast`

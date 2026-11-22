@@ -483,6 +483,74 @@ def test_calc_symbol_values_recipe_sets_by_size(
         assert (rate[height == size] == np.float32(r)).all()
 
 
+@pytest.mark.parametrize(
+    "nRow, nCol, base, growth, levels",
+    [(130, 70, 8, 2, 3), (40, 24, 2, 2, 2), (36, 36, 1, 3, 2)],
+)
+def test_subgrid_levels_template(
+    tmp_path: pathlib.Path,
+    nRow: int,
+    nCol: int,
+    base: int,
+    growth: int,
+    levels: int,
+) -> None:
+    comptime = {
+        "nRow": nRow,
+        "nCol": nCol,
+        "nRowSubgrid": base,
+        "nColSubgrid": base,
+        "globalSeed": 0,
+    }
+    runtime_config = {
+        "nestingFactorSubgrid": growth,
+        "nestingLevelPeriodSubgrid": levels,
+        "p2pMode": "pairs",
+    }
+    npz = _generate(tmp_path, comptime, runtime_config)
+    data = np.load(io.BytesIO(npz))
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    width = data["rtc_nColSubgrid"][:, :, 0].astype(int)
+    assert (height == width).all()
+
+    # each tile repeats the corner tile, with at most levels levels
+    tile = base * growth**levels
+    rows, cols = np.indices((nRow, nCol))
+    assert (height == height[rows % tile, cols % tile]).all()
+    assert height[0, 0] == base
+    assert height.max() == base * growth ** (levels - 1)
+
+    for axis in "Row", "Col":
+        assert _validate_subgrid(axis, npz, comptime)
+    for validator in "default.py", "intersubgrid.py":
+        assert _validate(validator, npz, comptime), validator
+
+    # p2p pairs stay within subgrids, so within tiles
+    top, left = rows - rows % height, cols - cols % width
+    target = data["rtc_p2pTarget"][:, :, 0]
+    has = target != 0xFFFFFFFF
+    trow, tcol = target[has] & 0xFFFF, target[has] >> 16
+    assert (top[trow, tcol] == top[has]).all()
+    assert (left[trow, tcol] == left[has]).all()
+    assert (trow // tile == rows[has] // tile).all()
+
+
+def test_subgrid_levels_rejects(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 64,
+        "nCol": 64,
+        "nRowSubgrid": 8,
+        "nColSubgrid": 8,
+        "globalSeed": 0,
+    }
+    for bad in (
+        {"nestingFactorSubgrid": 2, "nestingLevelPeriodSubgrid": -1},
+        {"nestingFactorSubgrid": 2, "nestingLevelPeriodSubgrid": 1.5},
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)
+
+
 def test_subgrid_validators_reject() -> None:
     comptime = {"nRow": 4, "nCol": 4, "nRowSubgrid": 0, "nColSubgrid": 0}
     uniform = np.full((4, 4, 1), 2, np.uint32)

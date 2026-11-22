@@ -94,6 +94,7 @@ def test_nest_subgrid_sizes(
         nRowSubgrid=nRowSubgrid,
         nColSubgrid=nColSubgrid,
         nestingFactor=nestingFactor,
+        nestingLevelPeriod=0,
     )
     assert rowSubgrid.shape == colSubgrid.shape == (nRow, nCol)
 
@@ -121,7 +122,12 @@ def test_nest_subgrid_sizes(
 
 def test_nest_subgrid_sizes_unpartitioned(template: types.ModuleType) -> None:
     rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
-        nRow=5, nCol=6, nRowSubgrid=0, nColSubgrid=3, nestingFactor=1
+        nRow=5,
+        nCol=6,
+        nRowSubgrid=0,
+        nColSubgrid=3,
+        nestingFactor=1,
+        nestingLevelPeriod=0,
     )
     assert (rowSubgrid == 0).all() and (colSubgrid == 3).all()
 
@@ -143,6 +149,109 @@ def test_nest_subgrid_sizes_rejects(
             nRowSubgrid=nRowSubgrid,
             nColSubgrid=nColSubgrid,
             nestingFactor=nestingFactor,
+            nestingLevelPeriod=0,
+        )
+
+
+@pytest.mark.parametrize(
+    "nestingFactor, nRowSubgrid, nColSubgrid, nestingLevelPeriod",
+    [
+        (2, 8, 8, 3),
+        (2, 2, 2, 4),
+        (4, 2, 2, 3),
+        (3, 1, 2, 2),
+        (2, 3, 5, 2),
+        (1, 4, 2, 5),
+        (2, 4, 4, 1),
+    ],
+)
+@pytest.mark.parametrize("nRow, nCol", [(150, 70), (64, 64), (20, 33)])
+def test_nest_subgrid_sizes_levels(
+    template: types.ModuleType,
+    nestingFactor: int,
+    nRowSubgrid: int,
+    nColSubgrid: int,
+    nestingLevelPeriod: int,
+    nRow: int,
+    nCol: int,
+) -> None:
+    rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
+        nRow=nRow,
+        nCol=nCol,
+        nRowSubgrid=nRowSubgrid,
+        nColSubgrid=nColSubgrid,
+        nestingFactor=nestingFactor,
+        nestingLevelPeriod=nestingLevelPeriod,
+    )
+    # each tile is the untiled pattern's corner, nestingLevelPeriod levels wide
+    tileRows = nRowSubgrid * nestingFactor**nestingLevelPeriod
+    tileCols = nColSubgrid * nestingFactor**nestingLevelPeriod
+    tileRow, tileCol = template._nest_subgrid_sizes(
+        nRow=tileRows,
+        nCol=tileCols,
+        nRowSubgrid=nRowSubgrid,
+        nColSubgrid=nColSubgrid,
+        nestingFactor=nestingFactor,
+        nestingLevelPeriod=0,
+    )
+    rows, cols = np.indices((nRow, nCol))
+    tr, tc = rows % tileRows, cols % tileCols
+    assert (rowSubgrid == tileRow[tr, tc]).all()
+    assert (colSubgrid == tileCol[tr, tc]).all()
+
+    # at most nestingLevelPeriod levels
+    assert rowSubgrid.max() <= nRowSubgrid * nestingFactor ** (
+        nestingLevelPeriod - 1
+    )
+
+    # every subgrid is aligned to its own size, uniform in size, and within
+    # one tile
+    originRow = rows - rows % rowSubgrid
+    originCol = cols - cols % colSubgrid
+    assert (rowSubgrid[originRow, originCol] == rowSubgrid).all()
+    assert (colSubgrid[originRow, originCol] == colSubgrid).all()
+    assert (originRow // tileRows == rows // tileRows).all()
+    assert (originCol // tileCols == cols // tileCols).all()
+
+
+def test_nest_subgrid_sizes_levels_8_16_32(
+    template: types.ModuleType,
+) -> None:
+    # 64 x 64 tiles of 4 subgrids of 8 x 8, 3 of 16 x 16, and 3 of 32 x 32
+    rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
+        nRow=128,
+        nCol=192,
+        nRowSubgrid=8,
+        nColSubgrid=8,
+        nestingFactor=2,
+        nestingLevelPeriod=3,
+    )
+    assert (rowSubgrid == colSubgrid).all()
+    numTiles = (128 // 64) * (192 // 64)
+    for size, count in ((8, 4), (16, 3), (32, 3)):
+        assert (rowSubgrid == size).sum() == numTiles * count * size * size
+    assert set(np.unique(rowSubgrid)) == {8, 16, 32}
+
+
+@pytest.mark.parametrize(
+    "nestingFactor, nRowSubgrid, nColSubgrid, nestingLevelPeriod",
+    [(2, 8, 8, -1), (2, 8, 8, 1.5), (2, 0, 8, 3), (2, 8, 0, 3)],
+)
+def test_nest_subgrid_sizes_levels_rejects(
+    template: types.ModuleType,
+    nestingFactor: int,
+    nRowSubgrid: int,
+    nColSubgrid: int,
+    nestingLevelPeriod: int,
+) -> None:
+    with pytest.raises(ValueError):
+        template._nest_subgrid_sizes(
+            nRow=128,
+            nCol=128,
+            nRowSubgrid=nRowSubgrid,
+            nColSubgrid=nColSubgrid,
+            nestingFactor=nestingFactor,
+            nestingLevelPeriod=nestingLevelPeriod,
         )
 
 
@@ -173,15 +282,17 @@ def _check_pairs(
 
 @pytest.mark.parametrize("seed", [0, 1, 7])
 @pytest.mark.parametrize(
-    "nRow, nCol, nRowSubgrid, nColSubgrid, nestingFactor",
+    "nRow, nCol, nRowSubgrid, nColSubgrid, nestingFactor, nestingLevelPeriod",
     [
-        (10, 12, 0, 0, 1),  # one subgrid
-        (3, 3, 0, 0, 1),  # odd one out
-        (41, 31, 3, 5, 1),
-        (41, 31, 3, 5, 2),
-        (40, 40, 2, 2, 3),
-        (33, 65, 1, 2, 4),
-        (8, 9, 1, 1, 1),  # single-PE subgrids, none paired
+        (10, 12, 0, 0, 1, 0),  # one subgrid
+        (3, 3, 0, 0, 1, 0),  # odd one out
+        (41, 31, 3, 5, 1, 0),
+        (41, 31, 3, 5, 2, 0),
+        (40, 40, 2, 2, 3, 0),
+        (33, 65, 1, 2, 4, 0),
+        (8, 9, 1, 1, 1, 0),  # single-PE subgrids, none paired
+        (130, 70, 8, 8, 2, 3),  # tiled nesting, clipped edge tiles
+        (50, 50, 1, 1, 2, 4),
     ],
 )
 def test_pair_p2p_targets(
@@ -192,6 +303,7 @@ def test_pair_p2p_targets(
     nRowSubgrid: int,
     nColSubgrid: int,
     nestingFactor: int,
+    nestingLevelPeriod: int,
 ) -> None:
     rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
         nRow=nRow,
@@ -199,6 +311,7 @@ def test_pair_p2p_targets(
         nRowSubgrid=nRowSubgrid,
         nColSubgrid=nColSubgrid,
         nestingFactor=nestingFactor,
+        nestingLevelPeriod=nestingLevelPeriod,
     )
     target = template._pair_p2p_targets(
         rowSubgrid=rowSubgrid, colSubgrid=colSubgrid, seed=seed
@@ -221,7 +334,12 @@ def test_pair_p2p_targets_seed(template: types.ModuleType) -> None:
 
 def test_make_subgrid_df(template: types.ModuleType) -> None:
     rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
-        nRow=10, nCol=12, nRowSubgrid=2, nColSubgrid=3, nestingFactor=2
+        nRow=10,
+        nCol=12,
+        nRowSubgrid=2,
+        nColSubgrid=3,
+        nestingFactor=2,
+        nestingLevelPeriod=0,
     )
     grid = template._make_subgrid_df(
         rowSubgrid=rowSubgrid, colSubgrid=colSubgrid
