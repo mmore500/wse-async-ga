@@ -8,7 +8,7 @@
 #
 # On each stall, prints simulator diagnostics written during that attempt
 # (sim_stats.json, e.g., sim_stop_cause and cycle_count, and the tail of
-# sim.log), before a retry overwrites them; it also copies them to
+# sim.log), before a retry overwrites them; also copy them to
 # ${ASYNC_GA_KERNEL_STALL_DIAGNOSTICS_DIR:-stall_diagnostics}/attempt=<n>/,
 # e.g., for upload as a CI artifact.
 #
