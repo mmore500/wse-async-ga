@@ -175,17 +175,13 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #   to empty (uninfected) hosts passed over, so neighbor sends go at a rate
 #   proportional to live population (and receives aren't throttled)
 # - p2p edges are random PE pairs (within subgrids, if any); with send
-#   probability 1 in 40 (or 1 in 20), a sampled host that is live starts a
+#   probability 1 in 40, a sampled host that is live starts a
 #   batch of up to 8 live genomes (1 wavelet), so batches go at a rate
 #   proportional to live population
-# seven independent runs (one job each, run in job order), each set by its
+# five independent runs (one job each, run in job order), each set by its
 # own runtime config (p2p targets, and per run p2p send probability,
-# mutation rate, seed), from two compiles:
-# 1-2. preliminary: full grid (no subgrids), mutation rate 1e-6, infection
-#    seeded on corner PE only, comparing p2p send probability 1 in 40 and 1
-#    in 20; population 1055 per PE, as jobs 3-7 (so the grid, one subgrid,
-#    holds about 932 million hosts)
-# 3-7. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
+# mutation rate, seed), from one compile:
+# 1-5. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
 #    subgrids occupy (runtime config nestingFactorSubgrid 2): 9 x 9 PE
 #    subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
 #    subgrids each of 18, 36, 72, 144, and 288 PEs on a side, and one 576 x
@@ -200,7 +196,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # tournament size 1, so each host's update samples one random contact, as in
 # the ABM
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
-# as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
+# as u32, so seed must stay below 2**32 / (1152 * 576) ~= 6473 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_22
 p2pMode=pairs
 p2pbatch=8  # 1 wavelet of 4-bit messages (with 24, 3 wavelets, debug job 6 hangs)
@@ -211,24 +207,14 @@ jobnum=0  # job order, in config names, as run step runs them in name order
 # compile, for each compile config; and write each run config's runtime
 # config, with compiled artifacts, to its own directory (one job per run
 # config in run step)
-for compileConfig in fullgrid nested; do
-    if [ "${compileConfig}" = "fullgrid" ]; then
-        nrow=1170
-        ncol=755
-        p2p=0.025  # compiled-in, runtime config sets it too
-        subgrid=0
-        seedstride=1170  # only corner PE
-        popsize=1055  # as nested compile
-        compileseed=1130  # runtime config sets it too
-    else
-        nrow=1152  # only PEs of full (non-overflowing) nested subgrids
-        ncol=576
-        p2p=0.025
-        subgrid=9
-        seedstride=9
-        popsize=1055  # 576 * 576 * 1055 ~= 350 million hosts
-        compileseed=1131  # runtime config overrides, per run
-    fi
+for compileConfig in nested; do
+    nrow=1152  # only PEs of full (non-overflowing) nested subgrids
+    ncol=576
+    p2p=0.025  # compiled-in, runtime config sets it too
+    subgrid=9
+    seedstride=9
+    popsize=1055  # 576 * 576 * 1055 ~= 350 million hosts
+    compileseed=1131  # runtime config overrides, per run
     COMPILE_WORKDIR="${WORKDIR_STEP}/compile=${compileConfig}"
     COMPILE_RESULTDIR="${RESULTDIR_STEP}/compile=${compileConfig}"
     mkdir -p "${COMPILE_WORKDIR}"
@@ -329,13 +315,8 @@ EOF
 
     # run configs, one job each, as name:p2p:mutexp:seed, for runtime p2p
     # send probability, mutation rate 2^-mutexp, and seed
-    if [ "${compileConfig}" = "fullgrid" ]; then
-        RUN_CONFIGS="fullgrid-p2p0.025:0.025:none:1130 fullgrid-p2p0.05:0.05:none:1132"
-        nest=""
-    else
-        RUN_CONFIGS="nested-mutlog2-16:0.025:16:1131 nested-mutlog2-20:0.025:20:1133 nested-mutlog2-24:0.025:24:1135 nested-mutlog2-28:0.025:28:1137 nested-mutlog2-32:0.025:32:1139"
-        nest=", \"nestingFactorSubgrid\": 2"
-    fi
+    RUN_CONFIGS="nested-mutlog2-16:0.025:16:1131 nested-mutlog2-20:0.025:20:1133 nested-mutlog2-24:0.025:24:1135 nested-mutlog2-28:0.025:28:1137 nested-mutlog2-32:0.025:32:1139"
+    nest=", \"nestingFactorSubgrid\": 2"
     for runConfig in ${RUN_CONFIGS}; do
         IFS=: read -r runName runP2p runMutexp runSeed <<< "${runConfig}"
         jobnum=$((jobnum + 1))
