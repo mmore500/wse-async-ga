@@ -138,23 +138,23 @@ def _make_subgrid_df(
 
 
 def _calc_symbol_values(
-    *, calcs: dict, subgrid_df: pl.DataFrame, shape: tuple
+    *, calcConfig: dict, subgrid_df: pl.DataFrame, shape: tuple
 ) -> dict:
     """Calculate device symbol values, as raw word bits, from Python strings
     of polars expressions over subgrid_df (see `_make_subgrid_df`):
     with_setup adds columns, in order, then with_values gives each symbol's
     values.
     """
-    if not calcs.keys() <= {"with_setup", "with_values"}:
-        raise ValueError(f"calcSymbolValues {calcs.keys()=} invalid")
+    if not calcConfig.keys() <= {"with_setup", "with_values"}:
+        raise ValueError(f"calcSymbolValues {calcConfig.keys()=} invalid")
     env = {"np": np, "pl": pl}
-    for expr in calcs.get("with_setup", []):
+    for expr in calcConfig.get("with_setup", []):
         subgrid_df = subgrid_df.with_columns(eval(expr, env))
 
     values_df = subgrid_df.select(
         **{
             symbol: eval(expr, env)
-            for symbol, expr in calcs.get("with_values", {}).items()
+            for symbol, expr in calcConfig.get("with_values", {}).items()
         }
     )
     symbolValues = {
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         raise ValueError(f"unknown {p2pMode=}")
 
     calcSymbols = _calc_symbol_values(
-        calcs=runtime_config.get("calcSymbolValues", {}),
+        calcConfig=runtime_config.get("calcSymbolValues", {}),
         subgrid_df=_make_subgrid_df(
             rowSubgrid=rowSubgrid, colSubgrid=colSubgrid
         ),

@@ -255,7 +255,7 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
         rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
     )
     symbols = template._calc_symbol_values(
-        calcs={
+        calcConfig={
             "with_setup": [
                 "(pl.col('row') * 10 + pl.col('col')).alias('a')",
                 "(pl.col('a') + 1).alias('b')",  # sees a, set before
@@ -279,13 +279,15 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
     assert (symbols["rtc_i"][..., 0].view(np.int32) == -rows).all()
 
     assert (
-        template._calc_symbol_values(calcs={}, subgrid_df=grid, shape=shape)
+        template._calc_symbol_values(
+            calcConfig={}, subgrid_df=grid, shape=shape
+        )
         == {}
     )
 
 
 @pytest.mark.parametrize(
-    "calcs",
+    "calcConfig",
     [
         {"with_values": {"a": "pl.col('row').cast(pl.UInt32)"}},  # not rtc_
         {"with_values": {"rtc_a": "pl.col('row')"}},  # 64-bit
@@ -295,12 +297,12 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
     ],
 )
 def test_calc_symbol_values_rejects(
-    template: types.ModuleType, calcs: dict
+    template: types.ModuleType, calcConfig: dict
 ) -> None:
     grid = template._make_subgrid_df(
         rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
     )
     with pytest.raises((ValueError, pl.exceptions.PolarsError)):
         template._calc_symbol_values(
-            calcs=calcs, subgrid_df=grid, shape=(3, 4, 1)
+            calcConfig=calcConfig, subgrid_df=grid, shape=(3, 4, 1)
         )
