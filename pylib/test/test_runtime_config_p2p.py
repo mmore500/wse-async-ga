@@ -332,8 +332,10 @@ def test_calc_symbol_values_template(tmp_path: pathlib.Path) -> None:
         "nestingFactorSubgrid": 2,  # sees nested sizes
         "calcSymbolValues": {
             "with_setup": [
-                "(pl.col('nRowSubgrid') * pl.col('nColSubgrid'))"
-                ".alias('area')",
+                (
+                    "(pl.col('nRowSubgrid') * pl.col('nColSubgrid'))"
+                    ".alias('area')"
+                ),
             ],
             "with_values": {
                 "rtc_area": "pl.col('area').cast(pl.UInt32)",
@@ -377,10 +379,14 @@ def test_calc_symbol_values_template(tmp_path: pathlib.Path) -> None:
 # recipes: subgrid replicate index within each subgrid size, so parameter
 # sets can rotate evenly over each size's replicate subgrids
 _REPLICATE_SETUP = [
-    "(pl.col('subgridOriginRow') * pl.col('nCol')"
-    " + pl.col('subgridOriginCol')).alias('subgrid')",
-    "(pl.col('subgrid').rank('dense').over('nRowSubgrid', 'nColSubgrid')"
-    " - 1).alias('replicate')",
+    (
+        "(pl.col('subgridOriginRow') * pl.col('nCol')"
+        " + pl.col('subgridOriginCol')).alias('subgrid')"
+    ),
+    (
+        "(pl.col('subgrid').rank('dense').over('nRowSubgrid', 'nColSubgrid')"
+        " - 1).alias('replicate')"
+    ),
 ]
 
 

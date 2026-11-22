@@ -4,6 +4,7 @@ import string
 import types
 
 import numpy as np
+import polars as pl
 import pytest
 
 template_path = (
@@ -294,5 +295,5 @@ def test_calc_symbol_values_rejects(
     grid = template._grid_frame(
         rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
     )
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, pl.exceptions.PolarsError)):
         template._calc_symbol_values(calcs=calcs, grid=grid, shape=(3, 4, 1))
