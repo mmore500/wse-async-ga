@@ -432,9 +432,11 @@ def test_calc_symbol_values_recipe_even_sets(
             },
         },
     }
-    data = np.load(io.BytesIO(_generate(
-        tmp_path, _nested_comptime(nRow, nCol), runtime_config
-    )))
+    data = np.load(
+        io.BytesIO(
+            _generate(tmp_path, _nested_comptime(nRow, nCol), runtime_config)
+        )
+    )
     rates = _subgrid_values(data, "rtc_rate")
     counts = _subgrid_values(data, "rtc_count")
     for size in {h for _, _, h in rates}:
@@ -463,9 +465,11 @@ def test_calc_symbol_values_recipe_sets_by_size(
             },
         },
     }
-    data = np.load(io.BytesIO(_generate(
-        tmp_path, _nested_comptime(nRow, nCol), runtime_config
-    )))
+    data = np.load(
+        io.BytesIO(
+            _generate(tmp_path, _nested_comptime(nRow, nCol), runtime_config)
+        )
+    )
     height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
     rate = data["rtc_rate"][:, :, 0].view(np.float32)
     assert set(np.unique(height)) <= rateBySize.keys()

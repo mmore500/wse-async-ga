@@ -230,12 +230,8 @@ def test_grid_frame(template: types.ModuleType) -> None:
     assert (grid["nRow"] == 10).all() and (grid["nCol"] == 12).all()
     assert (grid["nRowSubgrid"].to_numpy() == rowSubgrid.ravel()).all()
     assert (grid["nColSubgrid"].to_numpy() == colSubgrid.ravel()).all()
-    assert (
-        grid["subgridOriginRow"] + grid["subgridRow"] == grid["row"]
-    ).all()
-    assert (
-        grid["subgridOriginCol"] + grid["subgridCol"] == grid["col"]
-    ).all()
+    assert (grid["subgridOriginRow"] + grid["subgridRow"] == grid["row"]).all()
+    assert (grid["subgridOriginCol"] + grid["subgridCol"] == grid["col"]).all()
     assert (grid["subgridRow"] < grid["nRowSubgrid"]).all()
     assert (grid["subgridCol"] < grid["nColSubgrid"]).all()
     assert (grid["subgridOriginRow"] % grid["nRowSubgrid"] == 0).all()
@@ -276,14 +272,10 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
         assert values.shape == shape and values.dtype == np.uint32
     rows, cols = np.indices((3, 4))
     assert (symbols["rtc_a"][..., 0] == rows * 10 + cols + 1).all()
-    assert (
-        symbols["rtc_f"][..., 0].view(np.float32) == (cols % 2) / 2
-    ).all()
+    assert (symbols["rtc_f"][..., 0].view(np.float32) == (cols % 2) / 2).all()
     assert (symbols["rtc_i"][..., 0].view(np.int32) == -rows).all()
 
-    assert template._calc_symbol_values(
-        calcs={}, grid=grid, shape=shape
-    ) == {}
+    assert template._calc_symbol_values(calcs={}, grid=grid, shape=shape) == {}
 
 
 @pytest.mark.parametrize(
