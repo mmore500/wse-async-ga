@@ -175,10 +175,10 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # one thing from debug3 job 2, all with infection seeded on corner PE only,
 # mutation rate 1e-6, population 1055 per PE, 10000 updates, 4-bit pathogen
 # nibble messages, neighbors sent any genomes (with recv throttling):
-# 1. p2p send probability 1 in 200 (not 1 in 20), on the full grid: less
-#    p2p traffic, so fewer messages crossing in the fabric
-# 2. 3x3 subgrids (no nesting), p2p send probability 1 in 20: p2p messages
+# 1. 3x3 subgrids (no nesting), p2p send probability 1 in 20: p2p messages
 #    to partners within the subgrid, so short routes
+# 2. p2p send probability 5e-7 (not 1 in 20), on the full grid: rare p2p
+#    sends, so messages seldom cross in the fabric
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1
@@ -203,11 +203,11 @@ jobnum=0  # job order, in config names, as run step runs them in name order
 # compile, for each compile config; and write each run config's runtime
 # config, with compiled artifacts, to its own directory (one job per run
 # config in run step)
-for compileConfig in lowp2p subgrid3; do
+for compileConfig in subgrid3 lowp2p; do
     # subgrid size (0: full grid), and runtime p2p send probability
     case "${compileConfig}" in
-        lowp2p) subgrid=0 runp2p=0.005 ;;
         subgrid3) subgrid=3 runp2p=0.05 ;;
+        lowp2p) subgrid=0 runp2p=5e-7 ;;
     esac
     compileseed=$((1170 + jobnum))  # runtime config sets it too
     COMPILE_WORKDIR="${WORKDIR_STEP}/compile=${compileConfig}"
