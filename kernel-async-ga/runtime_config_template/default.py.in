@@ -13,32 +13,28 @@ import numpy as np
 import polars as pl
 
 
-def _as_symbol_values(*, option: str, values: dict, shape: tuple) -> dict:
-    """Check device symbol values, set by runtime config option, are rtc_
-    symbols of 32-bit values of symbol shape, and give them as raw word bits.
-    """
-    symbols = {}
-    for symbol, value in sorted(values.items()):
+def _check_symbol_values(*, symbolValues: dict, shape: tuple) -> str:
+    """Check device symbol values are rtc_ symbols of 32-bit values of symbol
+    shape, returning an error message if not (empty if ok)."""
+    for symbol, value in sorted(symbolValues.items()):
         if not symbol.startswith("rtc_"):
-            raise ValueError(f"{option} {symbol=} invalid")
+            return f"{symbol=} invalid"
         if value.shape != shape or value.dtype.itemsize != 4:
-            raise ValueError(f"{option} {symbol=} needs 32-bit {shape=}")
-        symbols[symbol] = value.view(np.uint32)
-    return symbols
+            return f"{symbol=} needs 32-bit {shape=}"
+    return ""
 
 
 def _eval_symbol_values(*, exprs: dict, shape: tuple) -> dict:
     """Evaluate device symbol values from Python lambdas of symbol shape, e.g.,
     {"rtc_foo": "lambda shape: np.zeros(shape, np.int32)"}, as raw word bits.
     """
-    return _as_symbol_values(
-        option="setSymbolValues",
-        values={
-            symbol: eval(expr, {"np": np, "shape": shape})(shape)
-            for symbol, expr in exprs.items()
-        },
-        shape=shape,
-    )
+    symbolValues = {
+        symbol: eval(expr, {"np": np, "shape": shape})(shape)
+        for symbol, expr in exprs.items()
+    }
+    if error := _check_symbol_values(symbolValues=symbolValues, shape=shape):
+        raise ValueError(f"setSymbolValues {error}")
+    return {symbol: v.view(np.uint32) for symbol, v in symbolValues.items()}
 
 
 def _nest_subgrid_sizes(
@@ -98,7 +94,7 @@ def _nest_subgrid_sizes(
     )
 
 
-def _make_grid_df(
+def _make_subgrid_df(
     *, rowSubgrid: np.ndarray, colSubgrid: np.ndarray
 ) -> pl.DataFrame:
     """Describe each PE's place in the grid, given per-PE subgrid sizes (0 for
@@ -142,26 +138,32 @@ def _make_grid_df(
 
 
 def _calc_symbol_values(
-    *, calcs: dict, grid: pl.DataFrame, shape: tuple
+    *, calcs: dict, subgrid_df: pl.DataFrame, shape: tuple
 ) -> dict:
     """Calculate device symbol values, as raw word bits, from Python strings
-    of polars expressions over grid (see `_make_grid_df`): with_setup adds
-    columns, in order, then with_values gives each symbol's values.
+    of polars expressions over subgrid_df (see `_make_subgrid_df`):
+    with_setup adds columns, in order, then with_values gives each symbol's
+    values.
     """
     if not calcs.keys() <= {"with_setup", "with_values"}:
         raise ValueError(f"calcSymbolValues {calcs.keys()=} invalid")
     env = {"np": np, "pl": pl}
     for expr in calcs.get("with_setup", []):
-        grid = grid.with_columns(eval(expr, env))
+        subgrid_df = subgrid_df.with_columns(eval(expr, env))
 
-    values = {}
-    for symbol, expr in calcs.get("with_values", {}).items():
-        values[symbol] = grid.select(eval(expr, env)).to_series().to_numpy()
-        if values[symbol].size == np.prod(shape):  # one value per PE
-            values[symbol] = values[symbol].reshape(shape)
-    return _as_symbol_values(
-        option="calcSymbolValues", values=values, shape=shape
+    values_df = subgrid_df.select(
+        **{
+            symbol: eval(expr, env)
+            for symbol, expr in calcs.get("with_values", {}).items()
+        }
     )
+    symbolValues = {
+        symbol: values_df[symbol].to_numpy().reshape(shape)
+        for symbol in values_df.columns
+    }
+    if error := _check_symbol_values(symbolValues=symbolValues, shape=shape):
+        raise ValueError(f"calcSymbolValues {error}")
+    return {symbol: v.view(np.uint32) for symbol, v in symbolValues.items()}
 
 
 def _pair_p2p_targets(
@@ -175,7 +177,7 @@ def _pair_p2p_targets(
     """
     nRow, nCol = rowSubgrid.shape
     return (
-        _make_grid_df(rowSubgrid=rowSubgrid, colSubgrid=colSubgrid)
+        _make_subgrid_df(rowSubgrid=rowSubgrid, colSubgrid=colSubgrid)
         .select("row", "col", "subgridOriginRow", "subgridOriginCol")
         .with_columns(lot=pl.int_range(pl.len()).shuffle(seed=seed))
         # draw lots: in each subgrid, lowest two pair, then next two, etc.
@@ -276,7 +278,9 @@ if __name__ == "__main__":
 
     calcSymbols = _calc_symbol_values(
         calcs=runtime_config.get("calcSymbolValues", {}),
-        grid=_make_grid_df(rowSubgrid=rowSubgrid, colSubgrid=colSubgrid),
+        subgrid_df=_make_subgrid_df(
+            rowSubgrid=rowSubgrid, colSubgrid=colSubgrid
+        ),
         shape=shape,
     )
 

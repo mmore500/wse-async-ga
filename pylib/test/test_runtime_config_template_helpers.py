@@ -219,11 +219,13 @@ def test_pair_p2p_targets_seed(template: types.ModuleType) -> None:
     assert (pair(1) != pair(2)).any()
 
 
-def test_make_grid_df(template: types.ModuleType) -> None:
+def test_make_subgrid_df(template: types.ModuleType) -> None:
     rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
         nRow=10, nCol=12, nRowSubgrid=2, nColSubgrid=3, nestingFactor=2
     )
-    grid = template._make_grid_df(rowSubgrid=rowSubgrid, colSubgrid=colSubgrid)
+    grid = template._make_subgrid_df(
+        rowSubgrid=rowSubgrid, colSubgrid=colSubgrid
+    )
     assert len(grid) == 10 * 12
     rows, cols = np.indices((10, 12))
     assert (grid["row"].to_numpy() == rows.ravel()).all()  # row-major
@@ -238,8 +240,8 @@ def test_make_grid_df(template: types.ModuleType) -> None:
     assert (grid["subgridOriginRow"] % grid["nRowSubgrid"] == 0).all()
 
 
-def test_make_grid_df_unpartitioned(template: types.ModuleType) -> None:
-    grid = template._make_grid_df(
+def test_make_subgrid_df_unpartitioned(template: types.ModuleType) -> None:
+    grid = template._make_subgrid_df(
         rowSubgrid=np.zeros((4, 5), int), colSubgrid=np.full((4, 5), 2)
     )
     assert (grid["subgridOriginRow"] == 0).all()  # 0: whole grid
@@ -249,7 +251,7 @@ def test_make_grid_df_unpartitioned(template: types.ModuleType) -> None:
 
 def test_calc_symbol_values(template: types.ModuleType) -> None:
     shape = (3, 4, 1)
-    grid = template._make_grid_df(
+    grid = template._make_subgrid_df(
         rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
     )
     symbols = template._calc_symbol_values(
@@ -265,7 +267,7 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
                 "rtc_i": "(-pl.col('row')).cast(pl.Int32)",
             },
         },
-        grid=grid,
+        subgrid_df=grid,
         shape=shape,
     )
     assert symbols.keys() == {"rtc_a", "rtc_f", "rtc_i"}
@@ -276,7 +278,10 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
     assert (symbols["rtc_f"][..., 0].view(np.float32) == (cols % 2) / 2).all()
     assert (symbols["rtc_i"][..., 0].view(np.int32) == -rows).all()
 
-    assert template._calc_symbol_values(calcs={}, grid=grid, shape=shape) == {}
+    assert (
+        template._calc_symbol_values(calcs={}, subgrid_df=grid, shape=shape)
+        == {}
+    )
 
 
 @pytest.mark.parametrize(
@@ -292,8 +297,10 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
 def test_calc_symbol_values_rejects(
     template: types.ModuleType, calcs: dict
 ) -> None:
-    grid = template._make_grid_df(
+    grid = template._make_subgrid_df(
         rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
     )
     with pytest.raises((ValueError, pl.exceptions.PolarsError)):
-        template._calc_symbol_values(calcs=calcs, grid=grid, shape=(3, 4, 1))
+        template._calc_symbol_values(
+            calcs=calcs, subgrid_df=grid, shape=(3, 4, 1)
+        )
