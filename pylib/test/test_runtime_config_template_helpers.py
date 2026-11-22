@@ -4,6 +4,7 @@ import string
 import types
 
 import numpy as np
+import polars as pl
 import pytest
 
 template_path = (
@@ -216,3 +217,92 @@ def test_pair_p2p_targets_seed(template: types.ModuleType) -> None:
 
     assert (pair(1) == pair(1)).all()
     assert (pair(1) != pair(2)).any()
+
+
+def test_make_subgrid_df(template: types.ModuleType) -> None:
+    rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
+        nRow=10, nCol=12, nRowSubgrid=2, nColSubgrid=3, nestingFactor=2
+    )
+    grid = template._make_subgrid_df(
+        rowSubgrid=rowSubgrid, colSubgrid=colSubgrid
+    )
+    assert len(grid) == 10 * 12
+    rows, cols = np.indices((10, 12))
+    assert (grid["row"].to_numpy() == rows.ravel()).all()  # row-major
+    assert (grid["col"].to_numpy() == cols.ravel()).all()
+    assert (grid["nRow"] == 10).all() and (grid["nCol"] == 12).all()
+    assert (grid["nRowSubgrid"].to_numpy() == rowSubgrid.ravel()).all()
+    assert (grid["nColSubgrid"].to_numpy() == colSubgrid.ravel()).all()
+    assert (grid["subgridOriginRow"] + grid["subgridRow"] == grid["row"]).all()
+    assert (grid["subgridOriginCol"] + grid["subgridCol"] == grid["col"]).all()
+    assert (grid["subgridRow"] < grid["nRowSubgrid"]).all()
+    assert (grid["subgridCol"] < grid["nColSubgrid"]).all()
+    assert (grid["subgridOriginRow"] % grid["nRowSubgrid"] == 0).all()
+
+
+def test_make_subgrid_df_unpartitioned(template: types.ModuleType) -> None:
+    grid = template._make_subgrid_df(
+        rowSubgrid=np.zeros((4, 5), int), colSubgrid=np.full((4, 5), 2)
+    )
+    assert (grid["subgridOriginRow"] == 0).all()  # 0: whole grid
+    assert (grid["subgridRow"] == grid["row"]).all()
+    assert (grid["subgridOriginCol"] == grid["col"] - grid["col"] % 2).all()
+
+
+def test_calc_symbol_values(template: types.ModuleType) -> None:
+    shape = (3, 4, 1)
+    grid = template._make_subgrid_df(
+        rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
+    )
+    symbols = template._calc_symbol_values(
+        calcConfig={
+            "with_setup": [
+                "(pl.col('row') * 10 + pl.col('col')).alias('a')",
+                "(pl.col('a') + 1).alias('b')",  # sees a, set before
+                "pl.col('b').alias('a')",  # replaces a
+            ],
+            "with_values": {
+                "rtc_a": "pl.col('a').cast(pl.UInt32)",
+                "rtc_f": "(pl.col('subgridCol') / 2).cast(pl.Float32)",
+                "rtc_i": "(-pl.col('row')).cast(pl.Int32)",
+            },
+        },
+        subgrid_df=grid,
+        shape=shape,
+    )
+    assert symbols.keys() == {"rtc_a", "rtc_f", "rtc_i"}
+    for values in symbols.values():
+        assert values.shape == shape and values.dtype == np.uint32
+    rows, cols = np.indices((3, 4))
+    assert (symbols["rtc_a"][..., 0] == rows * 10 + cols + 1).all()
+    assert (symbols["rtc_f"][..., 0].view(np.float32) == (cols % 2) / 2).all()
+    assert (symbols["rtc_i"][..., 0].view(np.int32) == -rows).all()
+
+    assert (
+        template._calc_symbol_values(
+            calcConfig={}, subgrid_df=grid, shape=shape
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    "calcConfig",
+    [
+        {"with_values": {"a": "pl.col('row').cast(pl.UInt32)"}},  # not rtc_
+        {"with_values": {"rtc_a": "pl.col('row')"}},  # 64-bit
+        {"with_values": {"rtc_a": "pl.col('row').head(2).cast(pl.UInt32)"}},
+        {"with_setup": [], "with_symbols": {}},  # unknown key
+        {"with_setup": ["pl.col('nope').alias('a')"]},  # no such column
+    ],
+)
+def test_calc_symbol_values_rejects(
+    template: types.ModuleType, calcConfig: dict
+) -> None:
+    grid = template._make_subgrid_df(
+        rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
+    )
+    with pytest.raises((ValueError, pl.exceptions.PolarsError)):
+        template._calc_symbol_values(
+            calcConfig=calcConfig, subgrid_df=grid, shape=(3, 4, 1)
+        )

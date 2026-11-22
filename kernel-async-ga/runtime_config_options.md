@@ -60,3 +60,9 @@ If no runtime config value is specified, symbols keep compile time default.
     1) giving 32-bit values, e.g., `f32`, `i32`, or `u32`:
     `{"rtc_foo": "lambda shape: np.full(shape, 0.5, np.float32)"}`
   - each symbol must be exported (e.g., via genome `export_symbol_names`)
+- `calcSymbolValues`
+  - device symbols calculated from polars expression strings over a per-PE
+    dataframe (see `_make_grid_df` in `runtime_config_template/default.py.in`)
+  - `with_setup`: list of expressions to set up helper columns, evaluated sequentially
+  - `with_values`: dict mapping symbols to polars expressions
+    `{"rtc_foo": "pl.col('nRowSubgrid').cast(pl.Float32) / 8"}`

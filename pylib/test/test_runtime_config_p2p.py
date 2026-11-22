@@ -320,6 +320,169 @@ def test_subgrid_growth_one_is_uniform(tmp_path: pathlib.Path) -> None:
         )
 
 
+def test_calc_symbol_values_template(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 12,
+        "nCol": 10,
+        "nRowSubgrid": 2,
+        "nColSubgrid": 2,
+        "globalSeed": 0,
+    }
+    runtime_config = {
+        "nestingFactorSubgrid": 2,  # sees nested sizes
+        "calcSymbolValues": {
+            "with_setup": [
+                (
+                    "(pl.col('nRowSubgrid') * pl.col('nColSubgrid'))"
+                    ".alias('area')"
+                ),
+            ],
+            "with_values": {
+                "rtc_area": "pl.col('area').cast(pl.UInt32)",
+                "rtc_isOrigin": "((pl.col('subgridRow') == 0)"
+                " & (pl.col('subgridCol') == 0)).cast(pl.UInt32)",
+            },
+        },
+    }
+    data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    width = data["rtc_nColSubgrid"][:, :, 0].astype(int)
+    area = data["rtc_area"]
+    assert area.shape == (12, 10, 1) and area.dtype == np.uint32
+    assert (area[:, :, 0] == height * width).all()
+    rows, cols = np.indices((12, 10))
+    isOrigin = (rows % height == 0) & (cols % width == 0)
+    assert (data["rtc_isOrigin"][:, :, 0] == isOrigin).all()
+
+    for bad in (  # double sets symbol from another option
+        {
+            "nestingFactorSubgrid": 2,
+            "calcSymbolValues": {
+                "with_values": {
+                    "rtc_nRowSubgrid": "pl.col('row').cast(pl.UInt32)",
+                },
+            },
+        },
+        {
+            "setSymbolValues": {
+                "rtc_a": "lambda shape: np.zeros(shape, np.uint32)",
+            },
+            "calcSymbolValues": {
+                "with_values": {"rtc_a": "pl.col('row').cast(pl.UInt32)"},
+            },
+        },
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)
+
+
+# recipes: subgrid replicate index within each subgrid size, so parameter
+# sets can rotate evenly over each size's replicate subgrids
+_REPLICATE_SETUP = [
+    (
+        "(pl.col('subgridOriginRow') * pl.col('nCol')"
+        " + pl.col('subgridOriginCol')).alias('subgrid')"
+    ),
+    (
+        "(pl.col('subgrid').rank('dense').over('nRowSubgrid', 'nColSubgrid')"
+        " - 1).alias('replicate')"
+    ),
+]
+
+
+def _nested_comptime(nRow: int, nCol: int) -> dict:
+    return {
+        "nRow": nRow,
+        "nCol": nCol,
+        "nRowSubgrid": 2,
+        "nColSubgrid": 2,
+        "globalSeed": 0,
+    }
+
+
+def _subgrid_values(data: np.lib.npyio.NpzFile, symbol: str) -> dict:
+    """Map each subgrid (top, left, size) to its PEs' one value."""
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    width = data["rtc_nColSubgrid"][:, :, 0].astype(int)
+    values = data[symbol][:, :, 0]
+    nRow, nCol = height.shape
+    rows, cols = np.indices((nRow, nCol))
+    top, left = rows - rows % height, cols - cols % width
+    res = {}
+    for t, l, h, v in zip(top.flat, left.flat, height.flat, values.flat):
+        assert res.setdefault((t, l, h), v) == v  # uniform within subgrid
+    return res
+
+
+@pytest.mark.parametrize("nRow, nCol", [(32, 32), (40, 24), (64, 48)])
+def test_calc_symbol_values_recipe_even_sets(
+    tmp_path: pathlib.Path, nRow: int, nCol: int
+) -> None:
+    # parameter sets (here, two symbols each) rotated evenly over each
+    # subgrid size's replicate subgrids
+    sets = [(0.1, 7), (0.2, 8), (0.3, 9)]
+    runtime_config = {
+        "nestingFactorSubgrid": 2,
+        "calcSymbolValues": {
+            "with_setup": [
+                *_REPLICATE_SETUP,
+                f"(pl.col('replicate') % {len(sets)}).alias('paramSet')",
+            ],
+            "with_values": {
+                "rtc_rate": "pl.col('paramSet').replace_strict("
+                f"{dict(enumerate(r for r, _ in sets))},"
+                " return_dtype=pl.Float32)",
+                "rtc_count": "pl.col('paramSet').replace_strict("
+                f"{dict(enumerate(c for _, c in sets))},"
+                " return_dtype=pl.UInt32)",
+            },
+        },
+    }
+    data = np.load(
+        io.BytesIO(
+            _generate(tmp_path, _nested_comptime(nRow, nCol), runtime_config)
+        )
+    )
+    rates = _subgrid_values(data, "rtc_rate")
+    counts = _subgrid_values(data, "rtc_count")
+    for size in {h for _, _, h in rates}:
+        sub = [k for k in rates if k[2] == size]
+        tally = Counter(
+            (float(rates[k].view(np.float32)), int(counts[k])) for k in sub
+        )
+        # only listed sets, as evenly as possible within each size
+        assert tally.keys() <= {(np.float32(r), c) for r, c in sets}
+        assert len(tally) == min(len(sets), len(sub))
+        assert max(tally.values()) - min(tally.values()) <= 1
+
+
+@pytest.mark.parametrize("nRow, nCol", [(32, 32), (40, 24)])
+def test_calc_symbol_values_recipe_sets_by_size(
+    tmp_path: pathlib.Path, nRow: int, nCol: int
+) -> None:
+    # a parameter set per subgrid size
+    rateBySize = {2: 0.5, 4: 0.25, 8: 0.125, 16: 0.0625, 32: 0.03125}
+    runtime_config = {
+        "nestingFactorSubgrid": 2,
+        "calcSymbolValues": {
+            "with_values": {
+                "rtc_rate": "pl.col('nRowSubgrid').replace_strict("
+                f"{rateBySize}, return_dtype=pl.Float32)",
+            },
+        },
+    }
+    data = np.load(
+        io.BytesIO(
+            _generate(tmp_path, _nested_comptime(nRow, nCol), runtime_config)
+        )
+    )
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    rate = data["rtc_rate"][:, :, 0].view(np.float32)
+    assert set(np.unique(height)) <= rateBySize.keys()
+    for size, r in rateBySize.items():
+        assert (rate[height == size] == np.float32(r)).all()
+
+
 def test_subgrid_validators_reject() -> None:
     comptime = {"nRow": 4, "nCol": 4, "nRowSubgrid": 0, "nColSubgrid": 0}
     uniform = np.full((4, 4, 1), 2, np.uint32)

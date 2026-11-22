@@ -13,21 +13,28 @@ import numpy as np
 import polars as pl
 
 
+def _check_symbol_values(*, symbolValues: dict, shape: tuple) -> str:
+    """Check device symbol values are rtc_ symbols of 32-bit values of symbol
+    shape, returning an error message if not (empty if ok)."""
+    for symbol, value in sorted(symbolValues.items()):
+        if not symbol.startswith("rtc_"):
+            return f"{symbol=} invalid"
+        if value.shape != shape or value.dtype.itemsize != 4:
+            return f"{symbol=} needs 32-bit {shape=}"
+    return ""
+
+
 def _eval_symbol_values(*, exprs: dict, shape: tuple) -> dict:
     """Evaluate device symbol values from Python lambdas of symbol shape, e.g.,
     {"rtc_foo": "lambda shape: np.zeros(shape, np.int32)"}, as raw word bits.
     """
-    symbols = {}
-    for symbol, expr in sorted(exprs.items()):
-        if not symbol.startswith("rtc_"):
-            raise ValueError(f"setSymbolValues {symbol=} invalid")
-        values = eval(expr, {"np": np, "shape": shape})(shape)
-        if values.shape != shape or values.dtype.itemsize != 4:
-            raise ValueError(
-                f"setSymbolValues {symbol=} needs 32-bit {shape=}",
-            )
-        symbols[symbol] = values.view(np.uint32)
-    return symbols
+    symbolValues = {
+        symbol: eval(expr, {"np": np, "shape": shape})(shape)
+        for symbol, expr in exprs.items()
+    }
+    if error := _check_symbol_values(symbolValues=symbolValues, shape=shape):
+        raise ValueError(f"setSymbolValues {error}")
+    return {symbol: v.view(np.uint32) for symbol, v in symbolValues.items()}
 
 
 def _nest_subgrid_sizes(
@@ -87,6 +94,77 @@ def _nest_subgrid_sizes(
     )
 
 
+def _make_subgrid_df(
+    *, rowSubgrid: np.ndarray, colSubgrid: np.ndarray
+) -> pl.DataFrame:
+    """Describe each PE's place in the grid, given per-PE subgrid sizes (0 for
+    no partitioning along that axis).
+
+    Returns
+    -------
+    pl.DataFrame
+        One row per PE, in row-major order, with the following columns:
+
+        - 'row', 'col' : pl.Int64
+            - PE position in grid.
+        - 'nRow', 'nCol' : pl.Int64
+            - Grid size.
+        - 'nRowSubgrid', 'nColSubgrid' : pl.Int64
+            - PE's subgrid size, as given (0 for none).
+        - 'subgridOriginRow', 'subgridOriginCol' : pl.Int64
+            - Subgrid's top-left PE, identifying its subgrid.
+        - 'subgridRow', 'subgridCol' : pl.Int64
+            - PE position within subgrid.
+    """
+    nRow, nCol = rowSubgrid.shape
+    rows, cols = np.indices((nRow, nCol))
+    subgridHeight = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
+    subgridWidth = np.where(colSubgrid, colSubgrid, nCol)
+    return pl.DataFrame(
+        {
+            "row": rows.ravel(),
+            "col": cols.ravel(),
+            "nRow": np.full(nRow * nCol, nRow),
+            "nCol": np.full(nRow * nCol, nCol),
+            "nRowSubgrid": rowSubgrid.ravel(),
+            "nColSubgrid": colSubgrid.ravel(),
+            "subgridOriginRow": (rows - rows % subgridHeight).ravel(),
+            "subgridOriginCol": (cols - cols % subgridWidth).ravel(),
+            "subgridRow": (rows % subgridHeight).ravel(),
+            "subgridCol": (cols % subgridWidth).ravel(),
+        }
+    )
+
+
+def _calc_symbol_values(
+    *, calcConfig: dict, subgrid_df: pl.DataFrame, shape: tuple
+) -> dict:
+    """Calculate device symbol values, as raw word bits, from Python strings
+    of polars expressions over subgrid_df (see `_make_subgrid_df`):
+    with_setup adds columns, in order, then with_values gives each symbol's
+    values.
+    """
+    if not calcConfig.keys() <= {"with_setup", "with_values"}:
+        raise ValueError(f"calcSymbolValues {calcConfig.keys()=} invalid")
+    env = {"np": np, "pl": pl}
+    for expr in calcConfig.get("with_setup", []):
+        subgrid_df = subgrid_df.with_columns(eval(expr, env))
+
+    values_df = subgrid_df.select(
+        **{
+            symbol: eval(expr, env)
+            for symbol, expr in calcConfig.get("with_values", {}).items()
+        }
+    )
+    symbolValues = {
+        symbol: values_df[symbol].to_numpy().reshape(shape)
+        for symbol in values_df.columns
+    }
+    if error := _check_symbol_values(symbolValues=symbolValues, shape=shape):
+        raise ValueError(f"calcSymbolValues {error}")
+    return {symbol: v.view(np.uint32) for symbol, v in symbolValues.items()}
+
+
 def _pair_p2p_targets(
     *, rowSubgrid: np.ndarray, colSubgrid: np.ndarray, seed: int
 ) -> np.ndarray:
@@ -97,20 +175,9 @@ def _pair_p2p_targets(
     odd one out of a subgrid.
     """
     nRow, nCol = rowSubgrid.shape
-    rows, cols = np.indices((nRow, nCol))
-    subgridHeight = np.where(rowSubgrid, rowSubgrid, nRow)  # 0: whole grid
-    subgridWidth = np.where(colSubgrid, colSubgrid, nCol)
-
     return (
-        pl.DataFrame(
-            {
-                "row": rows.ravel(),
-                "col": cols.ravel(),
-                # subgrids identified by their top-left PE
-                "subgridOriginRow": (rows - rows % subgridHeight).ravel(),
-                "subgridOriginCol": (cols - cols % subgridWidth).ravel(),
-            }
-        )
+        _make_subgrid_df(rowSubgrid=rowSubgrid, colSubgrid=colSubgrid)
+        .select("row", "col", "subgridOriginRow", "subgridOriginCol")
         .with_columns(lot=pl.int_range(pl.len()).shuffle(seed=seed))
         # draw lots: in each subgrid, lowest two pair, then next two, etc.
         .with_columns(
@@ -156,18 +223,16 @@ if __name__ == "__main__":
     nRow, nCol = comptime_config["nRow"], comptime_config["nCol"]
     shape = (nRow, nCol, 1)
     # only what runtime config sets, others keep comptime config
-    symbols = {
+    copiedSymbols = {
         f"rtc_{key}": np.full(shape, runtime_config[key], np.uint32)
         for key in sorted(
-            {"globalSeed", "nRowSubgrid", "nColSubgrid", "nCycleAtLeast"}
-            & runtime_config.keys()
+            {"globalSeed", "nCycleAtLeast"} & runtime_config.keys()
         )
     }
 
-    exprs = runtime_config.get("setSymbolValues", {})
-    if exprs.keys() & symbols.keys():
-        raise ValueError(f"setSymbolValues double sets {exprs.keys()=}")
-    symbols.update(_eval_symbol_values(exprs=exprs, shape=shape))
+    setSymbols = _eval_symbol_values(
+        exprs=runtime_config.get("setSymbolValues", {}), shape=shape
+    )
 
     nRowSubgrid, nColSubgrid = (
         runtime_config.get(key, comptime_config[key])
@@ -181,15 +246,18 @@ if __name__ == "__main__":
         nColSubgrid=nColSubgrid,
         nestingFactor=nestingFactor,
     )
-    if nestingFactor == 1:  # uniform subgrids, as without nesting
-        assert (rowSubgrid == nRowSubgrid).all()
-        assert (colSubgrid == nColSubgrid).all()
-    else:
-        symbols["rtc_nRowSubgrid"] = rowSubgrid[..., None].astype(np.uint32)
-        symbols["rtc_nColSubgrid"] = colSubgrid[..., None].astype(np.uint32)
+    subgridSymbols = {
+        f"rtc_{key}": values[..., None].astype(np.uint32)
+        for key, values in (
+            ("nRowSubgrid", rowSubgrid),
+            ("nColSubgrid", colSubgrid),
+        )
+        if nestingFactor > 1 or key in runtime_config
+    }
 
+    p2pSymbols = {}
     if "p2pSendProbability" in runtime_config:  # float32, copied as raw bits
-        symbols["rtc_p2pSendProbability"] = np.full(
+        p2pSymbols["rtc_p2pSendProbability"] = np.full(
             shape, runtime_config["p2pSendProbability"], np.float32
         ).view(np.uint32)
 
@@ -201,10 +269,25 @@ if __name__ == "__main__":
             "globalSeed", comptime_config["globalSeed"]
         )
         p2pSeed = runtime_config.get("p2pSeed", globalSeed)
-        symbols["rtc_p2pTarget"] = _pair_p2p_targets(
+        p2pSymbols["rtc_p2pTarget"] = _pair_p2p_targets(
             rowSubgrid=rowSubgrid, colSubgrid=colSubgrid, seed=p2pSeed
         ).reshape(shape)
     else:
         raise ValueError(f"unknown {p2pMode=}")
+
+    calcSymbols = _calc_symbol_values(
+        calcConfig=runtime_config.get("calcSymbolValues", {}),
+        subgrid_df=_make_subgrid_df(
+            rowSubgrid=rowSubgrid, colSubgrid=colSubgrid
+        ),
+        shape=shape,
+    )
+
+    allSymbols = (
+        copiedSymbols, setSymbols, subgridSymbols, p2pSymbols, calcSymbols
+    )
+    symbols = {k: v for items in allSymbols for k, v in items.items()}
+    if len(symbols) != sum(map(len, allSymbols)):
+        raise ValueError("runtime config options double set symbols")
 
     np.savez(sys.stdout.buffer, **symbols)
