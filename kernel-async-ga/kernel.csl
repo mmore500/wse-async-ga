@@ -707,15 +707,13 @@ fn dispatchSend_P() bool {
 }
 
 // recv P2P ===================================================================
-var recvFlag_P: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, count, batch, pad
-const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{p2pMsgSize} -> recvBuf_P[i], });
-
-// callback when recv is complete, set flag to
-// 1) trigger immigration from recv buffer into pop and 2) request next recv
-task recvFinalizeTask_P() void { recvFlag_P = 1;
-  if (closeoutRemaining == 0) { @unblock(ignRecvTaskID_P); }
+// RE https://cerebras-sdk-docs-130.netlify.app/csl/code-examples/tutorial-pipeline-02-fifo
+const INFINITE_DSD_LEN: u16 = 0x7fff;
+const p2pRecvFifoBufMsgs: u16 = comptime compconf.get_value_or(
+  "ASYNC_GA_P2P_RECV_FIFO_BUF_MSGS", @as(u16, 16)
+);
+comptime {  // FIFO needs capacity for at least one message
+  if (p2pEnabled) @comptime_assert(p2pRecvFifoBufMsgs >= 1);
 }
 var recvFifoBuf_P = @zeros([
   if (p2pEnabled) p2pRecvFifoBufMsgs * p2pMsgSize else 0
@@ -724,8 +722,9 @@ const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
   .activate_push = ignRecvTaskID_P,  // blocked until closeout
 } else .{});
 const p2pPayloadWords: u16 = if (p2pEnabled) p2pMsgSize - 2 else 0;
-comptime { @comptime_assert(p2pPayloadWords <= genome_.gWordsPop); }
-var recvBuf_P = @zeros([genome_.gWordsPop]u32);  // genome payload
+var recvBuf_P = @zeros([  // payload: batch count, then batch
+  if (p2pEnabled) p2pPayloadWords else 1
+]u32);
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{1} -> recvBuf_P[i], });
 var recvFill_P: u16 = 0;  // words of current message popped
@@ -741,9 +740,11 @@ fn _recvBufWordDsd_P() mem1d_dsd {
 fn drainRecv_P() void {
   while (@mov32(_recvBufWordDsd_P(), recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
-    if (recvFill_P == 1 + p2pPayloadWords) {  // genome payload complete
+    if (recvFill_P == 1 + p2pPayloadWords) {  // payload complete
+      // batch is short if sender found few live genomes
+      const recvCount_P = @as(u16, math.min(recvBuf_P[0], p2pBatchSize));
       clobberCounter[0] += immigrateEnriched(
-        @ptrcast([*]u32, &recvBuf_P), 1, immEnrichP2p
+        @ptrcast([*]u32, &recvBuf_P[1]), recvCount_P, immEnrichP2p
       );
       immCounter_P[0] += 1;
     }
@@ -917,16 +918,7 @@ task cycleTask() void {
     }
   }
 
-  if (p2pEnabled and recvFlag_P == 1) {  // p2p recv
-    // batch count, then batch; a batch is short if sender found few live
-    const recvCount_P = @as(u16, math.min(recvBuf_P[1], p2pBatchSize));
-    var recvBatchPtr_P = @ptrcast([*]u32, &recvBuf_P[2]);
-    clobberCounter[0] += immigrateEnriched(
-      recvBatchPtr_P, recvCount_P, immEnrichP2p
-    );
-    immCounter_P[0] += 1;
-    recvFlag_P = 0; dispatchRecv_P();
-  }
+  if (p2pEnabled) drainRecv_P();  // p2p recv
 
   // apply replication/selection to population
   // --------------------------------------------------------------------------
