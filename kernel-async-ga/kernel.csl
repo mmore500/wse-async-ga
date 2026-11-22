@@ -475,18 +475,18 @@ comptime { @comptime_assert(recvNumGenomes >= 1); }
 const recvBufSize: u16 = recvNumGenomes * genome_.gSize;
 
 // how many times to immigrate each neighbor and p2p immigrant? 1: as received
-const enrichNeighbor: u16 = comptime compconf.get_value_or(
+const immEnrichNeigh: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_ENRICH_IMMIGRANTS_NEIGHBOR", @as(u16, 1)
 );
-const enrichP2p: u16 = comptime compconf.get_value_or(
+const immEnrichP2p: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_ENRICH_IMMIGRANTS_P2P", @as(u16, 1)
 );
-comptime { @comptime_assert(enrichNeighbor >= 1 and enrichP2p >= 1); }
+comptime { @comptime_assert(immEnrichNeigh >= 1 and immEnrichP2p >= 1); }
 
 // immigrate batch of genomes enrich times, round robin, returning clobbers
-fn immigrateEnriched(batch: [*]u32, nGenomes: u16, enrich: u16) u32 {
+fn immigrateEnriched(batch: [*]u32, nGenomes: u16, enrichment: u16) u32 {
   var nClobbers: u32 = 0;
-  for (@range(u16, enrich)) |c| {
+  for (@range(u16, enrichment)) |c| {
     nClobbers += population.immigrate_genomes(batch, nGenomes);
   }
   return nClobbers;
@@ -768,7 +768,7 @@ task cycleTask() void {
       var recvBufPtr_N = @ptrcast([*]u32, &recvBuf_N[0]);
       if (immCounter_N[0] <= throttleThresh) {
         clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_N, recvNumGenomes, enrichNeighbor
+          recvBufPtr_N, recvNumGenomes, immEnrichNeigh
         );
         immCounter_N[0] += 1;
       }
@@ -778,7 +778,7 @@ task cycleTask() void {
       var recvBufPtr_S = @ptrcast([*]u32, &recvBuf_S[0]);
       if (immCounter_S[0] <= throttleThresh) {
         clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_S, recvNumGenomes, enrichNeighbor
+          recvBufPtr_S, recvNumGenomes, immEnrichNeigh
         );
         immCounter_S[0] += 1;
       }
@@ -788,7 +788,7 @@ task cycleTask() void {
       var recvBufPtr_E = @ptrcast([*]u32, &recvBuf_E[0]);
       if (immCounter_E[0] <= throttleThresh) {
         clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_E, recvNumGenomes, enrichNeighbor
+          recvBufPtr_E, recvNumGenomes, immEnrichNeigh
         );
         immCounter_E[0] += 1;
       }
@@ -798,7 +798,7 @@ task cycleTask() void {
       var recvBufPtr_W = @ptrcast([*]u32, &recvBuf_W[0]);
       if (immCounter_W[0] <= throttleThresh) {
         clobberCounter[0] += immigrateEnriched(
-          recvBufPtr_W, recvNumGenomes, enrichNeighbor
+          recvBufPtr_W, recvNumGenomes, immEnrichNeigh
         );
         immCounter_W[0] += 1;
       }
@@ -808,7 +808,7 @@ task cycleTask() void {
 
   if (p2pEnabled and recvFlag_P == 1) {  // p2p recv
     var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
-    clobberCounter[0] += immigrateEnriched(recvGenomePtr_P, 1, enrichP2p);
+    clobberCounter[0] += immigrateEnriched(recvGenomePtr_P, 1, immEnrichP2p);
     immCounter_P[0] += 1;
     recvFlag_P = 0; dispatchRecv_P();
   }
