@@ -176,7 +176,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #   proportional to live population (and receives aren't throttled)
 # - p2p edges are random PE pairs (within subgrids, if any); with send
 #   probability 1 in 20 (or 1 in 10), a sampled host that is live starts a
-#   batch of up to 24 live genomes (3 wavelets), so batches go at a rate
+#   batch of up to 8 live genomes (1 wavelet), so batches go at a rate
 #   proportional to live population
 # seven independent runs (one job each, run in job order), each set by its
 # own runtime config (p2p targets, and per run p2p send probability,
@@ -203,7 +203,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # as u32, so seed must stay below 2**32 / (1170 * 755) ~= 4862 to avoid wrap
 genome_flavor=genome_alleleevoepi_2026_11_22
 p2pMode=pairs
-p2pbatch=24  # 3 wavelets of 4-bit messages
+p2pbatch=8  # 1 wavelet of 4-bit messages (with 24, 3 wavelets, debug job 6 hangs)
 sendgenomes=8  # 1 wavelet of 4-bit messages
 recvgenomes=16  # 2 sends
 jobnum=0  # job order, in config names, as run step runs them in name order
