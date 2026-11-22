@@ -105,7 +105,11 @@ fn test_immigrate_genomes_clobber_count() void {
         @ptrcast([*]u32, &imm), 2
     );
     @assert(nClobbers == 2);
-    for (@range(u16, 2 * genomeClobber.gWordsPop)) |w| { @assert(imm[w] == 0); }
+    // clobbered immigrants never land in the population
+    for (@range(u32, 2 * genomeClobber.gWordsPop)) |w| {
+        const word = populationClobber._get_population_word(w);
+        @assert((word & 0xFFFF0000) != 0x5A5A0000);
+    }
 }
 
 fn test_do_generation() void {

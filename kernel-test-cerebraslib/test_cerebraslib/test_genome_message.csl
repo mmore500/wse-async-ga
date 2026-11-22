@@ -36,14 +36,6 @@ fn test_words_for() void {
     @assert(message96.words_for(2) == 6);
 }
 
-fn test_is_whole_genome() void {
-    @assert(!message1.isWholeGenome);
-    @assert(!message16.isWholeGenome);
-    @assert(!message24.isWholeGenome);
-    @assert(!message64.isWholeGenome);
-    @assert(message96.isWholeGenome);
-}
-
 fn test_pack_unpack_1() void {
     _clear_buf();
     for (@range(u16, 40)) |i| {  // odd genomes set, crossing word boundary
@@ -127,7 +119,6 @@ fn test_pack_unpack_64() void {
 
 fn do_test() void {
     test_words_for();
-    test_is_whole_genome();
     test_pack_unpack_1();
     test_pack_unpack_4();
     test_pack_unpack_16();

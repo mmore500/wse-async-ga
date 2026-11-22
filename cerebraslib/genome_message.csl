@@ -1,16 +1,5 @@
-// Pack and unpack genome messages, as sent between PEs.
-//
-// A genome's message is the low genome.gBitsMsg bits of its population words
-// (from bit 0 of word 0 up). Messages of consecutive genomes are packed back
-// to back, so with fewer than 32 bits, several genomes share a wavelet.
-// gBitsMsg must divide 8 or be a multiple of 8, so that messages copy in units
-// (words, bytes, or whole sub-byte messages) that never straddle words.
-//
-// Unpacking overwrites only an immigrant's message bits, so a genome's bits
-// above its message (e.g., host state) come from the resident it replaces.
-// Genomes' is_empty must read only message bits, as it is also applied to
-// messages. Messages under a word are zero padded, so then all-zero messages
-// must be empty (checked by each genome's unit tests).
+// Pack and unpack genome messages sent between PEs: a genome's low gBitsMsg
+// bits, packed back to back, so messages under a word share words.
 
 // module params ==============================================================
 param gWordsPop: u16;  // genome.gWordsPop
@@ -19,12 +8,10 @@ param gBitsMsg: u16;  // genome.gBitsMsg
 // compile-time configuration =================================================
 comptime {
     @comptime_assert(gBitsMsg > 0);
+    // so copy units (words, bytes, or whole messages) never straddle words
     @comptime_assert(8 % gBitsMsg == 0 or gBitsMsg % 8 == 0);
     @comptime_assert(gBitsMsg <= 32 * gWordsPop);
 }
-
-/// Whole genome sent? Then messages are population words verbatim.
-const isWholeGenome: bool = gBitsMsg == 32 * gWordsPop;
 
 // copy unit: whole words, else bytes, else whole sub-byte messages
 const unitBits: u16 = (
@@ -45,22 +32,22 @@ fn words_for(n: u16) u16 { return (n * gBitsMsg + 31) / 32; }
 /// Pack genome's message into buf as buf's ith message; buf must start zeroed.
 fn pack(fromGenome: [*]u32, toBuf: [*]u32, i: u16) void {
     for (@range(u16, nUnits)) |k| {
-        const from = k * unitBits;  // bit offset into genome
-        const to = (i * nUnits + k) * unitBits;  // bit offset into buf
-        const unit = (fromGenome[from / 32] >> (from % 32)) & unitMask;
-        toBuf[to / 32] |= unit << (to % 32);
+        const fromBit = k * unitBits;  // bit offset into genome
+        const toBit = (i * nUnits + k) * unitBits;  // bit offset into buf
+        const unit = (fromGenome[fromBit / 32] >> (fromBit % 32)) & unitMask;
+        toBuf[toBit / 32] |= unit << (toBit % 32);
     }
 }
 
 /// Overwrite genome's message bits with buf's ith message.
 fn unpack(fromBuf: [*]u32, i: u16, toGenome: [*]u32) void {
     for (@range(u16, nUnits)) |k| {
-        const from = (i * nUnits + k) * unitBits;  // bit offset into buf
-        const to = k * unitBits;  // bit offset into genome
-        const unit = (fromBuf[from / 32] >> (from % 32)) & unitMask;
-        toGenome[to / 32] = (
-            (toGenome[to / 32] & ~(unitMask << (to % 32)))
-            | (unit << (to % 32))
+        const fromBit = (i * nUnits + k) * unitBits;  // bit offset into buf
+        const toBit = k * unitBits;  // bit offset into genome
+        const unit = (fromBuf[fromBit / 32] >> (fromBit % 32)) & unitMask;
+        toGenome[toBit / 32] = (
+            (toGenome[toBit / 32] & ~(unitMask << (toBit % 32)))
+            | (unit << (toBit % 32))
         );
     }
 }

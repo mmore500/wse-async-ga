@@ -63,6 +63,11 @@ fn incrmod32(val: u32, mod: u32) u32 {
     return res * correction;
 }
 
+/// Add two 16-bit integers, modulo a given value (in 32 bits, so no overflow).
+fn addmod16(a: u16, b: u16, mod: u16) u16 {
+    return @as(u16, (@as(u32, a) + @as(u32, b)) % @as(u32, mod));
+}
+
 /// Multiply two 32-bit integers.
 fn mul32(a: u32, b: u32) u32 { return a * b; }
 

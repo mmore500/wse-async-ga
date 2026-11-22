@@ -9,16 +9,14 @@ const math = @import_module("<math>");
 const random = @import_module("<random>");
 
 const opscalar = @import_module("cerebraslib/opscalar.csl");
-const message = @import_module("cerebraslib/genome_message.csl", .{
-    .gWordsPop = genome.gWordsPop,
-    .gBitsMsg = genome.gBitsMsg,
+const migration = @import_module("cerebraslib/population_migration.csl", .{
+    .genome = genome, .popSize = popSize,
 });
 
 // global state ===============================================================
 const bufSize = popSize * genome.gWordsPop;
 
 var buffer = @zeros([bufSize]u32);
-var immigrantBuf = @zeros([genome.gWordsPop]u32);  // unpacked
 const bufferDsd = @get_dsd(mem1d_dsd, .{
     .tensor_access = |i|{bufSize} -> buffer[i],
 });
@@ -67,18 +65,6 @@ fn _sample_one_tournament() u16 {
 
 fn _put_population_word(data: u32, loc: u32) void { buffer[loc] = data; }
 
-// swap genome at population index i with a uniformly random population
-// member (self-swaps allowed); used to sample/place migrants without a
-// dedicated index/swap buffer, in keeping with this flavor's low memory use
-fn _swap_ith_with_random(i: u16) void {
-    const j = opscalar.unif16(popSize);
-    for (@range(u16, genome.gWordsPop)) |w| {
-        const tmp = buffer[i * genome.gWordsPop + w];
-        buffer[i * genome.gWordsPop + w] = buffer[j * genome.gWordsPop + w];
-        buffer[j * genome.gWordsPop + w] = tmp;
-    }
-}
-
 // internal routines ===========================================================
 fn _elapse_inheritance_all() void {
     for (@range(u16, popSize)) |i| { _elapse_ith_inheritance(i); }
@@ -109,109 +95,26 @@ fn _perform_selection_all() void {
 }
 
 // public API =================================================================
-/// Emigrate nGenomes genomes' packed messages to toBuf. Each of the nGenomes
-/// copied-from slots is first swapped with a uniformly random population
-/// member, so the genomes sent are a random sample of the population (not
-/// always the same fixed slots) while only permuting buffer contents in place
-/// --- no dedicated sampling buffer needed.
 fn emigrate_genomes(toBuf: [*]u32, nGenomes: u16) void {
-    for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
-
-    if (message.isWholeGenome) {
-        const nWords = nGenomes * genome.gWordsPop;
-        const toDsd = @get_dsd(mem1d_dsd, .{
-            .base_address = toBuf, .extent = nWords,
-        });
-        const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
-        @mov32(toDsd, bufferDsd_);
-    } else {
-        for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
-        for (@range(u16, nGenomes)) |i| {
-            message.pack(_get_ith_genome(i), toBuf, i);
-        }
-    }
+    migration.emigrate_genomes(@ptrcast([*]u32, &buffer), toBuf, nGenomes);
 }
 
-/// Immigrate nGenomes genomes from fromBuf. Each immigrant overwrites a
-/// uniformly random population member (sampled with replacement, so a later
-/// immigrant may overwrite an earlier immigrant). Residents keep their bits
-/// above each immigrant's packed message.
 fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
-    var nClobbers: u32 = 0;
-    for (@range(u16, nGenomes)) |i| {
-        const resident = _get_ith_genome(opscalar.unif16(popSize));
-        var immigrant = @ptrcast(
-            [*]u32, &fromBuf[i * genome.gWordsPop]
-        );
-        if (!message.isWholeGenome) {
-            immigrant = @ptrcast([*]u32, &immigrantBuf);
-            for (@range(u16, genome.gWordsPop)) |w| {
-                immigrant[w] = resident[w];
-            }
-            message.unpack(fromBuf, i, immigrant);
-        }
-        if (genome.hasImmClobber) {
-            nClobbers += @as(u32, genome.clobber_immigrant(resident, immigrant));
-        }
-        for (@range(u16, genome.gWordsPop)) |w| { resident[w] = immigrant[w]; }
-    }
-    return nClobbers;
+    return migration.immigrate_genomes(
+        @ptrcast([*]u32, &buffer), fromBuf, nGenomes
+    );
 }
 
-/// Population index offset on from start, wrapping (in u32, to not overflow).
-fn _wrap_index(start: u16, offset: u16) u16 {
-    return @as(u16, (@as(u32, start) + @as(u32, offset)) % popSize);
-}
-
-/// Pack messages of up to nGenomes live (non-empty) genomes into toBuf,
-/// returning how many. Samples one random population member, and if it is
-/// live, scans on from it (wrapping) until nGenomes are found or the whole
-/// population is scanned; so with p live genomes, nonzero with probability p.
 fn emigrate_live_genomes(toBuf: [*]u32, nGenomes: u16) u16 {
-    for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
-    const start = opscalar.unif16(popSize);
-    if (genome.is_empty(_get_ith_genome(start))) { return 0; }
-
-    var nFound: u16 = 0;
-    var offset: u16 = 0;
-    while (nFound < nGenomes and offset < popSize) : (offset += 1) {
-        const candidate = _get_ith_genome(_wrap_index(start, offset));
-        if (!genome.is_empty(candidate)) {
-            message.pack(candidate, toBuf, nFound);
-            nFound += 1;
-        }
-    }
-    return nFound;
+    return migration.emigrate_live_genomes(
+        @ptrcast([*]u32, &buffer), toBuf, nGenomes
+    );
 }
 
-/// Pack a full batch of nGenomes messages into toBuf, of live (non-empty)
-/// genomes scanned on (wrapping) from a random population member, returning
-/// how many empty genomes were passed over. If the whole population has fewer
-/// than nGenomes live, the rest of the batch is empty genomes.
 fn emigrate_live_batch(toBuf: [*]u32, nGenomes: u16) u16 {
-    for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
-    const start = opscalar.unif16(popSize);
-
-    var nFound: u16 = 0;
-    var nEmpty: u16 = 0;
-    var emptyIdx: u16 = start;  // most recent empty genome passed over
-    var offset: u16 = 0;
-    while (nFound < nGenomes and offset < popSize) : (offset += 1) {
-        const i = _wrap_index(start, offset);
-        const candidate = _get_ith_genome(i);
-        if (genome.is_empty(candidate)) {
-            nEmpty += 1;
-            emptyIdx = i;
-        } else {
-            message.pack(candidate, toBuf, nFound);
-            nFound += 1;
-        }
-    }
-    // too few live genomes in population: fill out batch with empty genomes
-    while (nFound < nGenomes) : (nFound += 1) {
-        message.pack(_get_ith_genome(emptyIdx), toBuf, nFound);
-    }
-    return nEmpty;
+    return migration.emigrate_live_batch(
+        @ptrcast([*]u32, &buffer), toBuf, nGenomes
+    );
 }
 
 fn init_module() void { _initialize_all(); }

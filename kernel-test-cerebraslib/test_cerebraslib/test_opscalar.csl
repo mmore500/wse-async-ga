@@ -99,6 +99,14 @@ fn test_incrmod32() void {
     @assert(opscalar.incrmod32(2, 3) == 0);
 }
 
+fn test_addmod16() void {
+    @assert(opscalar.addmod16(0, 0, 1) == 0);
+    @assert(opscalar.addmod16(2, 3, 7) == 5);
+    @assert(opscalar.addmod16(5, 3, 7) == 1);
+    @assert(opscalar.addmod16(6, 6, 7) == 5);
+    @assert(opscalar.addmod16(65535, 65535, 65535) == 0);  // no u16 overflow
+    @assert(opscalar.addmod16(65534, 3, 65535) == 2);
+}
 
 fn test_mul32() void {
     @assert(opscalar.mul32(0, 0) == 0);
@@ -703,6 +711,7 @@ fn do_test() void {
     test_incr16();
     test_incr32();
     test_incrmod32();
+    test_addmod16();
     test_hamming_syndrome32();
     test_mul32();
     test_clamp();
