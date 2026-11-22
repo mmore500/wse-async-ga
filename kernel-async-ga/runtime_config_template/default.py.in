@@ -128,7 +128,6 @@ def _make_subgrid_df(
             "nCol": np.full(nRow * nCol, nCol),
             "nRowSubgrid": rowSubgrid.ravel(),
             "nColSubgrid": colSubgrid.ravel(),
-            # subgrids identified by their top-left PE
             "subgridOriginRow": (rows - rows % subgridHeight).ravel(),
             "subgridOriginCol": (cols - cols % subgridWidth).ravel(),
             "subgridRow": (rows % subgridHeight).ravel(),
