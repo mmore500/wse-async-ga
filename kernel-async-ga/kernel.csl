@@ -146,7 +146,7 @@ var ptr_traitCycles: [*]u32 = &traitCycles;
 var traitValues = @zeros([nTraitVals]u32);
 var ptr_traitValues: [*]u32 = &traitValues;
 
-var genome = @zeros([genome_.gWordsD2h]u32);  // samples 0th pop elem
+var genome = @zeros([genome_.gWordsD2h]u32);  // samples 0th pop element
 var ptr_genome : [*]u32 = &genome;  // (which is convenient)
 
 var fitness = @zeros([1]f32);  // samples 0th population element (convenient)
@@ -272,9 +272,8 @@ const sendNumGenomes: u16 = comptime compconf.get_value_or(
 comptime { @comptime_assert(sendNumGenomes >= 1); }
 const sendBufWords: u16 = (sendNumGenomes * genome_.gBitsMsg + 31) / 32;
 
-// send neighbors only non-empty genomes? then sends go at a rate proportional
-// to the non-empty population: free threads send to the least sent-to
-// direction, but a batch's worth of empty genomes skipped skips a send
+// for bandwidth efficiency, exclude empty genomes from sends
+// for fairness skip a send after skipping a full batch's worth of sends
 const neighborSendExcludeEmpty: bool = 0 != comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_EXCLUDE_EMPTY", @as(u16, 0)
 );
@@ -751,7 +750,7 @@ fn drainRecv_P() void {
     if (recvFill_P == p2pMsgSize) recvFill_P = 0;  // reset for next msg
   }
 }
-task recvFinalizeTask_P() void { dispatchRecv_P(); }
+task recvFinalizeTask_P() void { dispatchRecv_P(); }  // belt and suspenders
 
 // (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
 // synchronous move and doesn't allow microthread selection)

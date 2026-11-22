@@ -485,12 +485,12 @@ fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
 
 // pack genome's message into buf as buf's ith message; buf must start zeroed
 fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
-    gmsg_util.pack(srcPtr, destBuf, i);
+    gmsg_util.pack_msg(srcPtr, destBuf, i);
 }
 
 // overwrite genome's message bits (pathogen) with buf's ith message
 fn msg_unpack(srcBuf: [*]u32, i: u16, destPtr: genomePtr_t) void {
-    gmsg_util.unpack(srcBuf, i, destPtr);
+    gmsg_util.unpack_msg(srcBuf, i, destPtr);
 }
 
 // hook into top-level layout block

@@ -28,11 +28,11 @@ const unitMask: u32 = (
 );
 
 // public API =================================================================
-// how many words hold n packed messages?
-fn words_for(n: u16) u16 { return (n * gBitsMsg + 31) / 32; }
+// how many words hold nMsgs packed messages?
+fn calc_buf_words(nMsgs: u16) u16 { return (nMsgs * gBitsMsg + 31) / 32; }
 
 // pack genome's message into buf as buf's ith message; buf must start zeroed
-fn pack(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {
+fn pack_msg(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {
     for (@range(u16, gSizeUnits)) |k| {
         const srcBit = k * unitBits;  // bit offset into genome
         const destBit = (i * gSizeUnits + k) * unitBits;  // bit offset into buf
@@ -42,7 +42,7 @@ fn pack(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {
 }
 
 // overwrite genome's message bits with buf's ith message
-fn unpack(srcBuf: [*]u32, i: u16, destPtr: [*]u32) void {
+fn unpack_msg(srcBuf: [*]u32, i: u16, destPtr: [*]u32) void {
     for (@range(u16, gSizeUnits)) |k| {
         const srcBit = (i * gSizeUnits + k) * unitBits;  // bit offset into buf
         const destBit = k * unitBits;  // bit offset into genome

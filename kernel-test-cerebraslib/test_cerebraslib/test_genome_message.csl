@@ -25,31 +25,31 @@ var g = @zeros([3]u32);
 
 fn _clear_buf() void { for (@range(u16, 8)) |i| { buf[i] = 0; } }
 
-fn test_words_for() void {
-    @assert(message1.words_for(1) == 1);
-    @assert(message1.words_for(32) == 1);
-    @assert(message1.words_for(33) == 2);
-    @assert(message4.words_for(8) == 1);
-    @assert(message4.words_for(9) == 2);
-    @assert(message16.words_for(1) == 1);
-    @assert(message16.words_for(4) == 2);
-    @assert(message24.words_for(4) == 3);
-    @assert(message24.words_for(5) == 4);
-    @assert(message64.words_for(3) == 6);
-    @assert(message96.words_for(2) == 6);
+fn test_calc_buf_words() void {
+    @assert(message1.calc_buf_words(1) == 1);
+    @assert(message1.calc_buf_words(32) == 1);
+    @assert(message1.calc_buf_words(33) == 2);
+    @assert(message4.calc_buf_words(8) == 1);
+    @assert(message4.calc_buf_words(9) == 2);
+    @assert(message16.calc_buf_words(1) == 1);
+    @assert(message16.calc_buf_words(4) == 2);
+    @assert(message24.calc_buf_words(4) == 3);
+    @assert(message24.calc_buf_words(5) == 4);
+    @assert(message64.calc_buf_words(3) == 6);
+    @assert(message96.calc_buf_words(2) == 6);
 }
 
 fn test_pack_unpack_1() void {
     _clear_buf();
     for (@range(u16, 40)) |i| {  // odd genomes set, crossing word boundary
         g[0] = 0xFFFFFFFE | @as(u32, i & 1);  // only bit 0 is message
-        message1.pack(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+        message1.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
     }
     @assert(buf[0] == 0xAAAAAAAA);
     @assert(buf[1] == 0xAA);
     for (@range(u16, 40)) |i| {
         g[0] = 0x12345670;
-        message1.unpack(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        message1.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
         // keeps bits above message
         @assert(g[0] == (0x12345670 | @as(u32, i & 1)));
     }
@@ -59,13 +59,13 @@ fn test_pack_unpack_4() void {
     _clear_buf();
     for (@range(u16, 10)) |i| {
         g[0] = 0xABCDEF00 | @as(u32, i);
-        message4.pack(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+        message4.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
     }
     @assert(buf[0] == 0x76543210);
     @assert(buf[1] == 0x98);
     for (@range(u16, 10)) |i| {
         g[0] = 0xFFFFFFFF;
-        message4.unpack(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        message4.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
         @assert(g[0] == (0xFFFFFFF0 | @as(u32, i)));
     }
 }
@@ -74,13 +74,13 @@ fn test_pack_unpack_16() void {
     _clear_buf();
     for (@range(u16, 3)) |i| {
         g[0] = 0xFFFF0000 | (0x1111 * @as(u32, i + 1));  // immunity, pathogen
-        message16.pack(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+        message16.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
     }
     @assert(buf[0] == 0x22221111);
     @assert(buf[1] == 0x3333);
     for (@range(u16, 3)) |i| {
         g[0] = 0xABCD0000;
-        message16.unpack(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        message16.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
         @assert(g[0] == (0xABCD0000 | (0x1111 * @as(u32, i + 1))));
     }
 }
@@ -90,13 +90,13 @@ fn test_pack_unpack_12() void {
     const vals = [3]u32{ 0xABC, 0x123, 0x456 };  // 3rd straddles words
     for (@range(u16, 3)) |i| {
         g[0] = 0xFFFFF000 | vals[i];  // high bits not in message
-        message12.pack(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+        message12.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
     }
     @assert(buf[0] == 0x56123ABC);
     @assert(buf[1] == 0x4);
     for (@range(u16, 3)) |i| {
         g[0] = 0x77777000;
-        message12.unpack(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        message12.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
         @assert(g[0] == (0x77777000 | vals[i]));
     }
 }
@@ -106,14 +106,14 @@ fn test_pack_unpack_24() void {
     for (@range(u16, 4)) |i| {  // 24-bit messages straddle words
         g[0] = 0xFF000000 | (0x010101 * @as(u32, i + 1));
         g[1] = 0xFFFFFFFF;  // not in message
-        message24.pack(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+        message24.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
     }
     @assert(buf[0] == 0x02010101);
     @assert(buf[1] == 0x03030202);
     @assert(buf[2] == 0x04040403);
     for (@range(u16, 4)) |i| {
         g[0] = 0xEE000000; g[1] = 0x12345678;
-        message24.unpack(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        message24.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
         @assert(g[0] == (0xEE000000 | (0x010101 * @as(u32, i + 1))));
         @assert(g[1] == 0x12345678);
     }
@@ -124,20 +124,20 @@ fn test_pack_unpack_64() void {
     for (@range(u16, 2)) |i| {
         g[0] = 10 + @as(u32, i); g[1] = 20 + @as(u32, i);
         g[2] = 0xFFFFFFFF;  // not in message
-        message64.pack(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+        message64.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
     }
     @assert(buf[0] == 10 and buf[1] == 20 and buf[2] == 11 and buf[3] == 21);
     @assert(buf[4] == 0);
     for (@range(u16, 2)) |i| {
         g[0] = 0; g[1] = 0; g[2] = 7;
-        message64.unpack(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        message64.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
         @assert(g[0] == 10 + @as(u32, i) and g[1] == 20 + @as(u32, i));
         @assert(g[2] == 7);
     }
 }
 
 fn do_test() void {
-    test_words_for();
+    test_calc_buf_words();
     test_pack_unpack_1();
     test_pack_unpack_4();
     test_pack_unpack_16();

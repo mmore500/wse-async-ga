@@ -18,7 +18,7 @@ fn _get_ith_genome(pop: [*]u32, i: u16) [*]u32 {
 }
 
 fn _clear_messages(destBuf: [*]u32, nGenomes: u16) void {
-    for (@range(u16, message.words_for(nGenomes))) |w| { destBuf[w] = 0; }
+    for (@range(u16, message.calc_buf_words(nGenomes))) |w| { destBuf[w] = 0; }
 }
 
 // public API =================================================================

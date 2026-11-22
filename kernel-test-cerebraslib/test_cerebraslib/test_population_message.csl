@@ -63,7 +63,7 @@ fn _fill_messages() void {
 
 fn test_message_size() void {
     @assert(genome.gBitsMsg == 16);
-    @assert(generational.migration.message.words_for(nMsg) == 2);
+    @assert(generational.migration.message.calc_buf_words(nMsg) == 2);
 }
 
 fn test_generational() void {
