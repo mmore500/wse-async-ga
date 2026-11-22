@@ -98,6 +98,7 @@ jobs:
           - genome_alleleevoepi_2026_11_19
           - genome_alleleevoepi_2026_11_21
           - genome_alleleevoepi_2026_11_22
+          - genome_alleleevoepi_2026_11_22_xoroshiro
         p2p:
           - 0
         include:
