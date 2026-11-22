@@ -197,8 +197,9 @@ const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
 );
 
 // module config specs ========================================================
-const gWordsPop: u16 = 1;  // held in population
-const gWordsD2h: u16 = gWordsPop;  // copied to host
+const _gSize: u16 = 1;
+const gWordsPop: u16 = _gSize;  // size used in local population
+const gWordsD2h: u16 = _gSize;  // size copied to host
 // only the pathogen (low nibble) is sent to PEs, by default; with compconf
 // CEREBRASLIB_EVOEPI_MSG_BITS 32, whole genomes are, as before message
 // packing (immigrants still take residents' immunity, in clobber_immigrant)
@@ -206,7 +207,7 @@ const gBitsMsg: u16 = comptime compconf.get_value_or( //nofmt
     "CEREBRASLIB_EVOEPI_MSG_BITS", @as(u16, 4) // nofmt
 );
 comptime { @comptime_assert(gBitsMsg == 4 or gBitsMsg == 32); }
-const genome_t = [gWordsPop]u32;
+const genome_t = [_gSize]u32;
 const genomePtr_t = [*]u32;
 // bit 0: infected; bit 1 + i: enabled site i's allele
 const nTraitVals: u16 = @as(u16, 1) << (nSites + 1);
@@ -430,6 +431,21 @@ fn notify_extinct() void {}
 
 // uninfected host? reads only the pathogen, so also works on messages
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
+
+// only the pathogen migrates, by default; immunity stays with host
+const _message = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = gWordsPop, .gBitsMsg = gBitsMsg,
+});
+
+/// Pack genome's message into buf as buf's ith message; buf must start zeroed.
+fn msg_pack(fromGenome: genomePtr_t, toBuf: [*]u32, i: u16) void {
+    _message.pack(fromGenome, toBuf, i);
+}
+
+/// Overwrite genome's message bits (pathogen) with buf's ith message.
+fn msg_unpack(fromBuf: [*]u32, i: u16, toGenome: genomePtr_t) void {
+    _message.unpack(fromBuf, i, toGenome);
+}
 
 fn export_symbol_names() void {  // hook into top-level layout block
     @export_name("rtc_evoepi_mutationRate", [*]f32, true);
