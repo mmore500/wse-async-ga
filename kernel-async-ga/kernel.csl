@@ -701,10 +701,9 @@ fn drainRecv_P() void {
       );
       immCounter_P[0] += 1;
     }
-    if (recvFill_P == p2pMsgSize) recvFill_P = 0;  // pad popped
+    if (recvFill_P == p2pMsgSize) recvFill_P = 0;  // reset for next msg
   }
 }
-// callback when recv is complete, request next recv
 task recvFinalizeTask_P() void { dispatchRecv_P(); }
 
 // (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
