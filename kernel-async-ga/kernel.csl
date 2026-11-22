@@ -250,7 +250,7 @@ const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(25);
 const ignRecvTaskID_P: local_task_id = @get_local_task_id(22);
 
 // no-op target for the control wavelet that ends each p2p message
-const padTaskID_P: control_task_id = @get_control_task_id(38);
+const ignorePadCtrlWavTaskID: control_task_id = @get_control_task_id(38);
 
 // local task IDs (8-30), checked against SDK v2.10.0 memcpy
 // available: 23, 26
@@ -604,7 +604,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
 const p2pMsgSize: u16 = if (p2pEnabled) 2 + (genome_.gBitsMsg + 31) / 32 else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
-const p2pPadWavelet: u32 = @as(u32, @get_int(padTaskID_P)) << 16;
+const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
   if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
 }
@@ -718,7 +718,7 @@ fn dispatchRecv_P() void {  // open async microthread to recv into FIFO
 }
 
 task ignRecvTask_P() void { while (@mov32(recvBufDsd_P, recvFifo_P)) {} }
-task padTask_P() void { }
+task ignorePadCtrlWavTask() void { }
 
 ///////////////////////////////////////////////////////////////////////////////
 // ============================================================================
@@ -1029,7 +1029,7 @@ comptime {
     @bind_local_task(sendFinalizeTask_P, sendFinalizeTaskID_P);
     @bind_local_task(recvFinalizeTask_P, recvFinalizeTaskID_P);
     @bind_local_task(ignRecvTask_P, ignRecvTaskID_P); @block(ignRecvTaskID_P);
-    @bind_control_task(padTask_P, padTaskID_P);
+    @bind_control_task(ignorePadCtrlWavTask, ignorePadCtrlWavTaskID);
   }
 
   @bind_local_task(cycleTask, cycleTaskID);
