@@ -122,6 +122,10 @@ const compconf = @import_module("<compconf>");
 const layout_module = @import_module("<layout>");
 
 const opscalar = @import_module("cerebraslib/opscalar.csl");
+// only the pathogen (low half-word) migrates; immunity stays with host
+const gmsg_util = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = gWordsPop, .gBitsMsg = gBitsMsg,
+});
 
 // compile-time configuration =================================================
 // defaults follow parameters used across allele-evoepi-concept notebooks
@@ -478,19 +482,15 @@ fn notify_extinct() void {}
 // uninfected host? reads only the pathogen, so also works on messages
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
 
-// only the pathogen (low half-word) migrates; immunity stays with host
-const _message = @import_module("cerebraslib/genome_message.csl", .{
-    .gWordsPop = gWordsPop, .gBitsMsg = gBitsMsg,
-});
 
-/// Pack genome's message into buf as buf's ith message; buf must start zeroed.
-fn msg_pack(fromGenome: genomePtr_t, toBuf: [*]u32, i: u16) void {
-    _message.pack(fromGenome, toBuf, i);
+// pack genome's message into buf as buf's ith message; buf must start zeroed
+fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
+    gmsg_util.pack(srcPtr, destBuf, i);
 }
 
-/// Overwrite genome's message bits (pathogen) with buf's ith message.
-fn msg_unpack(fromBuf: [*]u32, i: u16, toGenome: genomePtr_t) void {
-    _message.unpack(fromBuf, i, toGenome);
+// overwrite genome's message bits (pathogen) with buf's ith message
+fn msg_unpack(srcBuf: [*]u32, i: u16, destPtr: genomePtr_t) void {
+    gmsg_util.unpack(srcBuf, i, destPtr);
 }
 
 // hook into top-level layout block

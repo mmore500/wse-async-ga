@@ -115,14 +115,14 @@ fn notify_extinct() void {}
 
 fn is_empty(genome: genomePtr_t) bool { return false; }  // never empty
 
-/// Copy genome into buf as buf's ith message (whole genome).
-fn msg_pack(fromGenome: genomePtr_t, toBuf: [*]u32, i: u16) void {
-    for (@range(u16, _gSize)) |w| { toBuf[i * _gSize + w] = fromGenome[w]; }
+// copy genome into buf as buf's ith message (whole genome)
+fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
+    for (@range(u16, _gSize)) |w| { destBuf[i * _gSize + w] = srcPtr[w]; }
 }
 
-/// Copy buf's ith message (whole genome) into genome.
-fn msg_unpack(fromBuf: [*]u32, i: u16, toGenome: genomePtr_t) void {
-    for (@range(u16, _gSize)) |w| { toGenome[w] = fromBuf[i * _gSize + w]; }
+// copy buf's ith message (whole genome) into genome
+fn msg_unpack(srcBuf: [*]u32, i: u16, destPtr: genomePtr_t) void {
+    for (@range(u16, _gSize)) |w| { destPtr[w] = srcBuf[i * _gSize + w]; }
 }
 
 fn export_symbol_names() void {}  // hook into top-level layout block

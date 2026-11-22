@@ -19,35 +19,35 @@ const unitBits: u16 = (
     else if (gBitsMsg % 8 == 0) 8
     else gBitsMsg
 );
-const nUnits: u16 = gBitsMsg / unitBits;
+const gSizeUnits: u16 = gBitsMsg / unitBits;
 const unitMask: u32 = (
     if (unitBits == 32) 0xFFFFFFFF
     else (@as(u32, 1) << unitBits) - 1
 );
 
 // public API =================================================================
-/// How many words hold n packed messages?
+// how many words hold n packed messages?
 fn words_for(n: u16) u16 { return (n * gBitsMsg + 31) / 32; }
 
-/// Pack genome's message into buf as buf's ith message; buf must start zeroed.
-fn pack(fromGenome: [*]u32, toBuf: [*]u32, i: u16) void {
-    for (@range(u16, nUnits)) |k| {
-        const fromBit = k * unitBits;  // bit offset into genome
-        const toBit = (i * nUnits + k) * unitBits;  // bit offset into buf
-        const unit = (fromGenome[fromBit / 32] >> (fromBit % 32)) & unitMask;
-        toBuf[toBit / 32] |= unit << (toBit % 32);
+// pack genome's message into buf as buf's ith message; buf must start zeroed
+fn pack(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {
+    for (@range(u16, gSizeUnits)) |k| {
+        const srcBit = k * unitBits;  // bit offset into genome
+        const destBit = (i * gSizeUnits + k) * unitBits;  // bit offset into buf
+        const unit = (srcPtr[srcBit / 32] >> (srcBit % 32)) & unitMask;
+        destBuf[destBit / 32] |= unit << (destBit % 32);
     }
 }
 
-/// Overwrite genome's message bits with buf's ith message.
-fn unpack(fromBuf: [*]u32, i: u16, toGenome: [*]u32) void {
-    for (@range(u16, nUnits)) |k| {
-        const fromBit = (i * nUnits + k) * unitBits;  // bit offset into buf
-        const toBit = k * unitBits;  // bit offset into genome
-        const unit = (fromBuf[fromBit / 32] >> (fromBit % 32)) & unitMask;
-        toGenome[toBit / 32] = (
-            (toGenome[toBit / 32] & ~(unitMask << (toBit % 32)))
-            | (unit << (toBit % 32))
+// overwrite genome's message bits with buf's ith message
+fn unpack(srcBuf: [*]u32, i: u16, destPtr: [*]u32) void {
+    for (@range(u16, gSizeUnits)) |k| {
+        const srcBit = (i * gSizeUnits + k) * unitBits;  // bit offset into buf
+        const destBit = k * unitBits;  // bit offset into genome
+        const unit = (srcBuf[srcBit / 32] >> (srcBit % 32)) & unitMask;
+        destPtr[destBit / 32] = (
+            (destPtr[destBit / 32] & ~(unitMask << (destBit % 32)))
+            | (unit << (destBit % 32))
         );
     }
 }

@@ -19,24 +19,24 @@ fn _get_ith_genome(pop: [*]u32, i: u16) [*]u32 {
     return @ptrcast([*]u32, &pop[i * genome.gWordsPop]);
 }
 
-fn _clear_messages(toBuf: [*]u32, nGenomes: u16) void {
-    for (@range(u16, message.words_for(nGenomes))) |w| { toBuf[w] = 0; }
+fn _clear_messages(destBuf: [*]u32, nGenomes: u16) void {
+    for (@range(u16, message.words_for(nGenomes))) |w| { destBuf[w] = 0; }
 }
 
 // public API =================================================================
-/// Pack messages of nGenomes uniformly sampled genomes into toBuf.
-fn emigrate_genomes(pop: [*]u32, toBuf: [*]u32, nGenomes: u16) void {
-    _clear_messages(toBuf, nGenomes);
+// pack messages of nGenomes uniformly sampled genomes into destBuf
+fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) void {
+    _clear_messages(destBuf, nGenomes);
     for (@range(u16, nGenomes)) |i| {
         const sampled = _get_ith_genome(pop, opscalar.unif16(popSize));
-        genome.msg_pack(sampled, toBuf, i);
+        genome.msg_pack(sampled, destBuf, i);
     }
 }
 
-/// Immigrate nGenomes messages from fromBuf, each over a uniformly sampled
-/// resident (with replacement), which keeps its bits above the message;
-/// returns how many immigrants clobbered.
-fn immigrate_genomes(pop: [*]u32, fromBuf: [*]u32, nGenomes: u16) u32 {
+// immigrate nGenomes messages from srcBuf, each over a uniformly sampled
+// resident (with replacement), which keeps its bits above the message;
+// returns how many immigrants clobbered
+fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     var nClobbers: u32 = 0;
     const prior = @ptrcast([*]u32, &priorBuf);
     for (@range(u16, nGenomes)) |i| {
@@ -45,7 +45,7 @@ fn immigrate_genomes(pop: [*]u32, fromBuf: [*]u32, nGenomes: u16) u32 {
         if (genome.hasImmClobber) {  // keep resident as it was, for clobber
             for (@range(u16, genome.gWordsPop)) |w| { prior[w] = immigrant[w]; }
         }
-        genome.msg_unpack(fromBuf, i, immigrant);
+        genome.msg_unpack(srcBuf, i, immigrant);
         if (genome.hasImmClobber) {
             const isClobbered = genome.clobber_immigrant(prior, immigrant);
             nClobbers += @as(u32, isClobbered);
@@ -54,11 +54,11 @@ fn immigrate_genomes(pop: [*]u32, fromBuf: [*]u32, nGenomes: u16) u32 {
     return nClobbers;
 }
 
-/// Pack messages of up to nGenomes live genomes into toBuf, returning how
-/// many: if a sampled genome is live, it and those after it (wrapping), so
-/// nonzero with probability equal to the live fraction.
-fn emigrate_live_genomes(pop: [*]u32, toBuf: [*]u32, nGenomes: u16) u16 {
-    _clear_messages(toBuf, nGenomes);
+// pack messages of up to nGenomes live genomes into destBuf, returning how
+// many: if a sampled genome is live, it and those after it (wrapping), so
+// nonzero with probability equal to the live fraction
+fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
+    _clear_messages(destBuf, nGenomes);
     const start = opscalar.unif16(popSize);
     if (genome.is_empty(_get_ith_genome(pop, start))) { return 0; }
 
@@ -68,18 +68,18 @@ fn emigrate_live_genomes(pop: [*]u32, toBuf: [*]u32, nGenomes: u16) u16 {
         const i = opscalar.addmod16(start, offset, popSize);
         const candidate = _get_ith_genome(pop, i);
         if (!genome.is_empty(candidate)) {
-            genome.msg_pack(candidate, toBuf, nFound);
+            genome.msg_pack(candidate, destBuf, nFound);
             nFound += 1;
         }
     }
     return nFound;
 }
 
-/// Pack messages of nGenomes live genomes into toBuf, from a sampled genome on
-/// (wrapping), returning how many empty genomes were skipped; if too few are
-/// live, the batch is filled out with empty genomes.
-fn emigrate_live_batch(pop: [*]u32, toBuf: [*]u32, nGenomes: u16) u16 {
-    _clear_messages(toBuf, nGenomes);
+// pack messages of nGenomes live genomes into destBuf, from a sampled genome
+// on (wrapping), returning how many empty genomes were skipped; if too few
+// are live, the batch is filled out with empty genomes
+fn emigrate_live_batch(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
+    _clear_messages(destBuf, nGenomes);
     const start = opscalar.unif16(popSize);
 
     var nFound: u16 = 0;
@@ -93,12 +93,12 @@ fn emigrate_live_batch(pop: [*]u32, toBuf: [*]u32, nGenomes: u16) u16 {
             nEmpty += 1;
             emptyIdx = i;
         } else {
-            genome.msg_pack(candidate, toBuf, nFound);
+            genome.msg_pack(candidate, destBuf, nFound);
             nFound += 1;
         }
     }
     while (nFound < nGenomes) : (nFound += 1) {
-        genome.msg_pack(_get_ith_genome(pop, emptyIdx), toBuf, nFound);
+        genome.msg_pack(_get_ith_genome(pop, emptyIdx), destBuf, nFound);
     }
     return nEmpty;
 }
