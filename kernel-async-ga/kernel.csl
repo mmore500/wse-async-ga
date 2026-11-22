@@ -677,22 +677,33 @@ var recvFifoBuf_P = @zeros([
 const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
   .activate_push = ignRecvTaskID_P,  // blocked until closeout
 } else .{});
-var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
+const p2pPayloadWords: u16 = if (p2pEnabled) p2pMsgSize - 2 else 0;
+comptime { @comptime_assert(p2pPayloadWords <= genome_.gWordsPop); }
+var recvBuf_P = @zeros([genome_.gWordsPop]u32);  // genome payload
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{1} -> recvBuf_P[i], });
-var recvFill_P: u16 = 0;  // words of current message popped into recvBuf
+var recvFill_P: u16 = 0;  // words of current message popped
+
+// recvBuf word for message word recvFill_P; header and pad go to word 0, as
+// header precedes payload and pad follows immigration
+fn _recvBufWordDsd_P() mem1d_dsd {
+  const isPayload = recvFill_P > 0 and recvFill_P <= p2pPayloadWords;
+  const word: u16 = if (isPayload) recvFill_P - 1 else 0;
+  return @increment_dsd_offset(recvBufDsd_P, @as(i16, word), u32);
+}
 
 fn drainRecv_P() void {
-  var wordDsd = @increment_dsd_offset(recvBufDsd_P, @as(i16, recvFill_P), u32);
+  var wordDsd = _recvBufWordDsd_P();
   while (@mov32(wordDsd, recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
-    if (recvFill_P == p2pMsgSize) {  // complete message
-      recvFill_P = 0;
-      var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
-      clobberCounter[0] += immigrateEnriched(recvGenomePtr_P, 1, immEnrichP2p);
+    if (recvFill_P == 1 + p2pPayloadWords) {  // genome payload complete
+      clobberCounter[0] += immigrateEnriched(
+        @ptrcast([*]u32, &recvBuf_P), 1, immEnrichP2p
+      );
       immCounter_P[0] += 1;
     }
-    wordDsd = @increment_dsd_offset(recvBufDsd_P, @as(i16, recvFill_P), u32);
+    if (recvFill_P == p2pMsgSize) recvFill_P = 0;  // pad popped
+    wordDsd = _recvBufWordDsd_P();
   }
 }
 // callback when recv is complete, request next recv
