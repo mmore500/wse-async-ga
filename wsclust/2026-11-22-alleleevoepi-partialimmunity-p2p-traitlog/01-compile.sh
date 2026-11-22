@@ -175,15 +175,15 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #   to empty (uninfected) hosts passed over, so neighbor sends go at a rate
 #   proportional to live population (and receives aren't throttled)
 # - p2p edges are random PE pairs (within subgrids, if any); with send
-#   probability 1 in 20 (or 1 in 10), a sampled host that is live starts a
+#   probability 1 in 40 (or 1 in 20), a sampled host that is live starts a
 #   batch of up to 8 live genomes (1 wavelet), so batches go at a rate
 #   proportional to live population
 # seven independent runs (one job each, run in job order), each set by its
 # own runtime config (p2p targets, and per run p2p send probability,
 # mutation rate, seed), from two compiles:
 # 1-2. preliminary: full grid (no subgrids), mutation rate 1e-6, infection
-#    seeded on corner PE only, comparing p2p send probability 1 in 20 and 1
-#    in 10; population 1055 per PE, as jobs 3-7 (so the grid, one subgrid,
+#    seeded on corner PE only, comparing p2p send probability 1 in 40 and 1
+#    in 20; population 1055 per PE, as jobs 3-7 (so the grid, one subgrid,
 #    holds about 932 million hosts)
 # 3-7. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
 #    subgrids occupy (runtime config nestingFactorSubgrid 2): 9 x 9 PE
@@ -191,7 +191,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #    subgrids each of 18, 36, 72, 144, and 288 PEs on a side, and one 576 x
 #    576 subgrid; sweeping mutation rate 2^-16 to 2^-32 by factors of 16
 #    (named runtime config rtc_evoepi_mutationRate); p2p send probability 1
-#    in 20; infection seeded on every PE whose col and row are multiples of 9
+#    in 40; infection seeded on every PE whose col and row are multiples of 9
 #    (seed PE stride 9); population 1055 per PE, so the largest subgrid holds
 #    about 350 million hosts
 # per-PE trait logger records the 3-bit trait value of each sampled host
@@ -215,7 +215,7 @@ for compileConfig in fullgrid nested; do
     if [ "${compileConfig}" = "fullgrid" ]; then
         nrow=1170
         ncol=755
-        p2p=0.05  # compiled-in, runtime config sets it too
+        p2p=0.025  # compiled-in, runtime config sets it too
         subgrid=0
         seedstride=1170  # only corner PE
         popsize=1055  # as nested compile
@@ -223,7 +223,7 @@ for compileConfig in fullgrid nested; do
     else
         nrow=1152  # only PEs of full (non-overflowing) nested subgrids
         ncol=576
-        p2p=0.05
+        p2p=0.025
         subgrid=9
         seedstride=9
         popsize=1055  # 576 * 576 * 1055 ~= 350 million hosts
@@ -330,10 +330,10 @@ EOF
     # run configs, one job each, as name:p2p:mutexp:seed, for runtime p2p
     # send probability, mutation rate 2^-mutexp, and seed
     if [ "${compileConfig}" = "fullgrid" ]; then
-        RUN_CONFIGS="fullgrid-p2p0.05:0.05:none:1130 fullgrid-p2p0.10:0.10:none:1132"
+        RUN_CONFIGS="fullgrid-p2p0.025:0.025:none:1130 fullgrid-p2p0.05:0.05:none:1132"
         nest=""
     else
-        RUN_CONFIGS="nested-mutlog2-16:0.05:16:1131 nested-mutlog2-20:0.05:20:1133 nested-mutlog2-24:0.05:24:1135 nested-mutlog2-28:0.05:28:1137 nested-mutlog2-32:0.05:32:1139"
+        RUN_CONFIGS="nested-mutlog2-16:0.025:16:1131 nested-mutlog2-20:0.025:20:1133 nested-mutlog2-24:0.025:24:1135 nested-mutlog2-28:0.025:28:1137 nested-mutlog2-32:0.025:32:1139"
         nest=", \"nestingFactorSubgrid\": 2"
     fi
     for runConfig in ${RUN_CONFIGS}; do
