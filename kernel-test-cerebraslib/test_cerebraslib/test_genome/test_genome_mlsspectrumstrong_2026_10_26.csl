@@ -55,7 +55,7 @@ fn test_elapse_inheritance_of() void {
 
     // clear genomes are unaffected
     genome_mls.elapse_inheritance_of(genome_ptr);
-    for (@range(u16, genome_mls.gSize)) |i| { @assert(genome[i] == 0); }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { @assert(genome[i] == 0); }
 
     genome_mls.initialize_one(genome_ptr);
     @assert(genome_mls._get_counter(genome_ptr) == 128);
@@ -241,7 +241,7 @@ fn test_clobber_immigrant() void {
         genome_mls.initialize_one(imm_ptr);
         imm[0] |= (@as(u32, i) << genome_mls.mlsShift) & genome_mls.mlsMask;
         @assert(genome_mls.clobber_immigrant(resident_ptr, imm_ptr));
-        for (@range(u16, genome_mls.gSize)) |w| {
+        for (@range(u16, genome_mls.gWordsPop)) |w| {
             @assert(imm[w] == resident[w]);
         }
         @assert(!genome_mls._isExtinct);
@@ -278,7 +278,7 @@ fn test_clobber_immigrant() void {
             var nClobber: u16 = 0;
             for (@range(u16, nTrials)) |_| {
                 genome_mls.notify_extinct();
-                for (@range(u16, genome_mls.gSize)) |w| {
+                for (@range(u16, genome_mls.gWordsPop)) |w| {
                     imm[w] = template[w];
                 }
                 imm[0] |= @as(u32, 1) << bit;
@@ -307,7 +307,7 @@ fn test_clobber_immigrant() void {
     var nClobberAll: u16 = 0;
     for (@range(u16, nTrials)) |_| {
         genome_mls.notify_extinct();
-        for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
+        for (@range(u16, genome_mls.gWordsPop)) |w| { imm[w] = template[w]; }
         imm[0] |= genome_mls.mlsMask | genome_mls.deleteriousMask;
         nClobberAll += @as(u16, genome_mls.clobber_immigrant(
             empty_resident_ptr, imm_ptr
@@ -322,7 +322,7 @@ fn test_clobber_immigrant() void {
     // within-host beneficial sites never clobber
     for (@range(u16, 32)) |_| {
         genome_mls.notify_extinct();
-        for (@range(u16, genome_mls.gSize)) |w| { imm[w] = template[w]; }
+        for (@range(u16, genome_mls.gWordsPop)) |w| { imm[w] = template[w]; }
         imm[0] |= genome_mls.beneficialMask;
         @assert(!genome_mls.clobber_immigrant(empty_resident_ptr, imm_ptr));
         @assert(!genome_mls._isExtinct);
@@ -332,14 +332,14 @@ fn test_clobber_immigrant() void {
 fn test_trample_resident() void {
     var resident = @zeros(genome_mls.genome_t);
     var spawn = @zeros(genome_mls.genome_t);
-    for (@range(u16, genome_mls.gSize)) |i| {
+    for (@range(u16, genome_mls.gWordsPop)) |i| {
         spawn[i] = 0x01234567 ^ (@as(u32, i) << 8);
         resident[i] = ~spawn[i];
     }
     genome_mls.trample_resident(
         @ptrcast([*]u32, &resident), @ptrcast([*]u32, &spawn)
     );
-    for (@range(u16, genome_mls.gSize)) |i| {
+    for (@range(u16, genome_mls.gWordsPop)) |i| {
         @assert(resident[i] == spawn[i]);
         @assert(spawn[i] == 0x01234567 ^ (@as(u32, i) << 8));
     }
@@ -348,11 +348,11 @@ fn test_trample_resident() void {
     var living = @zeros(genome_mls.genome_t);
     var living_ptr = @ptrcast(genome_mls.genomePtr_t, &living[0]);
     genome_mls.initialize_one(living_ptr);
-    for (@range(u16, genome_mls.gSize)) |i| { resident[i] = living[i]; }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { resident[i] = living[i]; }
     var empty = @zeros(genome_mls.genome_t);
     var empty_ptr = @ptrcast(genome_mls.genomePtr_t, &empty[0]);
     genome_mls.trample_resident(@ptrcast([*]u32, &resident), empty_ptr);
-    for (@range(u16, genome_mls.gSize)) |i| {
+    for (@range(u16, genome_mls.gWordsPop)) |i| {
         @assert(resident[i] == living[i]);
         @assert(empty[i] == 0);
     }
@@ -362,7 +362,7 @@ fn test_trample_resident() void {
     genome_mls.trample_resident(
         @ptrcast([*]u32, &empty_resident), empty_ptr
     );
-    for (@range(u16, genome_mls.gSize)) |i| {
+    for (@range(u16, genome_mls.gWordsPop)) |i| {
         @assert(empty_resident[i] == 0);
     }
 
@@ -370,7 +370,7 @@ fn test_trample_resident() void {
     genome_mls.trample_resident(
         @ptrcast([*]u32, &empty_resident), living_ptr
     );
-    for (@range(u16, genome_mls.gSize)) |i| {
+    for (@range(u16, genome_mls.gWordsPop)) |i| {
         @assert(empty_resident[i] == living[i]);
     }
 }
@@ -378,7 +378,7 @@ fn test_trample_resident() void {
 fn test_is_empty() void {
     var g = @zeros(genome_mls.genome_t);
     @assert(genome_mls.is_empty(&g));  // zeroed genome is cleared
-    for (@range(u16, genome_mls.gSize)) |i| { g[i] = 0xFFFFFFFF; }
+    for (@range(u16, genome_mls.gWordsPop)) |i| { g[i] = 0xFFFFFFFF; }
     @assert(!genome_mls.is_empty(&g));
 }
 

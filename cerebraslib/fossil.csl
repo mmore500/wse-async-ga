@@ -30,12 +30,12 @@ fn fossil_sampling_from_string(
 const samplingMode_ = comptime fossil_sampling_from_string(samplingMode);
 
 // global state ===============================================================
-var bookendBuffer = @zeros([genome.gSize + 2]u32);  // w/ bookend validation
+var bookendBuffer = @zeros([genome.gWordsD2h + 2]u32);  // w/ bookend validation
 var ptr_bookendBuffer : [*]u32 = &bookendBuffer;
 
 const reservoirSize = comptime if (
     samplingMode_ == FossilSamplingEnum.reservoir
-) genome.gSize else 1;  // minimal buffer if unused
+) genome.gWordsD2h else 1;  // minimal buffer if unused
 var reservoirGenome = @zeros([reservoirSize]u32);
 var generationsSincePull: u32 = 0;
 
@@ -46,7 +46,7 @@ var generationsSincePull: u32 = 0;
 fn _reservoir_sample() void {
     if (rng.p_one_in(generationsSincePull)) {
         const genomePtr = population._get_ith_genome(0);
-        for (@range(u16, genome.gSize)) |i| {
+        for (@range(u16, genome.gWordsD2h)) |i| {
             reservoirGenome[i] = genomePtr[i];
         }
     }
@@ -83,10 +83,10 @@ fn update_sample() void {
 fn pull_sample(tag: u32) void {
     const genomePtr = _take_fossil();
     generationsSincePull = 0;
-    bookendBuffer[genome.gSize + 1] += 1;
-    bookendBuffer[genome.gSize + 1] &= 0x3FF;  // clear upper bits
-    bookendBuffer[genome.gSize + 1] |= tag << 10;  // set tag
-    for (@range(u16, genome.gSize)) |i| {
+    bookendBuffer[genome.gWordsD2h + 1] += 1;
+    bookendBuffer[genome.gWordsD2h + 1] &= 0x3FF;  // clear upper bits
+    bookendBuffer[genome.gWordsD2h + 1] |= tag << 10;  // set tag
+    for (@range(u16, genome.gWordsD2h)) |i| {
         bookendBuffer[i + 1] = genomePtr[i];
     }
     bookendBuffer[0] += 1;

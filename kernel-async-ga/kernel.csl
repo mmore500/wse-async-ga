@@ -143,7 +143,13 @@ var ptr_traitCycles: [*]u32 = &traitCycles;
 var traitValues = @zeros([nTraitVals]u32);
 var ptr_traitValues: [*]u32 = &traitValues;
 
-var genome = @zeros([genome_.gSize]u32);  // samples 0th population element
+comptime {  // host copies at most the population genome
+  @comptime_assert(genome_.gWordsD2h <= genome_.gWordsPop);
+}
+comptime {  // genomes migrate whole
+  @comptime_assert(genome_.gBitsMsg == 32 * genome_.gWordsPop);
+}
+var genome = @zeros([genome_.gWordsD2h]u32);  // samples 0th pop element
 var ptr_genome : [*]u32 = &genome;  // (which is convenient)
 
 var fitness = @zeros([1]f32);  // samples 0th population element (convenient)
@@ -266,7 +272,7 @@ const sendNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES", @as(u16, 1)
 );
 comptime { @comptime_assert(sendNumGenomes >= 1); }
-const sendBufSize: u16 = sendNumGenomes * genome_.gSize;
+const sendBufSize: u16 = sendNumGenomes * genome_.gWordsPop;
 
 // send NORTH =================================================================
 var sendFlag_N: u8; // need refill? initialized at startup
@@ -472,7 +478,7 @@ const recvNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );
 comptime { @comptime_assert(recvNumGenomes >= 1); }
-const recvBufSize: u16 = recvNumGenomes * genome_.gSize;
+const recvBufSize: u16 = recvNumGenomes * genome_.gWordsPop;
 
 // recv NORTH =================================================================
 var recvFlag_N: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
@@ -580,7 +586,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // each message is a header wavelet, one genome, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
-const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gSize else 0;
+const p2pMsgSize: u16 = if (p2pEnabled) 2 + genome_.gWordsPop else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
 const p2pPadWavelet: u32 = @as(u32, @get_int(padTaskID_P)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
@@ -852,7 +858,7 @@ task cycleTask() void {
 
     // sample 0th element of population for telemetry
     const genome_ptr = population._get_ith_genome(0);
-    for(@range(u16, genome_.gSize)) |i| {
+    for(@range(u16, genome_.gWordsD2h)) |i| {
       genome[i] = genome_ptr[i];
     }
 

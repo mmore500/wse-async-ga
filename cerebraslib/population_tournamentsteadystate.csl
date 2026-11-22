@@ -11,7 +11,7 @@ const random = @import_module("<random>");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 
 // global state ===============================================================
-const bufSize = popSize * genome.gSize;
+const bufSize = popSize * genome.gWordsPop;
 
 var buffer = @zeros([bufSize]u32);
 const bufferDsd = @get_dsd(mem1d_dsd, .{
@@ -31,7 +31,7 @@ fn _elapse_ith_inheritance(i: u16) void {
 }
 
 fn _get_ith_genome(i: u16) [*]u32 {
-    return @ptrcast([*]u32, &buffer[i * genome.gSize]);
+    return @ptrcast([*]u32, &buffer[i * genome.gWordsPop]);
 }
 
 fn _get_ith_trait_value(i: u16) u32 {
@@ -57,7 +57,7 @@ fn _sample_one_tournament() u16 {
             bestIdx = idx;
         }
     }
-    return bestIdx * genome.gSize;  // returns word index, not genome index
+    return bestIdx * genome.gWordsPop;  // returns word index, not genome index
 }
 
 fn _put_population_word(data: u32, loc: u32) void { buffer[loc] = data; }
@@ -67,10 +67,10 @@ fn _put_population_word(data: u32, loc: u32) void { buffer[loc] = data; }
 // dedicated index/swap buffer, in keeping with this flavor's low memory use
 fn _swap_ith_with_random(i: u16) void {
     const j = opscalar.unif16(popSize);
-    for (@range(u16, genome.gSize)) |w| {
-        const tmp = buffer[i * genome.gSize + w];
-        buffer[i * genome.gSize + w] = buffer[j * genome.gSize + w];
-        buffer[j * genome.gSize + w] = tmp;
+    for (@range(u16, genome.gWordsPop)) |w| {
+        const tmp = buffer[i * genome.gWordsPop + w];
+        buffer[i * genome.gWordsPop + w] = buffer[j * genome.gWordsPop + w];
+        buffer[j * genome.gWordsPop + w] = tmp;
     }
 }
 
@@ -112,7 +112,7 @@ fn _perform_selection_all() void {
 fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
     for (@range(u16, nGenomes)) |i| { _swap_ith_with_random(i); }
 
-    const nWords = nGenomes * genome.gSize;
+    const nWords = nGenomes * genome.gWordsPop;
     const bufferDsd_ = @set_dsd_length(bufferDsd, nWords);
     @mov32(toDsd, bufferDsd_);
 }
@@ -124,11 +124,11 @@ fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
     var nClobbers: u32 = 0;
     for (@range(u16, nGenomes)) |i| {
         const resident = _get_ith_genome(opscalar.unif16(popSize));
-        const immigrant = @ptrcast([*]u32, &fromBuf[i * genome.gSize]);
+        const immigrant = @ptrcast([*]u32, &fromBuf[i * genome.gWordsPop]);
         if (genome.hasImmClobber) {
             nClobbers += @as(u32, genome.clobber_immigrant(resident, immigrant));
         }
-        for (@range(u16, genome.gSize)) |w| { resident[w] = immigrant[w]; }
+        for (@range(u16, genome.gWordsPop)) |w| { resident[w] = immigrant[w]; }
     }
     return nClobbers;
 }
