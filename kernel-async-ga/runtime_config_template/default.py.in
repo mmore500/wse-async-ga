@@ -286,7 +286,7 @@ if __name__ == "__main__":
     allSymbols = (
         copiedSymbols, setSymbols, subgridSymbols, p2pSymbols, calcSymbols
     )
-    symbols = {k: v for values in allSymbols for k, v in values.items()}
+    symbols = {k: v for items in allSymbols for k, v in items.items()}
     if len(symbols) != sum(map(len, allSymbols)):
         raise ValueError("runtime config options double set symbols")
 
