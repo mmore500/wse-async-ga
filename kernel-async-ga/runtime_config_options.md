@@ -60,3 +60,21 @@ If no runtime config value is specified, symbols keep compile time default.
     1) giving 32-bit values, e.g., `f32`, `i32`, or `u32`:
     `{"rtc_foo": "lambda shape: np.full(shape, 0.5, np.float32)"}`
   - each symbol must be exported (e.g., via genome `export_symbol_names`)
+- `calcSymbolValues`
+  - device symbols calculated from Python strings of polars expressions
+    (`pl`, and `np`, in scope) over a per-PE grid frame, with columns `row`,
+    `col`, `nRow`, `nCol`, `nRowSubgrid`, `nColSubgrid` (each PE's subgrid
+    size, after any nesting; 0 for none), `subgridOriginRow` and
+    `subgridOriginCol` (subgrid's top-left PE), and `subgridRow` and
+    `subgridCol` (PE position within subgrid)
+  - `with_setup`: list of expressions, each adding or replacing frame
+    columns via `with_columns`, in order (so each sees those before)
+  - `with_values`: dict of symbol to expression giving its 32-bit per-PE
+    values, e.g., cast to `pl.UInt32`, `pl.Int32`, or `pl.Float32`:
+    ```
+    {"with_setup": ["(pl.col('subgridRow') == 0).alias('isTop')"],
+     "with_values": {"rtc_foo": "pl.col('isTop').cast(pl.UInt32)"}}
+    ```
+  - evaluated last, after any other option, so sees final subgrid sizes;
+    each symbol must be exported (e.g., via genome `export_symbol_names`)
+    and not set by any other option

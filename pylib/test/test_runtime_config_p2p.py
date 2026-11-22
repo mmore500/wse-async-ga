@@ -320,6 +320,60 @@ def test_subgrid_growth_one_is_uniform(tmp_path: pathlib.Path) -> None:
         )
 
 
+def test_calc_symbol_values_template(tmp_path: pathlib.Path) -> None:
+    comptime = {
+        "nRow": 12,
+        "nCol": 10,
+        "nRowSubgrid": 2,
+        "nColSubgrid": 2,
+        "globalSeed": 0,
+    }
+    runtime_config = {
+        "nestingFactorSubgrid": 2,  # sees nested sizes
+        "calcSymbolValues": {
+            "with_setup": [
+                "(pl.col('nRowSubgrid') * pl.col('nColSubgrid'))"
+                ".alias('area')",
+            ],
+            "with_values": {
+                "rtc_area": "pl.col('area').cast(pl.UInt32)",
+                "rtc_isOrigin": "((pl.col('subgridRow') == 0)"
+                " & (pl.col('subgridCol') == 0)).cast(pl.UInt32)",
+            },
+        },
+    }
+    data = np.load(io.BytesIO(_generate(tmp_path, comptime, runtime_config)))
+    height = data["rtc_nRowSubgrid"][:, :, 0].astype(int)
+    width = data["rtc_nColSubgrid"][:, :, 0].astype(int)
+    area = data["rtc_area"]
+    assert area.shape == (12, 10, 1) and area.dtype == np.uint32
+    assert (area[:, :, 0] == height * width).all()
+    rows, cols = np.indices((12, 10))
+    isOrigin = (rows % height == 0) & (cols % width == 0)
+    assert (data["rtc_isOrigin"][:, :, 0] == isOrigin).all()
+
+    for bad in (  # double sets symbol from another option
+        {
+            "nestingFactorSubgrid": 2,
+            "calcSymbolValues": {
+                "with_values": {
+                    "rtc_nRowSubgrid": "pl.col('row').cast(pl.UInt32)",
+                },
+            },
+        },
+        {
+            "setSymbolValues": {
+                "rtc_a": "lambda shape: np.zeros(shape, np.uint32)",
+            },
+            "calcSymbolValues": {
+                "with_values": {"rtc_a": "pl.col('row').cast(pl.UInt32)"},
+            },
+        },
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            _generate(tmp_path, comptime, bad)
+
+
 def test_subgrid_validators_reject() -> None:
     comptime = {"nRow": 4, "nCol": 4, "nRowSubgrid": 0, "nColSubgrid": 0}
     uniform = np.full((4, 4, 1), 2, np.uint32)
