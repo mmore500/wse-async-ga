@@ -247,7 +247,7 @@ const cycleTaskID: local_task_id = @get_local_task_id(19);
 
 const sendFinalizeTaskID_P: local_task_id = @get_local_task_id(20);
 const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(25);
-const drainTaskID_P: local_task_id = @get_local_task_id(22);
+const ignRecvTaskID_P: local_task_id = @get_local_task_id(22);
 
 // no-op target for the control wavelet that ends each p2p message
 const padTaskID_P: control_task_id = @get_control_task_id(38);
@@ -664,8 +664,8 @@ fn dispatchSend_P() bool {
 
 // recv P2P ===================================================================
 // a long async recv (microthread 3) moves arriving wavelets into a FIFO, even
-// while tasks run; the FIFO is drained each cycle and, via drainTask, whenever
-// a push follows a drain that emptied it (including after the final cycle)
+// while tasks run; the FIFO is drained each cycle
+const dsdMaxLength: u16 = 0x7FFF;  // DSD lengths are 15 bits
 const p2pRecvFifoNumMsgs: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_RECV_FIFO_NUM_MSGS", @as(u16, 16)
 );
@@ -673,52 +673,44 @@ comptime {  // FIFO needs capacity for at least one message
   if (p2pEnabled) @comptime_assert(p2pRecvFifoNumMsgs >= 1);
 }
 var recvFifoBuf_P = @zeros([
-  if (p2pEnabled) p2pRecvFifoNumMsgs * p2pMsgSize else 1
+  if (p2pEnabled) p2pRecvFifoNumMsgs * p2pMsgSize else 0
 ]u32);
 const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
-  .activate_push = drainTaskID_P,  // on push after a drain emptied FIFO
+  .activate_push = ignRecvTaskID_P,  // blocked until closeout
 } else .{});
 var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
 const recvWordDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{1} -> recvBuf_P[i], });
 var recvFill_P: u16 = 0;  // words of current message popped into recvBuf
-var recvDiscard_P: bool = false;  // after final cycle, discard messages
 
-// pop words until FIFO is empty, immigrating (or discarding) whole messages
-// (pop must be the loop test: `if (!pop) break;` miscompiles in SDK v2.10.0,
-// the FIFO-empty jump going to loop top, so the loop never exits)
 fn drainRecv_P() void {
   var wordDsd = @increment_dsd_offset(recvWordDsd_P, @as(i16, recvFill_P), u32);
   while (@mov32(wordDsd, recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
     if (recvFill_P == p2pMsgSize) {  // complete message
       recvFill_P = 0;
-      if (!recvDiscard_P) {
-        var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
-        clobberCounter[0] += immigrateEnriched(
-          recvGenomePtr_P, 1, immEnrichP2p
-        );
-        immCounter_P[0] += 1;
-      }
+      var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
+      clobberCounter[0] += immigrateEnriched(recvGenomePtr_P, 1, immEnrichP2p);
+      immCounter_P[0] += 1;
     }
     wordDsd = @increment_dsd_offset(recvWordDsd_P, @as(i16, recvFill_P), u32);
   }
 }
-task drainTask_P() void { drainRecv_P(); }
-
-// long recv completed (after many messages), so post the next
+// callback when recv is complete, request next recv
 task recvFinalizeTask_P() void { dispatchRecv_P(); }
 
 // (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
 // synchronous move and doesn't allow microthread selection)
 fn dispatchRecv_P() void {
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
-    .extent = (0x7FFF / p2pMsgSize) * p2pMsgSize,  // whole messages
+    .extent = dsdMaxLength - dsdMaxLength % p2pMsgSize,  // whole messages
     .input_queue = mp.mp_input_queue, });
   @mov32(recvFifo_P, recvDsd_P, .{ .async = true,  // callback on complete
     .activate = recvFinalizeTaskID_P, .ut_id = @get_ut_id(p2pRecvThread), });
 }
 
+// after closeout, discard arriving words
+task ignRecvTask_P() void { while (@mov32(recvWordDsd_P, recvFifo_P)) {} }
 task padTask_P() void { }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -744,7 +736,7 @@ fn closeoutRecv() void {
   if (recvFlag_S == 1) { recvFlag_S = 0; @unblock(ignRecvTaskID_S); }
   if (recvFlag_E == 1) { recvFlag_E = 0; @unblock(ignRecvTaskID_E); }
   if (recvFlag_W == 1) { recvFlag_W = 0; @unblock(ignRecvTaskID_W); }
-  if (p2pEnabled) { recvDiscard_P = true; drainRecv_P(); }
+  if (p2pEnabled) { @unblock(ignRecvTaskID_P); @activate(ignRecvTaskID_P); }
 }
 
 task closeoutTask() void {
@@ -999,7 +991,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   genomerefresh();
   // open initial recv requests, never-filled recv requests on edges ok
   dispatchRecv_N(); dispatchRecv_S(); dispatchRecv_E(); dispatchRecv_W();
-  if (p2pEnabled) { dispatchRecv_P(); drainRecv_P(); }  // drain arms drainTask
+  if (p2pEnabled) dispatchRecv_P();
   @activate(cycleTaskID);  // trigger first cycle
   @ptrcast(*[3]u16, ptr_tscEndBuffer).*[0] = 507;
   @ptrcast(*[3]u16, ptr_tscEndBuffer).*[1] = 3;
@@ -1029,7 +1021,7 @@ comptime {
   if (p2pEnabled) {
     @bind_local_task(sendFinalizeTask_P, sendFinalizeTaskID_P);
     @bind_local_task(recvFinalizeTask_P, recvFinalizeTaskID_P);
-    @bind_local_task(drainTask_P, drainTaskID_P);
+    @bind_local_task(ignRecvTask_P, ignRecvTaskID_P); @block(ignRecvTaskID_P);
     @bind_control_task(padTask_P, padTaskID_P);
   }
 
