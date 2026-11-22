@@ -247,12 +247,13 @@ const cycleTaskID: local_task_id = @get_local_task_id(19);
 
 const sendFinalizeTaskID_P: local_task_id = @get_local_task_id(20);
 const recvFinalizeTaskID_P: local_task_id = @get_local_task_id(25);
+const drainTaskID_P: local_task_id = @get_local_task_id(22);
 
 // no-op target for the control wavelet that ends each p2p message
 const padTaskID_P: control_task_id = @get_control_task_id(38);
 
 // local task IDs (8-30), checked against SDK v2.10.0 memcpy
-// available: 22, 23, 26
+// available: 23, 26
 // available (memcpy SYS_EN_MAIN, only used with context switching): 24
 // reserved (memcpy): 21, 27, 28, 30
 // reserved: 29 (teardown)
@@ -662,31 +663,62 @@ fn dispatchSend_P() bool {
 }
 
 // recv P2P ===================================================================
-var recvFlag_P: u8 = 0;  // need harvest? init 0 (naked dispatchRecv on startup)
-var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
-const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
-  .tensor_access = |i|{p2pMsgSize} -> recvBuf_P[i], });
-
-// callback when recv is complete, set flag to
-// 1) trigger immigration from recv buffer into pop and 2) request next recv
-task recvFinalizeTask_P() void { recvFlag_P = 1;
-  if (closeoutRemaining == 0) { @unblock(ignRecvTaskID_P); }
+// a long async recv (microthread 3) moves arriving wavelets into a FIFO, even
+// while tasks run; the FIFO is drained each cycle and, via drainTask, whenever
+// a push follows a drain that emptied it (including after the final cycle)
+const p2pRecvFifoNumMsgs: u16 = comptime compconf.get_value_or(
+  "ASYNC_GA_P2P_RECV_FIFO_NUM_MSGS", @as(u16, 16)
+);
+comptime {  // FIFO needs capacity for at least one message
+  if (p2pEnabled) @comptime_assert(p2pRecvFifoNumMsgs >= 1);
 }
+var recvFifoBuf_P = @zeros([
+  if (p2pEnabled) p2pRecvFifoNumMsgs * p2pMsgSize else 1
+]u32);
+const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
+  .activate_push = drainTaskID_P,  // on push after a drain emptied FIFO
+} else .{});
+var recvBuf_P = @zeros([p2pMsgSize]u32);  // header, genome payload, pad
+const recvWordDsd_P = @get_dsd(mem1d_dsd, .{
+  .tensor_access = |i|{1} -> recvBuf_P[i], });
+var recvFill_P: u16 = 0;  // words of current message popped into recvBuf
+var recvDiscard_P: bool = false;  // after final cycle, discard messages
+
+// pop words until FIFO is empty, immigrating (or discarding) whole messages
+// (pop must be the loop test: `if (!pop) break;` miscompiles in SDK v2.10.0,
+// the FIFO-empty jump going to loop top, so the loop never exits)
+fn drainRecv_P() void {
+  var wordDsd = @increment_dsd_offset(recvWordDsd_P, @as(i16, recvFill_P), u32);
+  while (@mov32(wordDsd, recvFifo_P)) {  // false once FIFO is empty
+    recvFill_P += 1;
+    if (recvFill_P == p2pMsgSize) {  // complete message
+      recvFill_P = 0;
+      if (!recvDiscard_P) {
+        var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
+        clobberCounter[0] += immigrateEnriched(
+          recvGenomePtr_P, 1, immEnrichP2p
+        );
+        immCounter_P[0] += 1;
+      }
+    }
+    wordDsd = @increment_dsd_offset(recvWordDsd_P, @as(i16, recvFill_P), u32);
+  }
+}
+task drainTask_P() void { drainRecv_P(); }
+
+// long recv completed (after many messages), so post the next
+task recvFinalizeTask_P() void { dispatchRecv_P(); }
 
 // (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
 // synchronous move and doesn't allow microthread selection)
-fn dispatchRecv_P() void {  // open async microthread to recv into recvBuf
+fn dispatchRecv_P() void {
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
-    .extent = p2pMsgSize, .input_queue = mp.mp_input_queue, });
-  @mov32(recvBufDsd_P, recvDsd_P, .{ .async = true,  // callback on complete
+    .extent = (0x7FFF / p2pMsgSize) * p2pMsgSize,  // whole messages
+    .input_queue = mp.mp_input_queue, });
+  @mov32(recvFifo_P, recvDsd_P, .{ .async = true,  // callback on complete
     .activate = recvFinalizeTaskID_P, .ut_id = @get_ut_id(p2pRecvThread), });
 }
 
-const ignRecvTaskID_P: data_task_id = (
-  if (p2pEnabled) @get_data_task_id(mp.mp_input_queue)
-  else @get_data_task_id(@get_input_queue(0))  // unused placeholder
-);
-task ignRecvTask_P(_: u32) void { }
 task padTask_P() void { }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -712,9 +744,7 @@ fn closeoutRecv() void {
   if (recvFlag_S == 1) { recvFlag_S = 0; @unblock(ignRecvTaskID_S); }
   if (recvFlag_E == 1) { recvFlag_E = 0; @unblock(ignRecvTaskID_E); }
   if (recvFlag_W == 1) { recvFlag_W = 0; @unblock(ignRecvTaskID_W); }
-  if (p2pEnabled and recvFlag_P == 1) {
-    recvFlag_P = 0; @unblock(ignRecvTaskID_P);
-  }
+  if (p2pEnabled) { recvDiscard_P = true; drainRecv_P(); }
 }
 
 task closeoutTask() void {
@@ -809,12 +839,7 @@ task cycleTask() void {
     }
   }
 
-  if (p2pEnabled and recvFlag_P == 1) {  // p2p recv
-    var recvGenomePtr_P = @ptrcast([*]u32, &recvBuf_P[1]);  // skip header
-    clobberCounter[0] += immigrateEnriched(recvGenomePtr_P, 1, immEnrichP2p);
-    immCounter_P[0] += 1;
-    recvFlag_P = 0; dispatchRecv_P();
-  }
+  if (p2pEnabled) drainRecv_P();  // p2p recv
 
   // apply replication/selection to population
   // --------------------------------------------------------------------------
@@ -974,7 +999,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   genomerefresh();
   // open initial recv requests, never-filled recv requests on edges ok
   dispatchRecv_N(); dispatchRecv_S(); dispatchRecv_E(); dispatchRecv_W();
-  if (p2pEnabled) dispatchRecv_P();
+  if (p2pEnabled) { dispatchRecv_P(); drainRecv_P(); }  // drain arms drainTask
   @activate(cycleTaskID);  // trigger first cycle
   @ptrcast(*[3]u16, ptr_tscEndBuffer).*[0] = 507;
   @ptrcast(*[3]u16, ptr_tscEndBuffer).*[1] = 3;
@@ -1004,7 +1029,7 @@ comptime {
   if (p2pEnabled) {
     @bind_local_task(sendFinalizeTask_P, sendFinalizeTaskID_P);
     @bind_local_task(recvFinalizeTask_P, recvFinalizeTaskID_P);
-    @bind_data_task(ignRecvTask_P, ignRecvTaskID_P); @block(ignRecvTaskID_P);
+    @bind_local_task(drainTask_P, drainTaskID_P);
     @bind_control_task(padTask_P, padTaskID_P);
   }
 
