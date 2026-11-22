@@ -44,6 +44,7 @@ def _nest_subgrid_sizes(
     nRowSubgrid: int,
     nColSubgrid: int,
     nestingFactor: int,
+    nestingLevelPeriod: int,
 ) -> tuple:
     """Per-PE subgrid sizes, nested outward from PE (0, 0) by nestingFactor.
 
@@ -66,6 +67,18 @@ def _nest_subgrid_sizes(
     |               |               |
     +---------------+---------------+
     PE (0, 0) at top left; subgrids may overhang PE array.
+
+    If nestingLevelPeriod L > 0, the first L levels repeat as tiles, e.g.,
+    L 2:
+    +---+---+-------+---+---+-------+
+    | b | b |       | b | b |       |
+    +---+---+  2b   +---+---+  2b   |
+    | b | b |       | b | b |       |
+    +---+---+-------+---+---+-------+
+    |       |       |       |       |
+    |  2b   |  2b   |  2b   |  2b   |
+    |       |       |       |       |
+    +-------+-------+-------+-------+
     """
     if not (isinstance(nestingFactor, int) and nestingFactor >= 1):
         raise ValueError(
@@ -77,7 +90,21 @@ def _nest_subgrid_sizes(
             "nonzero",
         )
 
+    if not (isinstance(nestingLevelPeriod, int) and nestingLevelPeriod >= 0):
+        raise ValueError(
+            f"nestingLevelPeriodSubgrid {nestingLevelPeriod=} not "
+            "nonnegative int"
+        )
+    if nestingLevelPeriod and not (nRowSubgrid and nColSubgrid):
+        raise ValueError(
+            f"nestingLevelPeriodSubgrid needs {nRowSubgrid=}, {nColSubgrid=} "
+            "nonzero",
+        )
+
     rows, cols = np.indices((nRow, nCol))
+    if nestingLevelPeriod:  # restart nesting in each tile of L levels
+        rows = rows % (nRowSubgrid * nestingFactor**nestingLevelPeriod)
+        cols = cols % (nColSubgrid * nestingFactor**nestingLevelPeriod)
     # how many base (nRowSubgrid x nColSubgrid) subgrids from the corner
     baseSubgridsOut = np.maximum(
         rows // max(nRowSubgrid, 1), cols // max(nColSubgrid, 1)
@@ -239,12 +266,14 @@ if __name__ == "__main__":
         for key in ("nRowSubgrid", "nColSubgrid")
     )
     nestingFactor = runtime_config.get("nestingFactorSubgrid", 1)
+    nestingLevelPeriod = runtime_config.get("nestingLevelPeriodSubgrid", 0)
     rowSubgrid, colSubgrid = _nest_subgrid_sizes(
         nRow=nRow,
         nCol=nCol,
         nRowSubgrid=nRowSubgrid,
         nColSubgrid=nColSubgrid,
         nestingFactor=nestingFactor,
+        nestingLevelPeriod=nestingLevelPeriod,
     )
     subgridSymbols = {
         f"rtc_{key}": values[..., None].astype(np.uint32)
