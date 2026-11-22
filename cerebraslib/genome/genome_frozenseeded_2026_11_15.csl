@@ -32,8 +32,8 @@ const layout_module = @import_module("<layout>");
 // module config specs ========================================================
 const _gSize: u16 = 1;
 const gWordsPop: u16 = _gSize;  // size used in local population
-const gWordsD2h: u16 = gWordsPop;  // size copied to host
-const gBitsMsg: u16 = 32 * gWordsPop;  // size migrated between PEs
+const gWordsD2h: u16 = _gSize;  // size copied to host
+const gBitsMsg: u16 = 32 * _gSize;  // size migrated between PEs
 const genome_t = [_gSize]u32;
 const genomePtr_t = [*]u32;
 const nTraitVals: u16 = 2;
