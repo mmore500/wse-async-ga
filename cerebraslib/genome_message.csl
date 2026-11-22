@@ -12,7 +12,7 @@ comptime {
 }
 
 // copy unit: largest power of two, up to a word, dividing gBitsMsg, so copy
-// units never straddle words
+// units divide words evenly (maintaining alignment)
 const unitBits: u16 = (
     if (gBitsMsg % 32 == 0) 32
     else if (gBitsMsg % 16 == 0) 16
