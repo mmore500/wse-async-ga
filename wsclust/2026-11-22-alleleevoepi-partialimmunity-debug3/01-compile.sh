@@ -168,19 +168,20 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # neutral (WITHINHOST_B 0), with WITHINHOST_T 1, so each site of a new
 # infection mutates with probability equal to the mutation rate, regardless
 # of host immunity (i.e., mutation rate is per site per transmission)
-# debug, part 3: as 2026-11-22-alleleevoepi-partialimmunity-debug2, but with
-# p2p batches of 24 genomes (6-wavelet p2p messages), which hung as debug job
-# 6 before p2p messages were received into a FIFO (16 messages); jobs bring
-# in the remaining features one at a time, all on the full grid (no
-# subgrids), mutation rate 1e-6, infection seeded on corner PE only,
-# population 1055 per PE, 10000 updates, 4-bit pathogen nibble messages, p2p
-# send probability 1 in 20, each job's features adding to the previous job's:
-# 1. control, as debug job 6: 1 genome per neighbor send, recv batches of 4,
-#    neighbors sent any genomes (with recv throttling)
-# 2. neighbor sends of 8 genomes (1 wavelet), received 2 sends at a time
-# 3. neighbors sent only live genomes, each free send thread sending to the
-#    least sent-to direction, with sends quelled for empty hosts passed over
-#    and no recv throttling
+# debug, part 3: with p2p messages received into a FIFO (16 messages), which
+# should fix the hang of 2026-11-22-alleleevoepi-partialimmunity-debug job 6
+# (p2p batches of 24 genomes, 6-wavelet p2p messages; not rerun here); all
+# jobs on the full grid (no subgrids), mutation rate 1e-6, infection seeded
+# on corner PE only, population 1055 per PE, 10000 updates, 4-bit pathogen
+# nibble messages, p2p send probability 1 in 20:
+# 1. control, as debug2 job 1 (which ran before the FIFO): p2p batches of 8
+#    genomes (4-wavelet p2p messages), 1 genome per neighbor send, recv
+#    batches of 4, neighbors sent any genomes (with recv throttling)
+# 2. p2p batches of 24 genomes (6-wavelet p2p messages), and neighbor sends
+#    of 8 genomes (1 wavelet), received 2 sends at a time
+# 3. as 2, with neighbors sent only live genomes, each free send thread
+#    sending to the least sent-to direction, with sends quelled for empty
+#    hosts passed over and no recv throttling (production settings)
 # per-PE trait logger records the 3-bit trait value of each sampled host
 # (0th population member), one multiplexed record per bit: bit 0 set if
 # infected, and bits 1 and 2 the alleles at sites 0 and 1
@@ -201,12 +202,12 @@ jobnum=0  # job order, in config names, as run step runs them in name order
 # compile, for each compile config; and write each run config's runtime
 # config, with compiled artifacts, to its own directory (one job per run
 # config in run step)
-for compileConfig in p2pbatch24 neighborbatch live; do
+for compileConfig in fifocontrol p2pbatch24 live; do
     # message bits, genomes per neighbor send and recv, genomes per p2p
     # message, live neighbor sends?
     case "${compileConfig}" in
-        p2pbatch24) msgbits=4 sendgenomes=1 recvgenomes=4 p2pbatch=24 live=0 ;;
-        neighborbatch) msgbits=4 sendgenomes=8 recvgenomes=16 p2pbatch=24 live=0 ;;
+        fifocontrol) msgbits=4 sendgenomes=1 recvgenomes=4 p2pbatch=8 live=0 ;;
+        p2pbatch24) msgbits=4 sendgenomes=8 recvgenomes=16 p2pbatch=24 live=0 ;;
         live) msgbits=4 sendgenomes=8 recvgenomes=16 p2pbatch=24 live=1 ;;
     esac
     compileseed=$((1160 + jobnum))  # runtime config sets it too
