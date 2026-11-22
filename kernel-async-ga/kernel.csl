@@ -59,9 +59,6 @@ const genome_ = @import_module(
   .{ .rng = rng },
 );
 const nTraitVals = genome_.nTraitVals;
-comptime {  // host copies at most the population genome
-  @comptime_assert(genome_.gWordsD2h <= genome_.gWordsPop);
-}
 const ctc_p2pSendProbability = comptime compconf.get_value_or(
     "ASYNC_GA_P2P_SEND_PROBABILITY", @as(f32, 0.0)
 );
@@ -146,6 +143,9 @@ var ptr_traitCycles: [*]u32 = &traitCycles;
 var traitValues = @zeros([nTraitVals]u32);
 var ptr_traitValues: [*]u32 = &traitValues;
 
+comptime {  // host copies at most the population genome
+  @comptime_assert(genome_.gWordsD2h <= genome_.gWordsPop);
+}
 var genome = @zeros([genome_.gWordsD2h]u32);  // samples 0th pop element
 var ptr_genome : [*]u32 = &genome;  // (which is convenient)
 
@@ -277,11 +277,11 @@ const sendBufWords: u16 = (sendNumGenomes * genome_.gBitsMsg + 31) / 32;
 const neighborSendExcludeEmpty: bool = 0 != comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_SEND_EXCLUDE_EMPTY", @as(u16, 0)
 );
-comptime {  // live batches are filled from the population
+comptime {  // batches are filled from the population
   if (neighborSendExcludeEmpty) @comptime_assert(sendNumGenomes <= popSize);
 }
 var skippedEmptyGenomes: u32 = 0;  // not yet offset by a skipped send
-var neighborSendCounts = @zeros([4]u32);  // live sends dispatched: N, S, E, W
+var neighborSendCounts = @zeros([4]u32);  // sends dispatched: N, S, E, W
 
 // fill send buffer, returning how many empty genomes were skipped
 fn fillSendBuf(sendBuf: [*]u32) u32 {
@@ -496,12 +496,11 @@ const recvNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );
 comptime { @comptime_assert(recvNumGenomes >= 1); }
-// recv batches hold whole sends, so padding at the end of each send (with
-// messages under a word) is skipped, not read as genomes
+// recv batches hold whole sends, so each send's trailing padding is skipped
 comptime { @comptime_assert(recvNumGenomes % sendNumGenomes == 0); }
 const recvNumSends: u16 = recvNumGenomes / sendNumGenomes;
 const recvBufWords: u16 = recvNumSends * sendBufWords;
-// do sends' messages fill whole words? then a recv batch is one contiguous run
+// sends without padding make a recv batch one contiguous run
 const isSendUnpadded: bool = (sendNumGenomes * genome_.gBitsMsg) % 32 == 0;
 
 // how many times to immigrate each neighbor and p2p immigrant? 1: as received
@@ -641,7 +640,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // ============================================================================
 // exchange genomes with another PE via p2p message passing,
 // each message is a header wavelet, a count wavelet, a batch of up to
-// p2pBatchSize live (non-empty) genomes' packed messages, and a pad wavelet
+// p2pBatchSize non-empty genomes, and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
 const p2pBatchSize: u16 = comptime compconf.get_value_or(
@@ -740,7 +739,7 @@ fn drainRecv_P() void {
   while (@mov32(_recvBufWordDsd_P(), recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
     if (recvFill_P == 1 + p2pPayloadWords) {  // payload complete
-      // batch is short if sender found few live genomes
+      // batch is short if sender found few non-empty genomes
       const recvCount_P = @as(u16, math.min(recvBuf_P[0], p2pBatchSize));
       clobberCounter[0] += immigrateEnriched(
         @ptrcast([*]u32, &recvBuf_P[1]), recvCount_P, immEnrichP2p
@@ -823,8 +822,7 @@ fn shouldHalt(cycle: u32) bool {
 // cycle task =================================================================
 // main program loop: self-activate with incrementing values until nCycleAtLeast
 ///////////////////////////////////////////////////////////////////////////////
-// send to neighbor j (N, S, E, W) if its send buffer is ready and a thread is
-// free, returning whether sent
+// send to neighbor j (N, S, E, W) if buffer ready and thread free; sent?
 fn sendToNeighbor(j: u16) bool {
   if (j == 0 and sendFlag_N == 1 and dispatchSend_N()) { sendFlag_N = 0; }
   else if (j == 1 and sendFlag_S == 1 and dispatchSend_S()) { sendFlag_S = 0; }
@@ -834,9 +832,8 @@ fn sendToNeighbor(j: u16) bool {
   return true;
 }
 
-// for each free send thread, skip a send (if a batch's worth of empty genomes
-// were skipped) or send a batch to the least sent-to direction without a send
-// in flight (ties broken from shuf)
+// per free thread, skip a send (see neighborSendExcludeEmpty) or send to the
+// least sent-to ready direction (ties broken from shuf)
 fn sendLiveToNeighbors(shuf: u16) void {
   const numBusy = (
     busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
@@ -868,8 +865,7 @@ task cycleTask() void {
   // --------------------------------------------------------------------------
 
   const shuf1 = @random16() & 3;
-  // throttle immigration to slowest active direction, unless neighbors send
-  // only live genomes, at rates that are meant to differ between directions
+  // no throttle if excluding empty: send rates differ between directions
   const noThrottle: u32 = 0xFFFFFFFF;
   const throttleThresh = if (neighborSendExcludeEmpty) noThrottle else math.min(
     math.min(
@@ -930,9 +926,7 @@ task cycleTask() void {
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
   // p2p send goes first, so neighbor sends can't starve it of threads
-  // with p2pSendProbability, sample one population member; if live, send a
-  // batch of live genomes scanned from it, so batches go at a rate
-  // proportional to the PE's live population (geometric wait between them)
+  // sample one genome and, unless it is empty, send a batch scanned from it
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
     const sendCount_P = population.emigrate_live_genomes(
@@ -943,8 +937,7 @@ task cycleTask() void {
   }
   const shuf2 = @random16() & 3;
   if (neighborSendExcludeEmpty) { sendLiveToNeighbors(shuf2); }
-  for (@range(u16, 4)) |i| {  // send to all neighbors, unless live only
-    if (neighborSendExcludeEmpty) break;
+  else for (@range(u16, 4)) |i| {  // send to all neighbors
     const numBusy = (
       busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
     );

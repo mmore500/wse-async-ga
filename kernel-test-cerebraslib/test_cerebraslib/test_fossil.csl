@@ -26,17 +26,17 @@ const fossilReservoir = @import_module(
     },
 );
 
-var expected = @zeros([genome.gWordsPop]u32);
+var expected = @zeros([genome.gWordsD2h]u32);
 
 fn _save_expected() void {
     const genomePtr = population._get_ith_genome(0);
-    for (@range(u16, genome.gWordsPop)) |i| { expected[i] = genomePtr[i]; }
+    for (@range(u16, genome.gWordsD2h)) |i| { expected[i] = genomePtr[i]; }
 }
 
 fn _check_bookend(bookend: [*]u32, counter: u32, tag: u32) void {
     @assert(bookend[0] == (tag << 10) | counter);
-    @assert(bookend[genome.gWordsPop + 1] == (tag << 10) | counter);
-    for (@range(u16, genome.gWordsPop)) |i| {
+    @assert(bookend[genome.gWordsD2h + 1] == (tag << 10) | counter);
+    for (@range(u16, genome.gWordsD2h)) |i| {
         @assert(bookend[i + 1] == expected[i]);
     }
 }
@@ -82,7 +82,7 @@ fn test_reservoir_many() void {
     }
     fossilReservoir.pull_sample(1);
     @assert(fossilReservoir.bookendBuffer[0] == (1 << 10) | 6);
-    @assert(fossilReservoir.bookendBuffer[genome.gWordsPop + 1] == (1 << 10) | 6);
+    @assert(fossilReservoir.bookendBuffer[genome.gWordsD2h + 1] == (1 << 10) | 6);
 }
 
 fn do_test() void {

@@ -482,7 +482,6 @@ fn notify_extinct() void {}
 // uninfected host? reads only the pathogen, so also works on messages
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
 
-
 // pack genome's message into buf as buf's ith message; buf must start zeroed
 fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
     gmsg_util.pack_msg(srcPtr, destBuf, i);

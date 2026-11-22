@@ -1,6 +1,4 @@
-// Emigration and immigration shared by population flavors, over a population
-// buffer pop of popSize genomes, gWordsPop words each, migrating genomes'
-// messages (see genome msg_pack and msg_unpack).
+// Emigration and immigration of genome messages, shared by population flavors.
 
 // module params ==============================================================
 param genome: imported_module;

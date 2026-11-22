@@ -120,7 +120,7 @@ jobs:
             nonBlock: 0
             genome: genome_alleleevoepi_2026_11_19
             p2p: 0.5
-          - arch: wse3  # batches of live genomes, p2p and neighbor
+          - arch: wse3  # p2p batches, neighbor sends exclude empty
             nonBlock: 1
             genome: genome_alleleevoepi_2026_11_19
             p2p: 0.5

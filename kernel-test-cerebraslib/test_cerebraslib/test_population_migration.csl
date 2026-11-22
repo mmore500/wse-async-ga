@@ -1,0 +1,133 @@
+// migration of a genome with messages smaller than the genome: the
+// allele-evoepi genome sends only its pathogen (low half-word)
+const genome = @import_module(
+    "cerebraslib/genome/genome_alleleevoepi_2026_11_19.csl"
+);
+const migration = @import_module("cerebraslib/population_migration.csl", .{
+    .genome = genome, .popSize = 8,
+});
+
+const nMsg: u16 = 4;
+const guard: u32 = 0xFEEDBEEF;
+var pop = @zeros([8]u32);  // genomes are 1 word
+var msgBuf = @zeros([2 + 1]u32);  // 4 half-word messages, and a guard word
+var popPtr: [*]u32 = &pop;
+var msgPtr: [*]u32 = &msgBuf;
+
+fn _ith(i: u16) *genome.fields_t {
+    return genome._cast_fields(@ptrcast([*]u32, &pop[i]));
+}
+
+fn _ith_msg(k: u16) u16 {
+    return @as(u16, (msgBuf[k / 2] >> (16 * (k % 2))) & 0xFFFF);
+}
+
+// host i has distinct immunity, and is infected with pathogen sites i iff
+// bit i of mask is set
+fn _setup(mask: u16) void {
+    for (@range(u16, 8)) |i| {
+        const isInfected = ((mask >> i) & 1) == 1;
+        _ith(i).*.pathogen = if (isInfected) (i | genome.infectedFlag) else 0;
+        _ith(i).*.immunity = 0x0100 * (i + 1);
+    }
+    msgBuf[2] = guard;
+}
+
+// count infected messages, which must be from infected hosts; others are zero
+fn _count_live_messages(mask: u16) u16 {
+    var nLive: u16 = 0;
+    for (@range(u16, nMsg)) |k| {
+        const msg = _ith_msg(k);
+        if ((msg & genome.infectedFlag) != 0) {
+            @assert(((mask >> (msg & 0xFF)) & 1) == 1);
+            nLive += 1;
+        } else {
+            @assert(msg == 0);
+        }
+    }
+    @assert(msgBuf[2] == guard);  // nothing written past messages
+    return nLive;
+}
+
+fn test_calc_buf_words() void {
+    @assert(genome.gBitsMsg == 16);
+    @assert(migration.message.calc_buf_words(nMsg) == 2);
+}
+
+fn test_emigrate_genomes() void {
+    _setup(0xFF);
+    migration.emigrate_genomes(popPtr, msgPtr, nMsg);
+    @assert(_count_live_messages(0xFF) == nMsg);
+}
+
+fn test_immigrate_genomes() void {
+    _setup(0xFF);
+    // uninfected immigrants infect no one
+    msgBuf[0] = 0; msgBuf[1] = 0;
+    @assert(migration.immigrate_genomes(popPtr, msgPtr, nMsg) == 0);
+    for (@range(u16, 8)) |i| {
+        @assert(_ith(i).*.pathogen == (i | genome.infectedFlag));
+    }
+
+    // infected immigrants replace pathogens only, never immunity
+    msgBuf[0] = 0x01010101; msgBuf[1] = msgBuf[0];
+    @assert(migration.immigrate_genomes(popPtr, msgPtr, nMsg) <= nMsg);
+    for (@range(u16, 8)) |i| {
+        @assert(_ith(i).*.immunity == 0x0100 * (i + 1));
+    }
+}
+
+fn test_emigrate_live_genomes() void {
+    // all live: full batch
+    _setup(0xFF);
+    @assert(migration.emigrate_live_genomes(popPtr, msgPtr, nMsg) == nMsg);
+    @assert(_count_live_messages(0xFF) == nMsg);
+
+    // none live: nothing sent
+    _setup(0x00);
+    @assert(migration.emigrate_live_genomes(popPtr, msgPtr, nMsg) == 0);
+    @assert(_count_live_messages(0x00) == 0);
+
+    // two live: nothing if sampled host is empty, else short batch of both
+    _setup(0x24);
+    var nSent: u16 = 0;
+    for (@range(u16, 64)) |rep| {
+        const count = migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);
+        @assert(count == 0 or count == 2);
+        @assert(_count_live_messages(0x24) == count);
+        if (count == 2) { nSent += 1; }
+    }
+    @assert(0 < nSent and nSent < 64);  // sent about 1 in 4 times
+}
+
+fn test_emigrate_live_batch() void {
+    // all live: full batch, no empty genomes skipped
+    _setup(0xFF);
+    @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) == 0);
+    @assert(_count_live_messages(0xFF) == nMsg);
+
+    // none live: whole population skipped, batch of empty genomes
+    _setup(0x00);
+    @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) == 8);
+    @assert(_count_live_messages(0x00) == 0);
+
+    // two live: both sent, rest of batch empty, all 6 empty skipped
+    _setup(0x24);
+    @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) == 6);
+    @assert(_count_live_messages(0x24) == 2);
+
+    // six live: full batch, skipping between 0 and 2 empty genomes
+    _setup(0x7E);
+    for (@range(u16, 16)) |rep| {
+        @assert(migration.emigrate_live_batch(popPtr, msgPtr, nMsg) <= 2);
+        @assert(_count_live_messages(0x7E) == nMsg);
+    }
+}
+
+fn do_test() void {
+    test_calc_buf_words();
+    test_emigrate_genomes();
+    test_immigrate_genomes();
+    test_emigrate_live_genomes();
+    test_emigrate_live_batch();
+}
