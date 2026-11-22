@@ -133,6 +133,10 @@ const compconf = @import_module("<compconf>");
 const layout_module = @import_module("<layout>");
 
 const opscalar = @import_module("cerebraslib/opscalar.csl");
+// only the pathogen migrates, by default; immunity stays with host
+const gmsg_util = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = gWordsPop, .gBitsMsg = gBitsMsg,
+});
 
 // compile-time configuration =================================================
 // defaults follow allele-evoepi-concept's 2026-05-20-founder notebook
@@ -229,7 +233,7 @@ const fields_t = extern struct {
     immunity: u16, // byte 2: level nibble 2 * i + a, allele a at site i
 };
 
-/// View genome words through memory layout struct.
+// view genome words through memory layout struct
 fn _cast_fields(genome: genomePtr_t) *fields_t {
     return @ptrcast(*fields_t, genome);
 }
@@ -241,7 +245,7 @@ const nibbleFull: u16 = 15; // immunity level 1
 const nibbleFloor: u16 = 1; // immunity level IMMUNITY_FLOOR
 
 // compile-time lookup tables ================================================
-/// Exponential, by Taylor series, for compile-time evaluation.
+// exponential, by Taylor series, for compile-time evaluation
 fn _comptime_exp(x: f32) f32 {
     var sum: f32 = 1.0;
     var term: f32 = 1.0;  // x^n / n!
@@ -252,7 +256,7 @@ fn _comptime_exp(x: f32) f32 {
     return sum;
 }
 
-/// Natural log, by atanh series, for compile-time evaluation (x > 0).
+// natural log, by atanh series, for compile-time evaluation (x > 0)
 fn _comptime_ln(x: f32) f32 {
     const y = (x - 1.0) / (x + 1.0);
     var sum: f32 = 0.0;
@@ -276,8 +280,8 @@ const _waningStepP: f32 = comptime (
 );
 comptime { @comptime_assert(0.0 <= _waningStepP and _waningStepP <= 1.0); }
 
-/// Immunity level of each nibble value: 0 if never immune, else
-/// levelRatio ^ (15 - nibble), from IMMUNITY_FLOOR (1) up to 1 (15).
+// immunity level of each nibble value: 0 if never immune, else
+// levelRatio ^ (15 - nibble), from IMMUNITY_FLOOR (1) up to 1 (15)
 fn _calc_level_table() [16]f32 {
     var table = @zeros([16]f32);
     var level: f32 = 1.0;
@@ -289,7 +293,7 @@ fn _calc_level_table() [16]f32 {
 }
 const _immunityLevel = comptime _calc_level_table();
 
-/// Susceptibility to an allele, per immunity nibble value.
+// susceptibility to an allele, per immunity nibble value
 fn _calc_susceptibility_table() [16]f32 {
     var table = @zeros([16]f32);
     for (@range(u16, 16)) |c| {
@@ -305,7 +309,7 @@ fn _get_mutation_p() f32 {
     return if (p < 1.0) p else 1.0;
 }
 
-/// Enabled pathogen sites; disabled sites read as 0.
+// enabled pathogen sites; disabled sites read as 0
 fn _get_sites(genome: genomePtr_t) u16 {
     return _cast_fields(genome).*.pathogen & sitesMask;
 }
@@ -314,12 +318,12 @@ fn _is_infected(genome: genomePtr_t) bool {
     return (_cast_fields(genome).*.pathogen & infectedFlag) != 0;
 }
 
-/// Immunity nibble j (2 * i + a, allele a at site i).
+// immunity nibble j (2 * i + a, allele a at site i)
 fn _get_nibble(immunity: u16, j: u16) u16 {
     return (immunity >> (4 * j)) & 0xF;
 }
 
-/// Probability pathogen with sites infects uninfected host with immunity.
+// probability pathogen with sites infects uninfected host with immunity
 fn _calc_transmission_p(immunity: u16, sites: u16) f32 {
     var p: f32 = _contact_rate;
     for (@range(u16, nSites)) |i| {
@@ -329,7 +333,7 @@ fn _calc_transmission_p(immunity: u16, sites: u16) f32 {
     return p;
 }
 
-/// Does infected donor's pathogen transmit to uninfected recipient?
+// does infected donor's pathogen transmit to uninfected recipient?
 fn _sample_transmission(recipient: genomePtr_t, donor: genomePtr_t) bool {
     if (_is_infected(recipient) or !_is_infected(donor)) return false;
     return opscalar.p(_calc_transmission_p(
@@ -337,7 +341,7 @@ fn _sample_transmission(recipient: genomePtr_t, donor: genomePtr_t) bool {
     ));
 }
 
-/// Neutral within-host mutation of a pathogen with sites.
+// neutral within-host mutation of a pathogen with sites
 fn _calc_withinhost_mutation(sites: u16) u16 {
     var res = sites;
     const p = _get_mutation_p();
@@ -347,8 +351,8 @@ fn _calc_withinhost_mutation(sites: u16) u16 {
     return res;
 }
 
-/// Infect host with donor's pathogen, which mutates within host; host keeps
-/// its own immunity.
+// infect host with donor's pathogen, which mutates within host; host keeps
+// its own immunity
 fn _infect(host: genomePtr_t, donor: genomePtr_t) void {
     const sites = _calc_withinhost_mutation(_get_sites(donor));
     _cast_fields(host).*.pathogen = sites | infectedFlag;
@@ -380,13 +384,13 @@ fn _apply_waning(genome: genomePtr_t) void {
     _cast_fields(genome).*.immunity = immunity;
 }
 
-/// Init rule: are hosts on the PE at col x, row y seeded with infection?
+// init rule: are hosts on the PE at col x, row y seeded with infection?
 fn _is_seeded_pe(x: u16, y: u16) bool {
     if (_seed_pe_stride == 0) return true;
     return x % _seed_pe_stride == 0 and y % _seed_pe_stride == 0;
 }
 
-/// Helper function for testability.
+// helper function for testability
 fn _initialize_one_at(genome: genomePtr_t, x: u16, y: u16) void {
     genome[0] = 0;
     // infected with wildtype pathogen (all 0 alleles), only at seeded PE
@@ -441,19 +445,15 @@ fn notify_extinct() void {}
 // uninfected host? reads only the pathogen, so also works on messages
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
 
-// only the pathogen migrates, by default; immunity stays with host
-const _message = @import_module("cerebraslib/genome_message.csl", .{
-    .gWordsPop = gWordsPop, .gBitsMsg = gBitsMsg,
-});
 
-/// Pack genome's message into buf as buf's ith message; buf must start zeroed.
-fn msg_pack(fromGenome: genomePtr_t, toBuf: [*]u32, i: u16) void {
-    _message.pack(fromGenome, toBuf, i);
+// pack genome's message into buf as buf's ith message; buf must start zeroed
+fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
+    gmsg_util.pack(srcPtr, destBuf, i);
 }
 
-/// Overwrite genome's message bits (pathogen) with buf's ith message.
-fn msg_unpack(fromBuf: [*]u32, i: u16, toGenome: genomePtr_t) void {
-    _message.unpack(fromBuf, i, toGenome);
+// overwrite genome's message bits (pathogen) with buf's ith message
+fn msg_unpack(srcBuf: [*]u32, i: u16, destPtr: genomePtr_t) void {
+    gmsg_util.unpack(srcBuf, i, destPtr);
 }
 
 fn export_symbol_names() void {  // hook into top-level layout block

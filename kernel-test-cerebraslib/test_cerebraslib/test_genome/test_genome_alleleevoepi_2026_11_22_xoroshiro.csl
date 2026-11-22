@@ -11,21 +11,21 @@ fn _is_close(actual: f32, expected: f32) bool {
     return math.abs(actual - expected) < 1e-3 * math.abs(expected);
 }
 
-/// Make genome with given pathogen sites, infection, and immunity nibbles.
+// make genome with given pathogen sites, infection, and immunity nibbles
 fn _make(g: *genome.genome_t, sites: u16, infected: bool, immunity: u16) void {
     const f = genome._cast_fields(g);
     f.*.pathogen = sites | (if (infected) genome.infectedFlag else 0);
     f.*.immunity = immunity;
 }
 
-/// 0.3 (full immunity's susceptibility) to the number of enabled sites.
+// 0.3 (full immunity's susceptibility) to the number of enabled sites
 fn _full_susceptibility() f32 {
     var res: f32 = 1.0;
     for (@range(u16, genome.nSites)) |_| { res *= 0.3; }
     return res;
 }
 
-/// Immunity nibbles, all set to value for each enabled allele.
+// immunity nibbles, all set to value for each enabled allele
 fn _all_nibbles(value: u16) u16 {
     var immunity: u16 = 0;
     for (@range(u16, 2 * genome.nSites)) |j| { immunity |= value << (4 * j); }
