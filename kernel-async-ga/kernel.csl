@@ -702,7 +702,7 @@ task recvFinalizeTask_P() void { dispatchRecv_P(); }
 // synchronous move and doesn't allow microthread selection)
 fn dispatchRecv_P() void {
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
-    .extent = INFINITE_DSD_LEN - INFINITE_DSD_LEN % p2pMsgSize,  // longest possible aligned
+    .extent = INFINITE_DSD_LEN,  // longest possible
     .input_queue = mp.mp_input_queue, });
   @mov32(recvFifo_P, recvDsd_P, .{ .async = true,  // callback on complete
     .activate = recvFinalizeTaskID_P, .ut_id = @get_ut_id(p2pRecvThread), });
