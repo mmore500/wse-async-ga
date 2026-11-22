@@ -958,7 +958,7 @@ task cycleTask() void {
       busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
     );
     if (numBusy == 4) break;
-    _ = sendToNeighbor((i + shuf2) & 3);  // round-robin order
+    if (!sendToNeighbor((i + shuf2) & 3)) continue;  // round-robin order
   }
 
   // update telemetry
