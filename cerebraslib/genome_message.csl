@@ -8,16 +8,18 @@ param gBitsMsg: u16;  // genome.gBitsMsg
 // compile-time configuration =================================================
 comptime {
     @comptime_assert(gBitsMsg > 0);
-    // so copy units (words, bytes, or whole messages) never straddle words
-    @comptime_assert(8 % gBitsMsg == 0 or gBitsMsg % 8 == 0);
     @comptime_assert(gBitsMsg <= 32 * gWordsPop);
 }
 
-// copy unit: whole words, else bytes, else whole sub-byte messages
+// copy unit: largest power of two, up to a word, dividing gBitsMsg, so copy
+// units never straddle words
 const unitBits: u16 = (
     if (gBitsMsg % 32 == 0) 32
+    else if (gBitsMsg % 16 == 0) 16
     else if (gBitsMsg % 8 == 0) 8
-    else gBitsMsg
+    else if (gBitsMsg % 4 == 0) 4
+    else if (gBitsMsg % 2 == 0) 2
+    else 1
 );
 const gSizeUnits: u16 = gBitsMsg / unitBits;
 const unitMask: u32 = (

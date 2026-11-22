@@ -823,6 +823,17 @@ fn shouldHalt(cycle: u32) bool {
 // cycle task =================================================================
 // main program loop: self-activate with incrementing values until nCycleAtLeast
 ///////////////////////////////////////////////////////////////////////////////
+// send to neighbor j (N, S, E, W) if its send buffer is ready and a thread is
+// free, returning whether sent
+fn sendToNeighbor(j: u16) bool {
+  if (j == 0 and sendFlag_N == 1 and dispatchSend_N()) { sendFlag_N = 0; }
+  else if (j == 1 and sendFlag_S == 1 and dispatchSend_S()) { sendFlag_S = 0; }
+  else if (j == 2 and sendFlag_E == 1 and dispatchSend_E()) { sendFlag_E = 0; }
+  else if (j == 3 and sendFlag_W == 1 and dispatchSend_W()) { sendFlag_W = 0; }
+  else { return false; }
+  return true;
+}
+
 // for each free send thread, skip a send (if a batch's worth of empty genomes
 // were skipped) or send a batch to the least sent-to direction without a send
 // in flight (ties broken from shuf)
@@ -846,11 +857,7 @@ fn sendLiveToNeighbors(shuf: u16) void {
       );
       if (sendFlags[j] == 1 and isLeast) { best = j; }
     }
-    if (best == 0 and dispatchSend_N()) { sendFlag_N = 0; }
-    else if (best == 1 and dispatchSend_S()) { sendFlag_S = 0; }
-    else if (best == 2 and dispatchSend_E()) { sendFlag_E = 0; }
-    else if (best == 3 and dispatchSend_W()) { sendFlag_W = 0; }
-    else { break; }  // no direction ready, or no thread free
+    if (!sendToNeighbor(best)) break;  // no direction ready, or no thread free
     neighborSendCounts[best] += 1;
   }
 }
@@ -951,16 +958,7 @@ task cycleTask() void {
       busyThreads[0] + busyThreads[1] + busyThreads[2] + busyThreads[3]
     );
     if (numBusy == 4) break;
-    const j = (i + shuf2) & 3;  // round-robin order
-    if (j == 0 and sendFlag_N == 1) {
-      if (dispatchSend_N()) { sendFlag_N = 0; }
-    } else if (j == 1 and sendFlag_S == 1) {
-      if (dispatchSend_S()) { sendFlag_S = 0; }
-    } else if (j == 2 and sendFlag_E == 1) {
-      if (dispatchSend_E()) { sendFlag_E = 0; }
-    } else if (j == 3 and sendFlag_W == 1) {
-      if (dispatchSend_W()) { sendFlag_W = 0; }
-    }
+    _ = sendToNeighbor((i + shuf2) & 3);  // round-robin order
   }
 
   // update telemetry

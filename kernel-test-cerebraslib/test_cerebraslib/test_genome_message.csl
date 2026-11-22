@@ -4,6 +4,9 @@ const message1 = @import_module("cerebraslib/genome_message.csl", .{
 const message4 = @import_module("cerebraslib/genome_message.csl", .{
     .gWordsPop = 1, .gBitsMsg = 4,
 });
+const message12 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 1, .gBitsMsg = 12,
+});
 const message16 = @import_module("cerebraslib/genome_message.csl", .{
     .gWordsPop = 1, .gBitsMsg = 16,
 });
@@ -82,6 +85,22 @@ fn test_pack_unpack_16() void {
     }
 }
 
+fn test_pack_unpack_12() void {
+    _clear_buf();
+    const vals = [3]u32{ 0xABC, 0x123, 0x456 };  // 3rd straddles words
+    for (@range(u16, 3)) |i| {
+        g[0] = 0xFFFFF000 | vals[i];  // high bits not in message
+        message12.pack(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+    }
+    @assert(buf[0] == 0x56123ABC);
+    @assert(buf[1] == 0x4);
+    for (@range(u16, 3)) |i| {
+        g[0] = 0x77777000;
+        message12.unpack(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        @assert(g[0] == (0x77777000 | vals[i]));
+    }
+}
+
 fn test_pack_unpack_24() void {
     _clear_buf();
     for (@range(u16, 4)) |i| {  // 24-bit messages straddle words
@@ -122,6 +141,7 @@ fn do_test() void {
     test_pack_unpack_1();
     test_pack_unpack_4();
     test_pack_unpack_16();
+    test_pack_unpack_12();
     test_pack_unpack_24();
     test_pack_unpack_64();
 }

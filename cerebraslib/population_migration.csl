@@ -12,9 +12,7 @@ const message = @import_module("cerebraslib/genome_message.csl", .{
     .gWordsPop = genome.gWordsPop, .gBitsMsg = genome.gBitsMsg,
 });
 
-// internal state and functions ===============================================
-var priorBuf = @zeros([genome.gWordsPop]u32);  // resident before immigrant
-
+// internal functions =========================================================
 fn _get_ith_genome(pop: [*]u32, i: u16) [*]u32 {
     return @ptrcast([*]u32, &pop[i * genome.gWordsPop]);
 }
@@ -38,17 +36,19 @@ fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) void {
 // returns how many immigrants clobbered
 fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     var nClobbers: u32 = 0;
-    const prior = @ptrcast([*]u32, &priorBuf);
     for (@range(u16, nGenomes)) |i| {
         // immigrant overwrites resident's message bits, in place
         const immigrant = _get_ith_genome(pop, opscalar.unif16(popSize));
-        if (genome.hasImmClobber) {  // keep resident as it was, for clobber
+        if (genome.hasImmClobber) {  // clobber compares with prior resident
+            var prior = @zeros([genome.gWordsPop]u32);
             for (@range(u16, genome.gWordsPop)) |w| { prior[w] = immigrant[w]; }
-        }
-        genome.msg_unpack(srcBuf, i, immigrant);
-        if (genome.hasImmClobber) {
-            const isClobbered = genome.clobber_immigrant(prior, immigrant);
+            genome.msg_unpack(srcBuf, i, immigrant);
+            const isClobbered = genome.clobber_immigrant(
+                @ptrcast([*]u32, &prior), immigrant
+            );
             nClobbers += @as(u32, isClobbered);
+        } else {
+            genome.msg_unpack(srcBuf, i, immigrant);
         }
     }
     return nClobbers;
