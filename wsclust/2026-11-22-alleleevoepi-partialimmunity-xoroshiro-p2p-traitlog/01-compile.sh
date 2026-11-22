@@ -183,14 +183,14 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #   probability 1 in 40, a sampled host that is live starts a
 #   batch of up to 8 live genomes (1 wavelet), so batches go at a rate
 #   proportional to live population
-# five independent runs (one job each, run in job order), each set by its
+# six independent runs (one job each, run in job order), each set by its
 # own runtime config (p2p targets, and per run p2p send probability,
 # mutation rate, seed), from one compile:
-# 1-5. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
+# 1-6. nested subgrids on the 1152 x 576 PEs that full (non-overflowing)
 #    subgrids occupy (runtime config nestingFactorSubgrid 2): 9 x 9 PE
 #    subgrids at the corner PE (col 0, row 0), then L-shaped shells of 3
 #    subgrids each of 18, 36, 72, 144, and 288 PEs on a side, and one 576 x
-#    576 subgrid; sweeping mutation rate 2^-16 to 2^-32 by factors of 16
+#    576 subgrid; sweeping mutation rate 2^-12 to 2^-32 by factors of 16
 #    (named runtime config rtc_evoepi_mutationRate); p2p send probability 1
 #    in 40; infection seeded on every PE whose col and row are multiples of 9
 #    (seed PE stride 9); population 1055 per PE, so the largest subgrid holds
@@ -320,7 +320,7 @@ EOF
 
     # run configs, one job each, as name:p2p:mutexp:seed, for runtime p2p
     # send probability, mutation rate 2^-mutexp, and seed
-    RUN_CONFIGS="nested-mutlog2-16:0.025:16:1141 nested-mutlog2-20:0.025:20:1143 nested-mutlog2-24:0.025:24:1145 nested-mutlog2-28:0.025:28:1147 nested-mutlog2-32:0.025:32:1149"
+    RUN_CONFIGS="nested-mutlog2-12:0.025:12:1151 nested-mutlog2-16:0.025:16:1141 nested-mutlog2-20:0.025:20:1143 nested-mutlog2-24:0.025:24:1145 nested-mutlog2-28:0.025:28:1147 nested-mutlog2-32:0.025:32:1149"
     nest=", \"nestingFactorSubgrid\": 2"
     for runConfig in ${RUN_CONFIGS}; do
         IFS=: read -r runName runP2p runMutexp runSeed <<< "${runConfig}"

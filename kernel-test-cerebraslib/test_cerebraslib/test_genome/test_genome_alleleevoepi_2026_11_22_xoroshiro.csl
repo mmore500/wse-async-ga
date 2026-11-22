@@ -1,9 +1,10 @@
 const math = @import_module("<math>");
 const random = @import_module("<random>");
 
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
 const genome = @import_module(
     "cerebraslib/genome/genome_alleleevoepi_2026_11_22_xoroshiro.csl",
-    .{ .rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl") },
+    .{ .rng = rng },
 );
 
 fn _is_close(actual: f32, expected: f32) bool {
