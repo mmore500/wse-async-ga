@@ -663,7 +663,7 @@ fn dispatchSend_P() bool {
 }
 
 // recv P2P ===================================================================
-// see https://cerebras-sdk-docs-130.netlify.app/csl/code-examples/tutorial-pipeline-02-fifo
+// RE https://cerebras-sdk-docs-130.netlify.app/csl/code-examples/tutorial-pipeline-02-fifo
 const INFINITE_DSD_LEN: u16 = 0x7fff;
 const p2pRecvFifoBufMsgs: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_RECV_FIFO_BUF_MSGS", @as(u16, 16)
