@@ -663,17 +663,16 @@ fn dispatchSend_P() bool {
 }
 
 // recv P2P ===================================================================
-// a long async recv (microthread 3) moves arriving wavelets into a FIFO, even
-// while tasks run; the FIFO is drained each cycle
-const dsdMaxLength: u16 = 0x7FFF;  // DSD lengths are 15 bits
-const p2pRecvFifoNumMsgs: u16 = comptime compconf.get_value_or(
-  "ASYNC_GA_P2P_RECV_FIFO_NUM_MSGS", @as(u16, 16)
+// see https://cerebras-sdk-docs-130.netlify.app/csl/code-examples/tutorial-pipeline-02-fifo
+const INFINITE_DSD_LEN: u16 = 0x7fff;
+const p2pRecvFifoBufMsgs: u16 = comptime compconf.get_value_or(
+  "ASYNC_GA_P2P_RECV_FIFO_BUF_MSGS", @as(u16, 16)
 );
 comptime {  // FIFO needs capacity for at least one message
-  if (p2pEnabled) @comptime_assert(p2pRecvFifoNumMsgs >= 1);
+  if (p2pEnabled) @comptime_assert(p2pRecvFifoBufMsgs >= 1);
 }
 var recvFifoBuf_P = @zeros([
-  if (p2pEnabled) p2pRecvFifoNumMsgs * p2pMsgSize else 0
+  if (p2pEnabled) p2pRecvFifoBufMsgs * p2pMsgSize else 0
 ]u32);
 const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
   .activate_push = ignRecvTaskID_P,  // blocked until closeout
@@ -703,7 +702,7 @@ task recvFinalizeTask_P() void { dispatchRecv_P(); }
 // synchronous move and doesn't allow microthread selection)
 fn dispatchRecv_P() void {
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
-    .extent = dsdMaxLength - dsdMaxLength % p2pMsgSize,  // whole messages
+    .extent = INFINITE_DSD_LEN - INFINITE_DSD_LEN % p2pMsgSize,  // longest possible aligned
     .input_queue = mp.mp_input_queue, });
   @mov32(recvFifo_P, recvDsd_P, .{ .async = true,  // callback on complete
     .activate = recvFinalizeTaskID_P, .ut_id = @get_ut_id(p2pRecvThread), });
