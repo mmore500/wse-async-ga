@@ -78,3 +78,16 @@ If no runtime config value is specified, symbols keep compile time default.
   - evaluated last, after any other option, so sees final subgrid sizes;
     each symbol must be exported (e.g., via genome `export_symbol_names`)
     and not set by any other option
+  - recipe, a parameter set per subgrid size:
+    ```
+    {"with_values": {"rtc_foo": "pl.col('nRowSubgrid').replace_strict({9: 0.5, 18: 0.25}, return_dtype=pl.Float32)"}}
+    ```
+  - recipe, parameter sets rotated evenly over each subgrid size's
+    replicate subgrids (number each size's subgrids, then take modulo):
+    ```
+    {"with_setup": [
+       "(pl.col('subgridOriginRow') * pl.col('nCol') + pl.col('subgridOriginCol')).alias('subgrid')",
+       "(pl.col('subgrid').rank('dense').over('nRowSubgrid', 'nColSubgrid') - 1).alias('replicate')",
+       "(pl.col('replicate') % 3).alias('paramSet')"],
+     "with_values": {"rtc_foo": "pl.col('paramSet').replace_strict({0: 0.1, 1: 0.2, 2: 0.3}, return_dtype=pl.Float32)"}}
+    ```
