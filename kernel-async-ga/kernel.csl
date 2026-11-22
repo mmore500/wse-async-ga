@@ -693,8 +693,7 @@ fn _recvBufWordDsd_P() mem1d_dsd {
 }
 
 fn drainRecv_P() void {
-  var wordDsd = _recvBufWordDsd_P();
-  while (@mov32(wordDsd, recvFifo_P)) {  // false once FIFO is empty
+  while (@mov32(_recvBufWordDsd_P(), recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
     if (recvFill_P == 1 + p2pPayloadWords) {  // genome payload complete
       clobberCounter[0] += immigrateEnriched(
@@ -703,7 +702,6 @@ fn drainRecv_P() void {
       immCounter_P[0] += 1;
     }
     if (recvFill_P == p2pMsgSize) recvFill_P = 0;  // pad popped
-    wordDsd = _recvBufWordDsd_P();
   }
 }
 // callback when recv is complete, request next recv
@@ -711,7 +709,7 @@ task recvFinalizeTask_P() void { dispatchRecv_P(); }
 
 // (not mp.recv_message: as of SDK v2.10.0, it reads the header with a
 // synchronous move and doesn't allow microthread selection)
-fn dispatchRecv_P() void {
+fn dispatchRecv_P() void {  // open async microthread to recv into FIFO
   const recvDsd_P = @get_dsd(fabin_dsd, .{ .fabric_color = mp.mp_comm_color,
     .extent = INFINITE_DSD_LEN,  // longest possible
     .input_queue = mp.mp_input_queue, });
@@ -719,7 +717,6 @@ fn dispatchRecv_P() void {
     .activate = recvFinalizeTaskID_P, .ut_id = @get_ut_id(p2pRecvThread), });
 }
 
-// after closeout, discard arriving words
 task ignRecvTask_P() void { while (@mov32(recvBufDsd_P, recvFifo_P)) {} }
 task padTask_P() void { }
 
