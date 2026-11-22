@@ -61,33 +61,8 @@ If no runtime config value is specified, symbols keep compile time default.
     `{"rtc_foo": "lambda shape: np.full(shape, 0.5, np.float32)"}`
   - each symbol must be exported (e.g., via genome `export_symbol_names`)
 - `calcSymbolValues`
-  - device symbols calculated from Python strings of polars expressions
-    (`pl`, and `np`, in scope) over a per-PE grid frame, with columns `row`,
-    `col`, `nRow`, `nCol`, `nRowSubgrid`, `nColSubgrid` (each PE's subgrid
-    size, after any nesting; 0 for none), `subgridOriginRow` and
-    `subgridOriginCol` (subgrid's top-left PE), and `subgridRow` and
-    `subgridCol` (PE position within subgrid)
-  - `with_setup`: list of expressions, each adding or replacing frame
-    columns via `with_columns`, in order (so each sees those before)
-  - `with_values`: dict of symbol to expression giving its 32-bit per-PE
-    values, e.g., cast to `pl.UInt32`, `pl.Int32`, or `pl.Float32`:
-    ```
-    {"with_setup": ["(pl.col('subgridRow') == 0).alias('isTop')"],
-     "with_values": {"rtc_foo": "pl.col('isTop').cast(pl.UInt32)"}}
-    ```
-  - evaluated last, after any other option, so sees final subgrid sizes;
-    each symbol must be exported (e.g., via genome `export_symbol_names`)
-    and not set by any other option
-  - recipe, a parameter set per subgrid size:
-    ```
-    {"with_values": {"rtc_foo": "pl.col('nRowSubgrid').replace_strict({9: 0.5, 18: 0.25}, return_dtype=pl.Float32)"}}
-    ```
-  - recipe, parameter sets rotated evenly over each subgrid size's
-    replicate subgrids (number each size's subgrids, then take modulo):
-    ```
-    {"with_setup": [
-       "(pl.col('subgridOriginRow') * pl.col('nCol') + pl.col('subgridOriginCol')).alias('subgrid')",
-       "(pl.col('subgrid').rank('dense').over('nRowSubgrid', 'nColSubgrid') - 1).alias('replicate')",
-       "(pl.col('replicate') % 3).alias('paramSet')"],
-     "with_values": {"rtc_foo": "pl.col('paramSet').replace_strict({0: 0.1, 1: 0.2, 2: 0.3}, return_dtype=pl.Float32)"}}
-    ```
+  - device symbols calculated from polars expression strings over a per-PE
+    dataframe (see `_make_grid_df` in `runtime_config_template/default.py.in`)
+  - `with_setup`: list of expressions adding columns, in order
+  - `with_values`: dict of symbol to expression giving its 32-bit values, e.g.,
+    `{"rtc_foo": "pl.col('nRowSubgrid').cast(pl.Float32) / 8"}`

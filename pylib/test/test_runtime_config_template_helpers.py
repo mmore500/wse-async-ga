@@ -219,11 +219,11 @@ def test_pair_p2p_targets_seed(template: types.ModuleType) -> None:
     assert (pair(1) != pair(2)).any()
 
 
-def test_grid_frame(template: types.ModuleType) -> None:
+def test_make_grid_df(template: types.ModuleType) -> None:
     rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
         nRow=10, nCol=12, nRowSubgrid=2, nColSubgrid=3, nestingFactor=2
     )
-    grid = template._grid_frame(rowSubgrid=rowSubgrid, colSubgrid=colSubgrid)
+    grid = template._make_grid_df(rowSubgrid=rowSubgrid, colSubgrid=colSubgrid)
     assert len(grid) == 10 * 12
     rows, cols = np.indices((10, 12))
     assert (grid["row"].to_numpy() == rows.ravel()).all()  # row-major
@@ -238,8 +238,8 @@ def test_grid_frame(template: types.ModuleType) -> None:
     assert (grid["subgridOriginRow"] % grid["nRowSubgrid"] == 0).all()
 
 
-def test_grid_frame_unpartitioned(template: types.ModuleType) -> None:
-    grid = template._grid_frame(
+def test_make_grid_df_unpartitioned(template: types.ModuleType) -> None:
+    grid = template._make_grid_df(
         rowSubgrid=np.zeros((4, 5), int), colSubgrid=np.full((4, 5), 2)
     )
     assert (grid["subgridOriginRow"] == 0).all()  # 0: whole grid
@@ -249,7 +249,7 @@ def test_grid_frame_unpartitioned(template: types.ModuleType) -> None:
 
 def test_calc_symbol_values(template: types.ModuleType) -> None:
     shape = (3, 4, 1)
-    grid = template._grid_frame(
+    grid = template._make_grid_df(
         rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
     )
     symbols = template._calc_symbol_values(
@@ -292,7 +292,7 @@ def test_calc_symbol_values(template: types.ModuleType) -> None:
 def test_calc_symbol_values_rejects(
     template: types.ModuleType, calcs: dict
 ) -> None:
-    grid = template._grid_frame(
+    grid = template._make_grid_df(
         rowSubgrid=np.full((3, 4), 3), colSubgrid=np.full((3, 4), 2)
     )
     with pytest.raises((ValueError, pl.exceptions.PolarsError)):
