@@ -879,7 +879,7 @@ task cycleTask() void {
     if (!p2pSendExcludeEmpty) {
       numLive = population.emigrate_genomes(sendBatch, p2pBatchSize);
     } else if (
-      // skip live-packed batch if sample genome empty, for fairness
+      // for fairness, skip live-packed batch if sample genome empty
       !genome_.is_empty(population._get_ith_genome(0))
     ) {
       numLive = population.emigrate_live_genomes(sendBatch, p2pBatchSize);
