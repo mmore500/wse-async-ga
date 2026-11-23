@@ -614,7 +614,7 @@ const p2pBatchSize: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_BATCH_SIZE", @as(u16, 1)
 );
 comptime { @comptime_assert(1 <= p2pBatchSize and p2pBatchSize <= popSize); }
-// fill batches with only non-empty genomes? else sample uniformly
+// should fill p2p batches with only non-empty genomes? else sample uniformly
 const p2pSendExcludeEmpty: bool = 0 != comptime compconf.get_value_or(
   "ASYNC_GA_P2P_SEND_EXCLUDE_EMPTY", @as(u16, 0)
 );
@@ -622,7 +622,7 @@ const p2pMsgSize: u16 = if (p2pEnabled) (  // header, batch, and pad
   2 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
 ) else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
-// (low 16 bits are free, and hold the batch's genome count)
+// (low 16 bits are free, and are used for the batch's genome count)
 const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
   if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
@@ -635,8 +635,8 @@ var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
 var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
 
 // send P2P ===================================================================
-var sendFlag_P: u8 = 0;  // need refill? above 1: cycles to wait first
-var sendSkipped_P: u8 = 0;  // empty genomes skipped filling batch in flight
+var sendFlag_P: u16 = 0;  // need refill? above 1: cycles to wait first
+var sendSkipped_P: u16 = 0;  // empty genomes skipped filling batch in flight
 var sendThread_P: u8;  // which thread is sending?
 var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, batch, pad
 const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
@@ -699,8 +699,8 @@ const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{1} -> recvBuf_P[i], });
 var recvFill_P: u16 = 0;  // words of current message popped
 
-// recvBuf word for message word recvFill_P; header goes to word 0, which the
-// payload then overwrites
+// recvBuf word for message word recvFill_P
+// header goes to word 0, which the payload then overwrites
 fn _recvBufWordDsd_P() mem1d_dsd {
   const word: u16 = if (recvFill_P > 0) recvFill_P - 1 else 0;
   return @increment_dsd_offset(recvBufDsd_P, @as(i16, word), u32);
@@ -710,7 +710,8 @@ fn drainRecv_P() void {
   while (@mov32(_recvBufWordDsd_P(), recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
     if (recvFill_P == p2pMsgSize) {  // message complete
-      // batch is short if sender found few non-empty genomes
+      // batch count may not be full batch size
+      // (e.g., sender found few non-empty genomes)
       const recvCount_P = @as(u16, recvBuf_P[p2pPayloadWords] & 0xFFFF);
       clobberCounter[0] += immigrateEnriched(
         @ptrcast([*]u32, &recvBuf_P),
@@ -877,10 +878,9 @@ task cycleTask() void {
     var sendCount_P: u16 = p2pBatchSize;
     sendSkipped_P = 0;
     if (comptime p2pSendExcludeEmpty) {
-      // found count in low half-word, skipped empty count in high
       const res = population.emigrate_live_genomes(sendBatch_P, p2pBatchSize);
-      sendCount_P = @as(u16, res & 0xFFFF);
-      sendSkipped_P = @as(u8, math.min(res >> 16, 254));
+      sendCount_P = @as(u16, res & 0xFFFF);  // unpack found count from lo
+      sendSkipped_P = @as(u16, res >> 16);  // skipped count from hi
     } else {
       population.emigrate_genomes(sendBatch_P, p2pBatchSize);
       if (genome_.is_empty(sendBatch_P)) { sendCount_P = 0; }
@@ -889,7 +889,7 @@ task cycleTask() void {
     sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount_P;
     if (sendCount_P > 0 and dispatchSend_P()) { sendFlag_P = 0; }
   } else if (p2pEnabled and sendFlag_P > 1) {
-      sendFlag_P -= 1;
+    sendFlag_P -= 1;  // wait out empty genomes skipped
   }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
@@ -1001,7 +1001,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
       sendBuf_P[0] = mp.encode_header(
         @as(u16, p2pTarget >> 16),  // dest_col
         @as(u16, p2pTarget & 0xFFFF),  // dest_row
-        p2pMsgSize - 1  // body length: batch and pad
+        p2pMsgSize - 1  // body length: genomes and pad
       );
       sendFlag_P = 1;
     }
@@ -1009,7 +1009,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
 
   //  how many active neighbors?
   closeoutRemaining = (
-    sendFlag_N + sendFlag_S + sendFlag_E + sendFlag_W + sendFlag_P
+    sendFlag_N + sendFlag_S + sendFlag_E + sendFlag_W + @as(u8, sendFlag_P)
   );
 
   const globalSeed = rtc_globalSeed[0];

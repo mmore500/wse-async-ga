@@ -28,8 +28,7 @@ fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) void {
 }
 
 // immigrate nGenomes messages from srcBuf, each over a uniformly sampled
-// resident (with replacement), which keeps its bits above the message;
-// returns how many immigrants clobbered
+// resident (with replacement); returns how many immigrants clobbered
 fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     var nClobbers: u32 = 0;
     for (@range(u16, nGenomes)) |i| {
@@ -40,7 +39,7 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
             const isClobbered = (
                 if (comptime genome.gBitsMsg % 32 == 0)
                     genome.clobber_immigrant(resident, immigrant)
-                else  // message under a word: hook takes its bit offset
+                else  // needs bit offset
                     genome.clobber_immigrant(resident, immigrant, bit % 32)
             );
             nClobbers += @as(u32, isClobbered);
@@ -50,9 +49,9 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     return nClobbers;
 }
 
-// pack messages of non-empty genomes into destBuf, scanning from a sampled
-// genome until nGenomes are found or all were tried; returns how many
-// messages were packed (low half-word) and empty genomes skipped (high)
+// pack up to nGenomes non-empty genomes as messages into destBuf,
+// scanning forward from a sampled genome; returns how many messages were
+// packed (low half-word) and empty genomes skipped (high)
 fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u32 {
     const start = opscalar.unif16(popSize);
     var nFound: u16 = 0;
