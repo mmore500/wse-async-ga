@@ -45,6 +45,7 @@ def _nest_subgrid_sizes(
     nColSubgrid: int,
     nestingFactor: int,
     nestingLevelPeriod: int,
+    nestingLevelSplit: int = 0,
 ) -> tuple:
     """Per-PE subgrid sizes, nested outward from PE (0, 0) by nestingFactor.
 
@@ -79,6 +80,26 @@ def _nest_subgrid_sizes(
     |  2b   |  2b   |  2b   |  2b   |
     |       |       |       |       |
     +-------+-------+-------+-------+
+
+    If nestingLevelSplit S > 0, each subgrid is split into subgrids S levels
+    smaller (but no smaller than base subgrids), e.g., S 1:
+    +---+---+---+---+-------+-------+
+    | b | b | b | b |       |       |
+    +---+---+---+---+  2b   |  2b   |
+    | b | b | b | b |       |       |
+    +---+---+---+---+-------+-------+
+    | b | b | b | b |       |       |
+    +---+---+---+---+  2b   |  2b   |
+    | b | b | b | b |       |       |
+    +---+---+---+---+-------+-------+
+    |       |       |       |       |
+    |  2b   |  2b   |  2b   |  2b   |
+    |       |       |       |       |
+    +-------+-------+-------+-------+
+    |       |       |       |       |
+    |  2b   |  2b   |  2b   |  2b   |
+    |       |       |       |       |
+    +-------+-------+-------+-------+
     """
     if not (isinstance(nestingFactor, int) and nestingFactor >= 1):
         raise ValueError(
@@ -101,6 +122,17 @@ def _nest_subgrid_sizes(
             "nonzero",
         )
 
+    if not (isinstance(nestingLevelSplit, int) and nestingLevelSplit >= 0):
+        raise ValueError(
+            f"nestingLevelSplitSubgrid {nestingLevelSplit=} not "
+            "nonnegative int"
+        )
+    if nestingLevelSplit and not (nRowSubgrid and nColSubgrid):
+        raise ValueError(
+            f"nestingLevelSplitSubgrid needs {nRowSubgrid=}, {nColSubgrid=} "
+            "nonzero",
+        )
+
     rows, cols = np.indices((nRow, nCol))
     if nestingLevelPeriod:  # restart nesting in each tile of L levels
         rows = rows % (nRowSubgrid * nestingFactor**nestingLevelPeriod)
@@ -115,6 +147,7 @@ def _nest_subgrid_sizes(
     maxLevel = int(baseSubgridsOut.max()).bit_length()
     powers = nestingFactor ** np.arange(1, maxLevel + 1)
     level = np.sum(baseSubgridsOut[..., np.newaxis] >= powers, axis=-1)
+    level = np.maximum(level - nestingLevelSplit, 0)  # split into smaller
     return (
         nRowSubgrid * nestingFactor**level,
         nColSubgrid * nestingFactor**level,
@@ -267,6 +300,7 @@ if __name__ == "__main__":
     )
     nestingFactor = runtime_config.get("nestingFactorSubgrid", 1)
     nestingLevelPeriod = runtime_config.get("nestingLevelPeriodSubgrid", 0)
+    nestingLevelSplit = runtime_config.get("nestingLevelSplitSubgrid", 0)
     rowSubgrid, colSubgrid = _nest_subgrid_sizes(
         nRow=nRow,
         nCol=nCol,
@@ -274,6 +308,7 @@ if __name__ == "__main__":
         nColSubgrid=nColSubgrid,
         nestingFactor=nestingFactor,
         nestingLevelPeriod=nestingLevelPeriod,
+        nestingLevelSplit=nestingLevelSplit,
     )
     subgridSymbols = {
         f"rtc_{key}": values[..., None].astype(np.uint32)

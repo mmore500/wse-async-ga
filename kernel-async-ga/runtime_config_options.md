@@ -62,6 +62,31 @@ as a float, as a `Float32` column with suffix `_f32` (e.g.,
     +-------+-------+-------+-------+
     ```
   - sets `rtc_nRowSubgrid` and `rtc_nColSubgrid` per PE
+- `nestingLevelSplitSubgrid`
+  - if S > 0, splits each nested subgrid into subgrids S nesting levels
+    smaller (but no smaller than `nRowSubgrid` x `nColSubgrid`)
+  - default 0, no split
+  - e.g., `nestingFactorSubgrid` 2 with S 1, b = `nRowSubgrid`:
+    ```
+    +---+---+---+---+-------+-------+
+    | b | b | b | b |       |       |
+    +---+---+---+---+  2b   |  2b   |
+    | b | b | b | b |       |       |
+    +---+---+---+---+-------+-------+
+    | b | b | b | b |       |       |
+    +---+---+---+---+  2b   |  2b   |
+    | b | b | b | b |       |       |
+    +---+---+---+---+-------+-------+
+    |       |       |       |       |
+    |  2b   |  2b   |  2b   |  2b   |
+    |       |       |       |       |
+    +-------+-------+-------+-------+
+    |       |       |       |       |
+    |  2b   |  2b   |  2b   |  2b   |
+    |       |       |       |       |
+    +-------+-------+-------+-------+
+    ```
+  - sets `rtc_nRowSubgrid` and `rtc_nColSubgrid` per PE
 - `nCycleAtLeast`
   - how many cycles to run for
   - sets `rtc_nCycleAtLeast`
