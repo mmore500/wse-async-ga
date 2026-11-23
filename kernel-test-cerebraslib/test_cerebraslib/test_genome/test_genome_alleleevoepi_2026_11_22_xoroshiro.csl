@@ -263,7 +263,9 @@ fn test_clobber_immigrant() void {
     for (@range(u16, 1000)) |_| {
         _make(&resident, 0, false, 0x0F0F);
         _make(&immigrant, 0x01, true, 0xFFFF);
-        const isClobbered = genome.clobber_immigrant(&resident, &immigrant);
+        const isClobbered = genome._clobber_immigrant_genome(
+            &resident, &immigrant
+        );
         @assert(genome._cast_fields(&immigrant).*.immunity == 0x0F0F);
         if (isClobbered) {
             nClobbered += 1;
@@ -279,7 +281,7 @@ fn test_clobber_immigrant() void {
     // uninfected immigrant never clobbered, and leaves resident as is
     _make(&resident, 0x01, true, 0x0F00);
     _make(&immigrant, 0, false, 0);
-    @assert(!genome.clobber_immigrant(&resident, &immigrant));
+    @assert(!genome._clobber_immigrant_genome(&resident, &immigrant));
     @assert(immigrant[0] == resident[0]);
 }
 

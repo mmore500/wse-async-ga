@@ -411,7 +411,9 @@ fn initialize_one(genome: genomePtr_t) void {
     );
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
+fn _clobber_immigrant_genome(
+    resident: genomePtr_t, immigrant: genomePtr_t
+) bool {
     // copying immigrant into resident replaces whole genome, so first make
     // immigrant carry resident's immunity, and resident's pathogen unless
     // immigrant's pathogen infects resident; count blocked infected immigrants
@@ -425,6 +427,28 @@ fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
     }
     return isClobbered;
 }
+
+// as above, for a message (pathogen) bitOffset bits into immigrant[0]: it
+// may infect resident, whose pathogen is then written back so unpacking the
+// message leaves resident as is
+fn _clobber_immigrant_msg(
+    resident: genomePtr_t, immigrant: [*]u32, bitOffset: u16
+) bool {
+    const mask: u32 = (@as(u32, 1) << gBitsMsg) - 1;
+    var donor = @zeros(genome_t);  // message, as a genome
+    donor[0] = (immigrant[0] >> bitOffset) & mask;
+    const infects = _sample_transmission(resident, &donor);
+    if (infects) _infect(resident, &donor);
+    immigrant[0] &= ~(mask << bitOffset);
+    immigrant[0] |= (resident[0] & mask) << bitOffset;
+    return !infects and _is_infected(&donor);
+}
+
+// messages under a word are passed with their bit offset
+const clobber_immigrant = (
+    if (gBitsMsg % 32 == 0) _clobber_immigrant_genome
+    else _clobber_immigrant_msg
+);
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
     // contact with spawn may infect resident; resident keeps own immunity
