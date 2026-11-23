@@ -16,7 +16,8 @@ def validate_rtc_evoepi_mutationRate(
     rate = data.view(np.float32)
     assert np.isfinite(rate).all(), "mutation rate not finite"
     assert (rate >= 0.0).all(), "mutation rate negative"
-    assert len(np.unique(rate)) == 1, "mutation rate differs between PEs"
+    # may differ between PEs (e.g., swept over subgrids); each PE's rate is
+    # saved in the run's a=rtc parquet
 
 
 if __name__ == "__main__":

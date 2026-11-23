@@ -99,6 +99,7 @@ jobs:
           - genome_alleleevoepi_2026_11_21
           - genome_alleleevoepi_2026_11_22
           - genome_alleleevoepi_2026_11_22_xoroshiro
+          - genome_alleleevoepi_2026_11_23
         p2p:
           - 0
         include:
@@ -109,6 +110,8 @@ jobs:
           - genome: genome_alleleevoepi_2026_11_22  # 4-bit messages
             sendNumGenomes: 8
           - genome: genome_alleleevoepi_2026_11_22_xoroshiro
+            sendNumGenomes: 8
+          - genome: genome_alleleevoepi_2026_11_23
             sendNumGenomes: 8
           - arch: wse3
             nonBlock: 0
