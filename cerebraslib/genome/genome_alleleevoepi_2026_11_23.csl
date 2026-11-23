@@ -1,0 +1,489 @@
+// memory layout ===============================================================
+// byte 0 PATHOGEN NIBBLE (low nibble: bit i -> allele at site i, for 3
+//          biallelic sites, and bit 3 set if infected; high nibble unused)
+// byte 1 HOST IMMUNITY LEVELS (6 nibbles, nibble 2 * i + a -> immunity level
+// byte 2   to allele a at site i; 0 if never immune)
+// byte 3
+// TOTAL: 1 word -> 4 bytes
+//
+// Port of the allele-specific immunity agent-based model (ABM) from
+// https://github.com/mmore500/allele-evoepi-concept (as in its
+// 2026-05-20-founder notebook), with memoryless infection, as
+// genome_alleleevoepi_2026_11_19, and partial immunity, decaying to a floor,
+// held on per-allele nibbles.
+//
+// As genome_alleleevoepi_2026_11_22_xoroshiro (mutation coin flips draw from
+// the kernel's seeded xoroshiro64** PRNG, module param rng), but with up to 3
+// sites, i.e., 8 strains: the infection flag moves up to fill the pathogen
+// nibble, and immunity takes the word's upper 3 bytes.
+//
+// individual-host interpretation ==============================================
+// Each population member is a host. Its low nibble is the pathogen infecting
+// it (if any): up to 3 biallelic sites plus an infection flag, so an all-zero
+// nibble is an uninfected host. Its upper 3 bytes are the host's immunity:
+// one level nibble per allele at each site. Host immunity belongs to the
+// host, not the pathogen, so it is never overwritten by infection or
+// immigration; only the pathogen nibble is (and only it is sent to other PEs,
+// 8 genomes per wavelet).
+//
+// Only the first N_SITES sites are enabled (compconf
+// CEREBRASLIB_EVOEPI_N_SITES, at most 3, i.e., 6 immunity nibbles / 2
+// alleles per site); the others are ignored, i.e., they never mutate, don't
+// affect transmission, and never grant immunity.
+//
+// Immunity: as in the ABM, a host's immunity to each allele is a level in
+// [0, 1], set to 1 on recovering from a pathogen carrying that allele, then
+// decaying by factor (1 - WANING_RATE) per generation, but never below
+// IMMUNITY_FLOOR once immune. Here, nibble value c in 1..15 stands for level
+//     q ^ (15 - c),  with q = IMMUNITY_FLOOR ^ (1 / 14),
+// so 15 is level 1 and 1 is level IMMUNITY_FLOOR; 0 is never immune (level
+// 0). Each generation, each nibble above 1 steps down with probability
+//     ln(1 - WANING_RATE) / ln(q),
+// so the expected log level decays at the ABM's rate, ln(1 - WANING_RATE)
+// per generation (in discrete steps, rather than smoothly).
+//
+// Infection (trample_resident, clobber_immigrant): each population member is
+// replaced via a tournament among random population members, which with
+// tournament size 1 is a single random contact, as in the ABM; with larger
+// tournaments, infected contacts (fitness 1) win over uninfected ones
+// (fitness 0), so residents are more likely to contact one. An uninfected
+// resident contacting an infected host becomes infected with probability
+//     CONTACT_RATE * product over contact's alleles of
+//         (1 - IMMUNE_STRENGTH * resident's immunity level to allele),
+// i.e., the ABM's product of per-allele susceptibilities. Infected residents
+// are not reinfected. Immigrants infect the residents they would replace
+// under the same rule. On infection, each enabled site of the newly infecting
+// pathogen flips with probability m * WITHINHOST_T, i.e., the ABM's
+// within-host mutation, which is neutral here (WITHINHOST_B must be 0).
+//
+// Per generation (elapse_inheritance_of):
+//   1. recovery: each infected host recovers with probability RECOVERY_RATE,
+//      i.e., memoryless, with mean infection duration 1 / RECOVERY_RATE as in
+//      the ABM; on recovery, the host's immunity to each allele its pathogen
+//      carries is set to level 1 (nibble 15);
+//   2. waning: each immunity nibble above 1 steps down with probability
+//      ln(1 - WANING_RATE) / ln(q), as above.
+//
+// Trait values (get_trait_value) are bit fields: bit 0 is set if the host is
+// infected, and then bit 1 + i holds enabled site i's allele. So uninfected
+// hosts are 0, and each strain is its own odd value: with 3 sites, 1, 3, ...,
+// or 15, for 9 possible values in all. With CEREBRASLIB_TRAITLOGGER_MULTIPLEX_LSB
+// set to 1 + N_SITES, the kernel's trait logger records each of these bits.
+//
+// Init rule: with compconf CEREBRASLIB_EVOEPI_SEED_PE_STRIDE n > 0, every
+// host on each PE whose col and row are both multiples of n starts infected
+// with the wildtype pathogen (all 0 alleles); all other hosts start
+// uninfected, and no host starts with immunity. E.g., n at least the grid's
+// rows and cols seeds only the corner PE (col 0, row 0), so infection spreads
+// only by migration (neighbor exchange and p2p); n equal to subgrid size seeds
+// the corner PE of each subgrid. With n = 0 (default), every PE is seeded.
+//
+// Not ported: the ABM's IMMUNITY_CEILING (taken as 1), non-neutral
+// within-host evolution (WITHINHOST_B), mutator host subpopulations, and
+// per-site mutation rate vectors.
+
+//! {
+//!     "nWav": (1, pl.UInt8),
+//!     "evoepi_n_sites": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_N_SITES:u16", 3,
+//!     )), pl.UInt8),
+//!     "evoepi_n_sites_max": (3, pl.UInt8),
+//!     "evoepi_contact_rate": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_CONTACT_RATE:f32", 0.35,
+//!     )), pl.Float32),
+//!     "evoepi_immune_strength": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_IMMUNE_STRENGTH:f32", 0.7,
+//!     )), pl.Float32),
+//!     "evoepi_recovery_rate": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_RECOVERY_RATE:f32", 0.1,
+//!     )), pl.Float32),
+//!     "evoepi_waning_rate": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_WANING_RATE:f32", 0.01,
+//!     )), pl.Float32),
+//!     "evoepi_immunity_floor": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_IMMUNITY_FLOOR:f32", 0.05,
+//!     )), pl.Float32),
+//!     "evoepi_mutation_rate": (float(
+//!         rtc_data["rtc_evoepi_mutationRate"].view(np.float32).flat[0]
+//!         if "rtc_evoepi_mutationRate" in rtc_data else (
+//!             compconf_data.get("CEREBRASLIB_EVOEPI_MUTATION_RATE:f32", 1e-6)
+//!         )
+//!     ), pl.Float32),
+//!     "evoepi_withinhost_b": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_WITHINHOST_B:f32", 0.0,
+//!     )), pl.Float32),
+//!     "evoepi_withinhost_t": (float(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_WITHINHOST_T:f32", 1.0,
+//!     )), pl.Float32),
+//!     "evoepi_msg_bits": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_MSG_BITS:u16", 4,
+//!     )), pl.UInt8),
+//!     "evoepi_seed_pe_stride": (int(compconf_data.get(
+//!         "CEREBRASLIB_EVOEPI_SEED_PE_STRIDE:u16", 0,
+//!     )), pl.UInt16),
+//! }
+
+// module parameters ==========================================================
+param rng: imported_module;  // seeded xoroshiro64** PRNG, for mutation
+
+// module imports =============================================================
+
+const compconf = @import_module("<compconf>");
+const layout_module = @import_module("<layout>");
+
+const bitmanip = @import_module("cerebraslib/bitmanip.csl");
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+// only the pathogen migrates, by default; immunity stays with host
+const gmsg_util = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = gWordsPop, .gBitsMsg = gBitsMsg,
+});
+
+// compile-time configuration =================================================
+// defaults follow allele-evoepi-concept's 2026-05-20-founder notebook
+
+// most sites layout supports: 24 immunity bits hold 6 nibbles, 2 alleles
+// per site
+const nSitesMax: u16 = 24 / 4 / 2;
+
+// how many sites are enabled? sites at and above are ignored
+const nSites: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_N_SITES", @as(u16, nSitesMax) // nofmt
+);
+comptime { @comptime_assert(nSites <= nSitesMax); } // supported by layout?
+comptime { @comptime_assert(nSites > 0); }
+
+const _contact_rate: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_CONTACT_RATE", @as(f32, 0.35) // nofmt
+);
+comptime { @comptime_assert(0.0 <= _contact_rate and _contact_rate <= 1.0); }
+
+const _immune_strength: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_IMMUNE_STRENGTH", @as(f32, 0.7) // nofmt
+);
+comptime {
+    @comptime_assert(0.0 <= _immune_strength and _immune_strength <= 1.0);
+}
+
+const _recovery_rate: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_RECOVERY_RATE", @as(f32, 0.1) // nofmt
+);
+comptime { @comptime_assert(0.0 <= _recovery_rate and _recovery_rate <= 1.0); }
+
+const _waning_rate: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_WANING_RATE", @as(f32, 0.01) // nofmt
+);
+comptime { @comptime_assert(0.0 <= _waning_rate and _waning_rate < 1.0); }
+
+const _immunity_floor: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_IMMUNITY_FLOOR", @as(f32, 0.05) // nofmt
+);
+comptime { @comptime_assert(0.0 < _immunity_floor and _immunity_floor < 1.0); }
+
+const _mutation_rate: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_MUTATION_RATE", @as(f32, 1e-6) // nofmt
+);
+comptime { @comptime_assert(0.0 <= _mutation_rate); }
+
+// named runtime config, constant across device: mutation rate, defaulting to
+// compconf value; host may overwrite it before launch (see layout.csl and
+// kernel-async-ga/runtime_config_options.md)
+var rtc_evoepi_mutationRate = [1]f32{ _mutation_rate };
+var ptr_rtc_evoepi_mutationRate: [*]f32 = &rtc_evoepi_mutationRate;
+comptime {
+    @export_symbol(ptr_rtc_evoepi_mutationRate, "rtc_evoepi_mutationRate");
+}
+
+// within-host evolution is neutral: each site mutates with probability m * T
+const _withinhost_b: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_WITHINHOST_B", @as(f32, 0.0) // nofmt
+);
+comptime { @comptime_assert(_withinhost_b == 0.0); }
+
+const _withinhost_t: f32 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_WITHINHOST_T", @as(f32, 1.0) // nofmt
+);
+comptime { @comptime_assert(_withinhost_t > 0.0); }
+
+// if n > 0, seed PEs whose col and row are multiples of n; if 0, seed all PEs
+const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_SEED_PE_STRIDE", @as(u16, 0) // nofmt
+);
+
+// module config specs ========================================================
+const _gSize: u16 = 1;
+const gWordsPop: u16 = _gSize;  // size used in local population
+const gWordsD2h: u16 = _gSize;  // size copied to host
+// only the pathogen (low nibble) is sent to PEs, by default; with compconf
+// CEREBRASLIB_EVOEPI_MSG_BITS 32, whole genomes are, as before message
+// packing (immigrants still take residents' immunity, in clobber_immigrant)
+const gBitsMsg: u16 = comptime compconf.get_value_or( //nofmt
+    "CEREBRASLIB_EVOEPI_MSG_BITS", @as(u16, 4) // nofmt
+);
+comptime { @comptime_assert(gBitsMsg == 4 or gBitsMsg == 32); }
+const genome_t = [_gSize]u32;
+const genomePtr_t = [*]u32;
+// bit 0: infected; bit 1 + i: enabled site i's allele
+const nTraitVals: u16 = @as(u16, 1) << (nSites + 1);
+const hasImmClobber: bool = true;
+const hasNotifyExtinct: bool = false;
+
+// memory layout accessors ====================================================
+const immunityShift: u16 = 8;  // immunity is above byte 0
+
+// byte 0, low nibble: sites (bits 0 to 2), infection flag (bit 3)
+fn _get_pathogen(genome: genomePtr_t) u16 {
+    return @as(u16, genome[0] & 0xFF);
+}
+
+fn _set_pathogen(genome: genomePtr_t, pathogen: u16) void {
+    genome[0] = (genome[0] & ~@as(u32, 0xFF)) | @as(u32, pathogen);
+}
+
+// bytes 1 to 3: level nibble 2 * i + a, allele a at site i
+fn _get_immunity(genome: genomePtr_t) u32 { return genome[0] >> immunityShift; }
+
+fn _set_immunity(genome: genomePtr_t, immunity: u32) void {
+    genome[0] = (genome[0] & 0xFF) | (immunity << immunityShift);
+}
+
+const sitesMask: u16 = (@as(u16, 1) << nSites) - 1; // enabled sites only
+const infectedFlag: u16 = 0x0008;  // in pathogen nibble, above sites
+comptime { @comptime_assert(sitesMask < infectedFlag); }
+const nibbleFull: u32 = 15; // immunity level 1
+const nibbleFloor: u32 = 1; // immunity level IMMUNITY_FLOOR
+
+// compile-time lookup tables ================================================
+// exponential, by Taylor series, for compile-time evaluation
+fn _comptime_exp(x: f32) f32 {
+    var sum: f32 = 1.0;
+    var term: f32 = 1.0;  // x^n / n!
+    for (@range(u16, 1, 64, 1)) |n| {
+        term *= x / @as(f32, n);
+        sum += term;
+    }
+    return sum;
+}
+
+// natural log, by atanh series, for compile-time evaluation (x > 0)
+fn _comptime_ln(x: f32) f32 {
+    const y = (x - 1.0) / (x + 1.0);
+    var sum: f32 = 0.0;
+    var term: f32 = y;  // y^(2n + 1)
+    for (@range(u16, 0, 256, 1)) |n| {
+        sum += term / @as(f32, 2 * n + 1);
+        term *= y * y;
+    }
+    return 2.0 * sum;
+}
+
+// immunity level ratio between adjacent nibble values
+const _levelRatio: f32 = comptime _comptime_exp(
+    _comptime_ln(_immunity_floor) / 14.0  // nibbles 1 to 15
+);
+
+// probability a nibble above floor steps down per generation, so expected
+// log level decays by ln(1 - WANING_RATE) per generation
+const _waningStepP: f32 = comptime (
+    _comptime_ln(1.0 - _waning_rate) / _comptime_ln(_levelRatio)
+);
+comptime { @comptime_assert(0.0 <= _waningStepP and _waningStepP <= 1.0); }
+
+// immunity level of each nibble value: 0 if never immune, else
+// levelRatio ^ (15 - nibble), from IMMUNITY_FLOOR (1) up to 1 (15)
+fn _calc_level_table() [16]f32 {
+    var table = @zeros([16]f32);
+    var level: f32 = 1.0;
+    for (@range(u16, 15)) |k| {
+        table[15 - k] = level;
+        level *= _levelRatio;
+    }
+    return table;
+}
+const _immunityLevel = comptime _calc_level_table();
+
+// susceptibility to an allele, per immunity nibble value
+fn _calc_susceptibility_table() [16]f32 {
+    var table = @zeros([16]f32);
+    for (@range(u16, 16)) |c| {
+        table[c] = 1.0 - _immune_strength * _immunityLevel[c];
+    }
+    return table;
+}
+const _susceptibility = comptime _calc_susceptibility_table();
+
+// internal functions =========================================================
+fn _get_mutation_p() f32 {
+    const p = rtc_evoepi_mutationRate[0] * _withinhost_t;
+    return if (p < 1.0) p else 1.0;
+}
+
+// enabled pathogen sites; disabled sites read as 0
+fn _get_sites(genome: genomePtr_t) u16 {
+    return _get_pathogen(genome) & sitesMask;
+}
+
+fn _is_infected(genome: genomePtr_t) bool {
+    return (_get_pathogen(genome) & infectedFlag) != 0;
+}
+
+// immunity nibble j (2 * i + a, allele a at site i)
+fn _get_nibble(immunity: u32, j: u16) u32 {
+    return (immunity >> (4 * j)) & 0xF;
+}
+
+// probability pathogen with sites infects uninfected host with immunity
+fn _calc_transmission_p(immunity: u32, sites: u16) f32 {
+    var p: f32 = _contact_rate;
+    for (@range(u16, nSites)) |i| {
+        const allele = (sites >> i) & 1;
+        p *= _susceptibility[_get_nibble(immunity, 2 * i + allele)];
+    }
+    return p;
+}
+
+// does infected donor's pathogen transmit to uninfected recipient?
+fn _sample_transmission(recipient: genomePtr_t, donor: genomePtr_t) bool {
+    if (_is_infected(recipient) or !_is_infected(donor)) return false;
+    return opscalar.p(_calc_transmission_p(
+        _get_immunity(recipient), _get_sites(donor)
+    ));
+}
+
+// neutral within-host mutation of a pathogen with sites
+fn _calc_withinhost_mutation(sites: u16) u16 {
+    var res = sites;
+    const p = _get_mutation_p();
+    for (@range(u16, nSites)) |i| {
+        if (rng.p(p)) res ^= @as(u16, 1) << i;
+    }
+    return res;
+}
+
+// infect host with donor's pathogen, which mutates within host; host keeps
+// its own immunity
+fn _infect(host: genomePtr_t, donor: genomePtr_t) void {
+    const sites = _calc_withinhost_mutation(_get_sites(donor));
+    _set_pathogen(host, sites | infectedFlag);
+}
+
+fn _apply_recovery(genome: genomePtr_t) void {
+    if (!_is_infected(genome) or !opscalar.p(_recovery_rate)) return;
+    // recovered: full immunity to each allele the pathogen carries
+    const sites = _get_sites(genome);
+    var immunity = _get_immunity(genome);
+    for (@range(u16, nSites)) |i| {
+        const j = 2 * i + ((sites >> i) & 1);
+        immunity |= nibbleFull << (4 * j);  // all nibble bits set
+    }
+    _set_immunity(genome, immunity);
+    _set_pathogen(genome, 0);
+}
+
+fn _apply_waning(genome: genomePtr_t) void {
+    var immunity = _get_immunity(genome);
+    if (immunity == 0) return;
+    for (@range(u16, 2 * nSites)) |j| {
+        if (_get_nibble(immunity, j) > nibbleFloor and opscalar.p(_waningStepP)) {
+            immunity -= @as(u32, 1) << (4 * j); // step down, toward floor
+        }
+    }
+    _set_immunity(genome, immunity);
+}
+
+// init rule: are hosts on the PE at col x, row y seeded with infection?
+fn _is_seeded_pe(x: u16, y: u16) bool {
+    if (_seed_pe_stride == 0) return true;
+    return x % _seed_pe_stride == 0 and y % _seed_pe_stride == 0;
+}
+
+// helper function for testability
+fn _initialize_one_at(genome: genomePtr_t, x: u16, y: u16) void {
+    genome[0] = 0;
+    // infected with wildtype pathogen (all 0 alleles), only at seeded PE
+    if (_is_seeded_pe(x, y)) _set_pathogen(genome, infectedFlag);
+}
+
+// public API =================================================================
+fn elapse_inheritance_of(genome: genomePtr_t) void {
+    _apply_recovery(genome);
+    _apply_waning(genome);
+}
+
+fn calc_fitness_of(genome: genomePtr_t) f32 {
+    // only infected hosts can transmit, so they win over uninfected hosts
+    return if (_is_infected(genome)) 1.0 else 0.0;
+}
+
+fn get_trait_value(genome: genomePtr_t) u32 {
+    // bit 0: infected; bit 1 + i: enabled site i's allele (0 if uninfected)
+    if (!_is_infected(genome)) return 0;
+    return 1 | (@as(u32, _get_sites(genome)) << 1);
+}
+
+fn initialize_one(genome: genomePtr_t) void {
+    _initialize_one_at(
+        genome, layout_module.get_x_coord(), layout_module.get_y_coord()
+    );
+}
+
+fn _clobber_immigrant_genome(
+    resident: genomePtr_t, immigrant: genomePtr_t
+) bool {
+    // copying immigrant into resident replaces whole genome, so first make
+    // immigrant carry resident's immunity, and resident's pathogen unless
+    // immigrant's pathogen infects resident; count blocked infected immigrants
+    const infects = _sample_transmission(resident, immigrant);
+    const isClobbered = !infects and _is_infected(immigrant);
+    _set_immunity(immigrant, _get_immunity(resident));
+    if (infects) {
+        _infect(immigrant, immigrant); // mutates within host
+    } else {
+        _set_pathogen(immigrant, _get_pathogen(resident));
+    }
+    return isClobbered;
+}
+
+// as above, for a message (pathogen nibble) bitOffset bits into
+// immigrant[0]: it may infect resident, whose pathogen is then written back
+// so unpacking the message leaves resident as is
+fn _clobber_immigrant_msg(
+    resident: genomePtr_t, immigrant: [*]u32, bitOffset: u16
+) bool {
+    const nibbles = @ptrcast([*]u8, immigrant);
+    var donor = @zeros(genome_t);  // message, as a genome
+    donor[0] = bitmanip.get_nth_nibble(nibbles, bitOffset / 4);
+    const infects = _sample_transmission(resident, &donor);
+    if (infects) _infect(resident, &donor);
+    bitmanip.set_nth_nibble(nibbles, bitOffset / 4, @as(u8, resident[0] & 0xF));
+    return !infects and _is_infected(&donor);
+}
+
+// messages under a word are passed with their bit offset
+const clobber_immigrant = (
+    if (gBitsMsg % 32 == 0) _clobber_immigrant_genome
+    else _clobber_immigrant_msg
+);
+
+fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
+    // contact with spawn may infect resident; resident keeps own immunity
+    if (_sample_transmission(resident, spawn)) _infect(resident, spawn);
+}
+
+fn notify_extinct() void {}
+
+// uninfected host? reads only pathogen, so safe for messages
+fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
+
+// pack genome's message into buf as buf's ith message
+fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
+    gmsg_util.pack_msg(srcPtr, destBuf, i);
+}
+
+// overwrite genome's message bits (pathogen) with buf's ith message
+fn msg_unpack(srcBuf: [*]u32, i: u16, destPtr: genomePtr_t) void {
+    gmsg_util.unpack_msg(srcBuf, i, destPtr);
+}
+
+fn export_symbol_names() void {  // hook into top-level layout block
+    @export_name("rtc_evoepi_mutationRate", [*]f32, true);
+}
