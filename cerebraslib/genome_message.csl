@@ -5,6 +5,9 @@
 param gWordsPop: u16;  // genome.gWordsPop
 param gBitsMsg: u16;  // genome.gBitsMsg
 
+// module imports =============================================================
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
 // compile-time configuration =================================================
 comptime {
     @comptime_assert(gBitsMsg > 0);
@@ -39,7 +42,9 @@ fn _copy_unit(src: [*]u32, srcBit: u16, dest: [*]u32, destBit: u16) void {
 
 // public API =================================================================
 // how many words hold nMsgs packed messages?
-fn calc_words_to_fit(nMsgs: u16) u16 { return (nMsgs * gBitsMsg + 31) / 32; }
+fn calc_words_to_fit(nMsgs: u16) u16 {
+    return opscalar.divceil16(nMsgs * gBitsMsg, 32);
+}
 
 // pack genome's message into buf as buf's ith message
 fn pack_msg(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {

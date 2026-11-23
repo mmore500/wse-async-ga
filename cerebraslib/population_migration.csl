@@ -4,6 +4,12 @@
 param genome: imported_module;
 param popSize: u16;
 
+// compile-time configuration =================================================
+comptime {  // clobber hook needs messages of whole words, or within one word
+    const bits = genome.gBitsMsg;
+    @comptime_assert(!genome.hasImmClobber or bits % 32 == 0 or 32 % bits == 0);
+}
+
 // module imports =============================================================
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 
@@ -27,19 +33,19 @@ fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) void {
 fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     var nClobbers: u32 = 0;
     for (@range(u16, nGenomes)) |i| {
-        // immigrant overwrites resident's message bits, in place
-        const immigrant = _get_ith_genome(pop, opscalar.unif16(popSize));
-        if (genome.hasImmClobber) {  // clobber compares with prior resident
-            var prior = @zeros([genome.gWordsPop]u32);
-            for (@range(u16, genome.gWordsPop)) |w| { prior[w] = immigrant[w]; }
-            genome.msg_unpack(srcBuf, i, immigrant);
-            const isClobbered = genome.clobber_immigrant(
-                @ptrcast([*]u32, &prior), immigrant
+        const resident = _get_ith_genome(pop, opscalar.unif16(popSize));
+        if (genome.hasImmClobber) {  // hook edits immigrant's message in srcBuf
+            const bit = i * genome.gBitsMsg;
+            const immigrant = @ptrcast([*]u32, &srcBuf[bit / 32]);
+            const isClobbered = (
+                if (genome.gBitsMsg % 32 == 0)
+                    genome.clobber_immigrant(resident, immigrant)
+                else  // message under a word: hook takes its bit offset
+                    genome.clobber_immigrant(resident, immigrant, bit % 32)
             );
             nClobbers += @as(u32, isClobbered);
-        } else {
-            genome.msg_unpack(srcBuf, i, immigrant);
         }
+        genome.msg_unpack(srcBuf, i, resident);
     }
     return nClobbers;
 }
