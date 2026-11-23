@@ -79,9 +79,7 @@ fn test_emigrate_live_genomes() void {
     @assert(_count_live_messages(0xFF) == nMsg);
 
     // two live: nothing if sampled host is empty, else short batch of both
-    // with unused slots zeroed
     _setup(0x24);
-    for (@range(u16, nMsg)) |k| { msgBuf[k / 2] = 0x00FF00FF; }  // stale
     var nSent: u16 = 0;
     for (@range(u16, 64)) |rep| {
         const count = migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);

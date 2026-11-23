@@ -44,9 +44,9 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     return nClobbers;
 }
 
-// pack messages of up to nGenomes live genomes into destBuf, zeroing unused
-// slots and returning how many: if a sampled genome is live, it and those
-// after it (wrapping), so nonzero with probability equal to the live fraction
+// pack messages of up to nGenomes live genomes into destBuf, returning how
+// many: if a sampled genome is live, it and those after it (wrapping), so
+// nonzero with probability equal to the live fraction
 fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
     const start = opscalar.unif16(popSize);
     if (genome.is_empty(_get_ith_genome(pop, start))) { return 0; }
@@ -60,10 +60,6 @@ fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
             genome.msg_pack(candidate, destBuf, nFound);
             nFound += 1;
         }
-    }
-    var zeroed = @zeros([genome.gWordsPop]u32);
-    for (@range(u16, nFound, nGenomes, 1)) |k| {
-        genome.msg_pack(@ptrcast([*]u32, &zeroed), destBuf, k);
     }
     return nFound;
 }

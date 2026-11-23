@@ -607,7 +607,7 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // ============================================================================
 // exchange genomes with another PE via p2p message passing,
 // each message is a header wavelet, a batch of up to p2pBatchSize non-empty
-// genomes (unused slots zeroed, which must read as empty), and a pad wavelet
+// genomes, and a pad wavelet, which carries how many genomes are in the batch
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
 const p2pBatchSize: u16 = comptime compconf.get_value_or(
@@ -618,6 +618,7 @@ const p2pMsgSize: u16 = if (p2pEnabled) (  // header, batch, and pad
   2 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
 ) else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
+// (low 16 bits are free, and hold the batch's genome count)
 const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
   if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
@@ -687,29 +688,31 @@ const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
   .activate_push = ignRecvTaskID_P,  // blocked until closeout
 } else .{});
 const p2pPayloadWords: u16 = if (p2pEnabled) p2pMsgSize - 2 else 0;
-var recvBuf_P = @zeros([p2pPayloadWords]u32);  // batch
+var recvBuf_P = @zeros([p2pPayloadWords + 1]u32);  // batch, then pad
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{1} -> recvBuf_P[i], });
 var recvFill_P: u16 = 0;  // words of current message popped
 
-// recvBuf word for message word recvFill_P; header and pad go to word 0, as
-// header precedes payload and pad follows immigration
+// recvBuf word for message word recvFill_P; header goes to word 0, which the
+// payload then overwrites
 fn _recvBufWordDsd_P() mem1d_dsd {
-  const isPayload = recvFill_P > 0 and recvFill_P <= p2pPayloadWords;
-  const word: u16 = if (isPayload) recvFill_P - 1 else 0;
+  const word: u16 = if (recvFill_P > 0) recvFill_P - 1 else 0;
   return @increment_dsd_offset(recvBufDsd_P, @as(i16, word), u32);
 }
 
 fn drainRecv_P() void {
   while (@mov32(_recvBufWordDsd_P(), recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
-    if (recvFill_P == 1 + p2pPayloadWords) {  // payload complete
+    if (recvFill_P == p2pMsgSize) {  // message complete
+      // batch is short if sender found few non-empty genomes
+      const recvCount_P = @as(u16, recvBuf_P[p2pPayloadWords] & 0xFFFF);
       clobberCounter[0] += immigrateEnriched(
-        @ptrcast([*]u32, &recvBuf_P), p2pBatchSize, immEnrichP2p
+        @ptrcast([*]u32, &recvBuf_P), math.min(recvCount_P, p2pBatchSize),
+        immEnrichP2p,
       );
       immCounter_P[0] += 1;
+      recvFill_P = 0;  // reset for next msg
     }
-    if (recvFill_P == p2pMsgSize) recvFill_P = 0;  // reset for next msg
   }
 }
 task recvFinalizeTask_P() void { dispatchRecv_P(); }
@@ -865,6 +868,7 @@ task cycleTask() void {
     const sendCount_P = population.emigrate_live_genomes(
       @ptrcast([*]u32, &sendBuf_P[1]), p2pBatchSize
     );
+    sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount_P;
     if (sendCount_P > 0 and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
@@ -979,7 +983,6 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
         @as(u16, p2pTarget & 0xFFFF),  // dest_row
         p2pMsgSize - 1  // body length: batch and pad
       );
-      sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet;
       sendFlag_P = 1;
     }
   }
