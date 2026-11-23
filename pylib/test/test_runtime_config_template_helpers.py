@@ -424,3 +424,98 @@ def test_calc_symbol_values_rejects(
         template._calc_symbol_values(
             calcConfig=calcConfig, subgrid_df=grid, shape=(3, 4, 1)
         )
+
+
+@pytest.mark.parametrize(
+    "nRow, nCol, nRowSubgrid, nColSubgrid, nestingFactor, nestingLevelSplit",
+    [
+        (72, 144, 9, 9, 2, 1),
+        (72, 144, 9, 9, 2, 2),
+        (72, 144, 9, 9, 2, 9),  # more than levels there are: all base size
+        (54, 81, 3, 3, 3, 1),
+        (40, 24, 2, 3, 2, 1),  # subgrids that aren't square
+    ],
+)
+def test_nest_subgrid_sizes_split(
+    template: types.ModuleType,
+    nRow: int,
+    nCol: int,
+    nRowSubgrid: int,
+    nColSubgrid: int,
+    nestingFactor: int,
+    nestingLevelSplit: int,
+) -> None:
+    kwargs = dict(
+        nRow=nRow,
+        nCol=nCol,
+        nRowSubgrid=nRowSubgrid,
+        nColSubgrid=nColSubgrid,
+        nestingFactor=nestingFactor,
+        nestingLevelPeriod=0,
+    )
+    rowUnsplit, colUnsplit = template._nest_subgrid_sizes(**kwargs)
+    rowSubgrid, colSubgrid = template._nest_subgrid_sizes(
+        **kwargs, nestingLevelSplit=nestingLevelSplit
+    )
+    # each subgrid is nestingLevelSplit levels smaller, down to base size
+    shrink = nestingFactor**nestingLevelSplit
+    assert (rowSubgrid == np.maximum(rowUnsplit // shrink, nRowSubgrid)).all()
+    assert (colSubgrid == np.maximum(colUnsplit // shrink, nColSubgrid)).all()
+
+    # split subgrids tile unsplit ones: every PE of a split subgrid has its
+    # size, and lies in one unsplit subgrid
+    rows, cols = np.indices((nRow, nCol))
+    grid = template._make_subgrid_df(
+        rowSubgrid=rowSubgrid, colSubgrid=colSubgrid
+    )
+    unsplit = template._make_subgrid_df(
+        rowSubgrid=rowUnsplit, colSubgrid=colUnsplit
+    )
+    grid = grid.with_columns(
+        unsplitOriginRow=unsplit["subgridOriginRow"],
+        unsplitOriginCol=unsplit["subgridOriginCol"],
+    )
+    for (originRow, originCol), group in grid.group_by(
+        "subgridOriginRow", "subgridOriginCol"
+    ):
+        assert group["nRowSubgrid"].n_unique() == 1
+        assert group["nColSubgrid"].n_unique() == 1
+        assert group["unsplitOriginRow"].n_unique() == 1
+        assert group["unsplitOriginCol"].n_unique() == 1
+        height = group["nRowSubgrid"][0]
+        width = group["nColSubgrid"][0]
+        assert len(group) == min(height, nRow - originRow) * min(
+            width, nCol - originCol
+        )
+
+
+def test_nest_subgrid_sizes_split_none(template: types.ModuleType) -> None:
+    kwargs = dict(
+        nRow=36,
+        nCol=72,
+        nRowSubgrid=9,
+        nColSubgrid=9,
+        nestingFactor=2,
+        nestingLevelPeriod=0,
+    )
+    for expected, actual in zip(
+        template._nest_subgrid_sizes(**kwargs),
+        template._nest_subgrid_sizes(**kwargs, nestingLevelSplit=0),
+    ):
+        assert (expected == actual).all()
+
+
+@pytest.mark.parametrize("nestingLevelSplit", [-1, 1.0, "1"])
+def test_nest_subgrid_sizes_split_rejects(
+    template: types.ModuleType, nestingLevelSplit: object
+) -> None:
+    with pytest.raises(ValueError):
+        template._nest_subgrid_sizes(
+            nRow=36,
+            nCol=72,
+            nRowSubgrid=9,
+            nColSubgrid=9,
+            nestingFactor=2,
+            nestingLevelPeriod=0,
+            nestingLevelSplit=nestingLevelSplit,
+        )
