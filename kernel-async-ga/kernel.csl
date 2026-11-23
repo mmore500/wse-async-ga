@@ -494,6 +494,12 @@ const immEnrichP2p: u16 = comptime compconf.get_value_or(
 );
 comptime { @comptime_assert(immEnrichNeigh >= 1 and immEnrichP2p >= 1); }
 
+// skip immigration from neighbors that have immigrated more often than the
+// neighbor that has immigrated least often, among those that have at all?
+const recvThrottle: bool = comptime compconf.get_value_or(
+  "ASYNC_GA_NEIGHBOR_RECV_THROTTLE", @as(u16, 1)
+) != 0;
+
 // immigrate batch of genomes enrich times, round robin, returning clobbers
 fn immigrateEnriched(batch: [*]u32, nGenomes: u16, enrichment: u16) u32 {
   var nClobbers: u32 = 0;
@@ -806,7 +812,8 @@ task cycleTask() void {
   // --------------------------------------------------------------------------
 
   const shuf1 = @random16() & 3;
-  const throttleThresh = math.min(
+  const throttleThresh: u32 = if (comptime !recvThrottle) 0xFFFFFFFF
+  else math.min(
     math.min(
       if (immCounter_N[0] > 0) immCounter_N[0] else 0xFFFFFFFF,
       if (immCounter_S[0] > 0) immCounter_S[0] else 0xFFFFFFFF,
