@@ -17,6 +17,12 @@ fn test_trample_resident() void {
 }
 
 fn test_is_empty() void {
+    // messages smaller than a word are zero padded,
+    // so all-zero messages must read as empty
+    if (genome.gBitsMsg < 32) {
+        var zeroMsg = @zeros(genome.genome_t);
+        @assert(genome.is_empty(&zeroMsg));
+    }
     var g = @zeros(genome.genome_t);
     @assert(!genome.is_empty(&g));
 }

@@ -1,0 +1,71 @@
+// Emigration and immigration of genome messages, shared by population flavors.
+
+// module params ==============================================================
+param genome: imported_module;
+param popSize: u16;
+
+// compile-time configuration =================================================
+comptime {  // clobber hook needs messages of whole words, or within one word
+    const bits = genome.gBitsMsg;
+    @comptime_assert(!genome.hasImmClobber or bits % 32 == 0 or 32 % bits == 0);
+}
+
+// module imports =============================================================
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+// internal functions =========================================================
+fn _get_ith_genome(pop: [*]u32, i: u16) [*]u32 {
+    return @ptrcast([*]u32, &pop[i * genome.gWordsPop]);
+}
+
+// public API =================================================================
+// pack messages of nGenomes uniformly sampled genomes into destBuf; returns
+// how many are non-empty
+fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
+    var nLive: u16 = 0;
+    for (@range(u16, nGenomes)) |i| {
+        const sampled = _get_ith_genome(pop, opscalar.unif16(popSize));
+        genome.msg_pack(sampled, destBuf, i);
+        nLive += @as(u16, !genome.is_empty(sampled));
+    }
+    return nLive;
+}
+
+// immigrate nGenomes messages from srcBuf, each over a uniformly sampled
+// resident (with replacement); returns how many immigrants clobbered
+fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
+    var nClobbers: u16 = 0;
+    for (@range(u16, nGenomes)) |i| {
+        const resident = _get_ith_genome(pop, opscalar.unif16(popSize));
+        if (genome.hasImmClobber) {  // hook edits immigrant's message in srcBuf
+            const bit = i * genome.gBitsMsg;
+            const immigrant = @ptrcast([*]u32, &srcBuf[bit / 32]);
+            const isClobbered = (
+                if (comptime genome.gBitsMsg % 32 == 0)
+                    genome.clobber_immigrant(resident, immigrant)
+                else  // needs bit offset
+                    genome.clobber_immigrant(resident, immigrant, bit % 32)
+            );
+            nClobbers += @as(u16, isClobbered);
+        }
+        genome.msg_unpack(srcBuf, i, resident);
+    }
+    return @as(u32, nClobbers);
+}
+
+// pack up to nGenomes non-empty genomes as messages into destBuf,
+// scanning forward from a sampled genome; returns num messages packed
+fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
+    const start = opscalar.unif16(popSize);
+    var nFound: u16 = 0;
+    var nTried: u16 = 0;
+    while (nFound < nGenomes and nTried < popSize) : (nTried += 1) {
+        const i = opscalar.addmod16(start, nTried, popSize);
+        const candidate = _get_ith_genome(pop, i);
+        if (!genome.is_empty(candidate)) {
+            genome.msg_pack(candidate, destBuf, nFound);
+            nFound += 1;
+        }
+    }
+    return nFound;
+}

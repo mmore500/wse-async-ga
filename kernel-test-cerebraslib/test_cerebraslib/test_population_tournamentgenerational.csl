@@ -105,7 +105,7 @@ fn test_perform_extinction_all() void {
 
 // public API =================================================================
 fn test_emigrate_genomes() void {
-    population.emigrate_genomes(population.swapDsd, 10);
+    population.emigrate_genomes(@ptrcast([*]u32, &population.swap), 10);
 }
 
 fn test_immigrate_genomes() void {

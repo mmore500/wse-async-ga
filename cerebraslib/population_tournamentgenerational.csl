@@ -10,6 +10,9 @@ const random = @import_module("<random>");
 
 const dsd = @import_module("cerebraslib/dsd.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
+const migration = @import_module("cerebraslib/population_migration.csl", .{
+    .genome = genome, .popSize = popSize,
+});
 
 // global state ===============================================================
 const bufSize = popSize * genome.gWordsPop;
@@ -184,34 +187,22 @@ fn _offset_word_index(wordIndex: u16, offset: u16) u32 {
 }
 
 // public API =================================================================
-fn emigrate_genomes(toDsd: mem1d_dsd, nGenomes: u16) void {
-    _sample_n(nGenomes);
-    const nWords = nGenomes * genome.gWordsPop;
-    const swapDsd_ = @set_dsd_length(swapDsd, nWords);
-    @map(_get_population_word, swapDsd_, toDsd);
+fn emigrate_genomes(destBuf: [*]u32, nGenomes: u16) u16 {
+    return migration.emigrate_genomes(
+        @ptrcast([*]u32, &buffer), destBuf, nGenomes
+    );
 }
 
-fn immigrate_genomes(fromBuf: [*]u32, nGenomes: u16) u32 {
-    _sample_n(nGenomes);
+fn immigrate_genomes(srcBuf: [*]u32, nGenomes: u16) u32 {
+    return migration.immigrate_genomes(
+        @ptrcast([*]u32, &buffer), srcBuf, nGenomes
+    );
+}
 
-    var nClobbers: u32 = 0;
-    if (genome.hasImmClobber) {
-        for (@range(u16, nGenomes)) |i| {
-            nClobbers += @as(u32, genome.clobber_immigrant(
-                @ptrcast([*]u32, &buffer[swap[i * genome.gWordsPop]]),
-                @ptrcast([*]u32, &fromBuf[i * genome.gWordsPop]),
-            ));
-        }
-    }
-
-    const fromDsd = @get_dsd(mem1d_dsd, .{
-        .base_address = fromBuf,
-        .extent = nGenomes * genome.gWordsPop,
-    });
-    const nWords = nGenomes * genome.gWordsPop;
-    const swapDsd_ = @set_dsd_length(swapDsd, nWords);
-    @map(_put_population_word, fromDsd, swapDsd_);
-    return nClobbers;
+fn emigrate_live_genomes(destBuf: [*]u32, nGenomes: u16) u16 {
+    return migration.emigrate_live_genomes(
+        @ptrcast([*]u32, &buffer), destBuf, nGenomes
+    );
 }
 
 fn init_module() void { _initialize_all(); }

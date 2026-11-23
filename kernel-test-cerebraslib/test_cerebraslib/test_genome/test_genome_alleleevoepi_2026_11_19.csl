@@ -165,6 +165,8 @@ fn test_trample_resident() void {
     @assert(nInfected > 30 and nInfected < 100);
 }
 
+fn _pathogen(g: [*]u32) u16 { return genome._cast_fields(g).*.pathogen; }
+
 fn test_clobber_immigrant() void {
     random.set_global_prng_seed(1);
     var resident = @zeros(genome.genome_t);
@@ -175,12 +177,12 @@ fn test_clobber_immigrant() void {
     for (@range(u16, nTrials)) |_| {
         _make(&resident, 0, false, 0x0000);
         _make(&immigrant, 0xC3, true, 0xFFFF);
-        const clobbered = genome.clobber_immigrant(&resident, &immigrant);
-        // immigrant always carries resident's immunity, never its own
-        @assert(genome._cast_fields(&immigrant).*.immunity == 0x0000);
+        const clobbered = genome.clobber_immigrant(&resident, &immigrant, 0);
+        // bits outside the message are left alone
+        @assert(genome._cast_fields(&immigrant).*.immunity == 0xFFFF);
         if (clobbered) {
             // blocked: copying immigrant in leaves resident unchanged
-            @assert(immigrant[0] == resident[0]);
+            @assert(_pathogen(&immigrant) == _pathogen(&resident));
             nClobbered += 1;
         } else {
             // infects: resident would take on immigrant's pathogen
@@ -195,8 +197,13 @@ fn test_clobber_immigrant() void {
     // uninfected immigrant never infects, and is not counted as clobbered
     _make(&resident, 0x11, true, 0x00F0);
     _make(&immigrant, 0, false, 0xFFFF);
-    @assert(!genome.clobber_immigrant(&resident, &immigrant));
-    @assert(immigrant[0] == resident[0]);
+    @assert(!genome.clobber_immigrant(&resident, &immigrant, 0));
+    @assert(_pathogen(&immigrant) == _pathogen(&resident));
+
+    // message at a bit offset, above another message's bits
+    var buf = [1]u32{ 0x0000BEEF };
+    @assert(!genome.clobber_immigrant(&resident, &buf, 16));
+    @assert(buf[0] == (@as(u32, _pathogen(&resident)) << 16) | 0xBEEF);
 }
 
 fn test_recovery() void {
@@ -299,6 +306,12 @@ fn test_calc_fitness_and_trait() void {
 }
 
 fn test_is_empty() void {
+    // messages smaller than a word are zero padded,
+    // so all-zero messages must read as empty
+    if (genome.gBitsMsg < 32) {
+        var zeroMsg = @zeros(genome.genome_t);
+        @assert(genome.is_empty(&zeroMsg));
+    }
     var g = @zeros(genome.genome_t);
     @assert(genome.is_empty(&g));  // zeroed host is uninfected
     _make(&g, 0x00, false, 0xFFFF);

@@ -122,6 +122,10 @@ const compconf = @import_module("<compconf>");
 const layout_module = @import_module("<layout>");
 
 const opscalar = @import_module("cerebraslib/opscalar.csl");
+// only the pathogen (low half-word) migrates; immunity stays with host
+const gmsg_util = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = gWordsPop, .gBitsMsg = gBitsMsg,
+});
 
 // compile-time configuration =================================================
 // defaults follow parameters used across allele-evoepi-concept notebooks
@@ -226,7 +230,7 @@ const _seed_pe_stride: u16 = comptime compconf.get_value_or( //nofmt
 const _gSize: u16 = 1;
 const gWordsPop: u16 = _gSize;  // size used in local population
 const gWordsD2h: u16 = _gSize;  // size copied to host
-const gBitsMsg: u16 = 32 * _gSize;  // size migrated between PEs
+const gBitsMsg: u16 = 16;  // size migrated between PEs: pathogen only
 const genome_t = [_gSize]u32;
 const genomePtr_t = [*]u32;
 // bit 0: infected; bit 1 + i: enabled site i's allele
@@ -453,19 +457,21 @@ fn initialize_one(genome: genomePtr_t) void {
     );
 }
 
-fn clobber_immigrant(resident: genomePtr_t, immigrant: genomePtr_t) bool {
-    // copying immigrant into resident replaces whole genome, so first make
-    // immigrant carry resident's immunity, and resident's pathogen unless
-    // immigrant's pathogen infects resident; count blocked infected immigrants
-    const infects = _sample_transmission(resident, immigrant);
-    const isClobbered = !infects and _is_infected(immigrant);
-    _cast_fields(immigrant).*.immunity = _cast_fields(resident).*.immunity;
-    if (infects) {
-        _infect(immigrant, immigrant); // mutates within resident's immunity
-    } else {
-        _cast_fields(immigrant).*.pathogen = _cast_fields(resident).*.pathogen;
-    }
-    return isClobbered;
+// immigrant's message (pathogen), bitOffset bits into immigrant[0], may infect
+// resident, whose pathogen is then written back so unpacking the message
+// leaves resident as is; count blocked infected immigrants
+fn clobber_immigrant(
+    resident: genomePtr_t, immigrant: [*]u32, bitOffset: u16
+) bool {
+    // message is a half-word: viewed as a genome, only its pathogen is valid
+    const halfWords = @ptrcast([*]u16, immigrant);
+    const pathogen = &halfWords[bitOffset / 16];
+    const donor = @ptrcast(genomePtr_t, pathogen);
+    const isInfected = _is_infected(donor);
+    const infects = _sample_transmission(resident, donor);
+    if (infects) _infect(resident, donor);
+    pathogen.* = _cast_fields(resident).*.pathogen;
+    return !infects and isInfected;
 }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
@@ -475,8 +481,18 @@ fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
 
 fn notify_extinct() void {}
 
-// uninfected host?
+// uninfected host? reads only pathogen, so safe for messages
 fn is_empty(genome: genomePtr_t) bool { return !_is_infected(genome); }
+
+// pack genome's message into buf as buf's ith message
+fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
+    gmsg_util.pack_msg(srcPtr, destBuf, i);
+}
+
+// overwrite genome's message bits (pathogen) with buf's ith message
+fn msg_unpack(srcBuf: [*]u32, i: u16, destPtr: genomePtr_t) void {
+    gmsg_util.unpack_msg(srcBuf, i, destPtr);
+}
 
 // hook into top-level layout block
 fn export_symbol_names() void {

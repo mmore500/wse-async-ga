@@ -1,0 +1,63 @@
+// Pack and unpack genome messages sent between PEs: a genome's low gBitsMsg
+// bits, packed back to back, so messages under a word share words.
+
+// module params ==============================================================
+param gWordsPop: u16;  // genome.gWordsPop
+param gBitsMsg: u16;  // genome.gBitsMsg
+
+// module imports =============================================================
+const opscalar = @import_module("cerebraslib/opscalar.csl");
+
+// compile-time configuration =================================================
+comptime {
+    @comptime_assert(gBitsMsg > 0);
+    @comptime_assert(gBitsMsg <= 32 * gWordsPop);
+}
+
+// copy unit: largest power of two, up to a word, dividing gBitsMsg, so copy
+// units divide words evenly (maintaining alignment)
+const unitBits: u16 = comptime (
+    if (gBitsMsg % 32 == 0) 32
+    else if (gBitsMsg % 16 == 0) 16
+    else if (gBitsMsg % 8 == 0) 8
+    else if (gBitsMsg % 4 == 0) 4
+    else if (gBitsMsg % 2 == 0) 2
+    else 1
+);
+const gSizeUnits: u16 = gBitsMsg / unitBits;
+const unitMask: u32 = comptime (
+    if (unitBits == 32) 0xFFFFFFFF
+    else (@as(u32, 1) << unitBits) - 1
+);
+
+// internal functions =========================================================
+// copy unit of src at bit offset srcBit over unit of dest at bit offset destBit
+fn _copy_unit(src: [*]u32, srcBit: u16, dest: [*]u32, destBit: u16) void {
+    const unit = (src[srcBit / 32] >> (srcBit % 32)) & unitMask;
+    dest[destBit / 32] = (
+        (dest[destBit / 32] & ~(unitMask << (destBit % 32)))
+        | (unit << (destBit % 32))
+    );
+}
+
+// public API =================================================================
+// how many words hold nMsgs packed messages?
+fn calc_words_to_fit(nMsgs: u16) u16 {
+    return opscalar.divceil16(nMsgs * gBitsMsg, 32);
+}
+
+// pack genome's message into buf as buf's ith message
+fn pack_msg(srcPtr: [*]u32, destBuf: [*]u32, i: u16) void {
+    for (@range(u16, gSizeUnits)) |k| {
+        const bufBit = (i * gSizeUnits + k) * unitBits;
+        _copy_unit(srcPtr, k * unitBits, destBuf, bufBit);
+    }
+}
+
+// overwrite genome's message bits with buf's ith message
+fn unpack_msg(srcBuf: [*]u32, i: u16, destPtr: [*]u32) void {
+    for (@range(u16, gSizeUnits)) |k| {
+        const bufBit = (i * gSizeUnits + k) * unitBits;
+        _copy_unit(srcBuf, bufBit, destPtr, k * unitBits);
+    }
+}

@@ -1,0 +1,147 @@
+const message1 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 1, .gBitsMsg = 1,
+});
+const message4 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 1, .gBitsMsg = 4,
+});
+const message12 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 1, .gBitsMsg = 12,
+});
+const message16 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 1, .gBitsMsg = 16,
+});
+const message24 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 2, .gBitsMsg = 24,
+});
+const message64 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 3, .gBitsMsg = 64,
+});
+const message96 = @import_module("cerebraslib/genome_message.csl", .{
+    .gWordsPop = 3, .gBitsMsg = 96,
+});
+
+var buf = @zeros([8]u32);
+var g = @zeros([3]u32);
+
+fn _clear_buf() void { for (@range(u16, 8)) |i| { buf[i] = 0; } }
+
+fn test_calc_words_to_fit() void {
+    @assert(message1.calc_words_to_fit(1) == 1);
+    @assert(message1.calc_words_to_fit(32) == 1);
+    @assert(message1.calc_words_to_fit(33) == 2);
+    @assert(message4.calc_words_to_fit(8) == 1);
+    @assert(message4.calc_words_to_fit(9) == 2);
+    @assert(message16.calc_words_to_fit(1) == 1);
+    @assert(message16.calc_words_to_fit(4) == 2);
+    @assert(message24.calc_words_to_fit(4) == 3);
+    @assert(message24.calc_words_to_fit(5) == 4);
+    @assert(message64.calc_words_to_fit(3) == 6);
+    @assert(message96.calc_words_to_fit(2) == 6);
+}
+
+fn test_pack_unpack_1() void {
+    _clear_buf();
+    for (@range(u16, 40)) |i| {  // odd genomes set, crossing word boundary
+        g[0] = 0xFFFFFFFE | @as(u32, i & 1);  // only bit 0 is message
+        message1.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+    }
+    @assert(buf[0] == 0xAAAAAAAA);
+    @assert(buf[1] == 0xAA);
+    for (@range(u16, 40)) |i| {
+        g[0] = 0x12345670;
+        message1.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        // keeps bits above message
+        @assert(g[0] == (0x12345670 | @as(u32, i & 1)));
+    }
+}
+
+fn test_pack_unpack_4() void {
+    _clear_buf();
+    for (@range(u16, 10)) |i| {
+        g[0] = 0xABCDEF00 | @as(u32, i);
+        message4.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+    }
+    @assert(buf[0] == 0x76543210);
+    @assert(buf[1] == 0x98);
+    for (@range(u16, 10)) |i| {
+        g[0] = 0xFFFFFFFF;
+        message4.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        @assert(g[0] == (0xFFFFFFF0 | @as(u32, i)));
+    }
+}
+
+fn test_pack_unpack_16() void {
+    _clear_buf();
+    for (@range(u16, 3)) |i| {
+        g[0] = 0xFFFF0000 | (0x1111 * @as(u32, i + 1));  // immunity, pathogen
+        message16.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+    }
+    @assert(buf[0] == 0x22221111);
+    @assert(buf[1] == 0x3333);
+    for (@range(u16, 3)) |i| {
+        g[0] = 0xABCD0000;
+        message16.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        @assert(g[0] == (0xABCD0000 | (0x1111 * @as(u32, i + 1))));
+    }
+}
+
+fn test_pack_unpack_12() void {
+    _clear_buf();
+    const vals = [3]u32{ 0xABC, 0x123, 0x456 };  // 3rd straddles words
+    for (@range(u16, 3)) |i| {
+        g[0] = 0xFFFFF000 | vals[i];  // high bits not in message
+        message12.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+    }
+    @assert(buf[0] == 0x56123ABC);
+    @assert(buf[1] == 0x4);
+    for (@range(u16, 3)) |i| {
+        g[0] = 0x77777000;
+        message12.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        @assert(g[0] == (0x77777000 | vals[i]));
+    }
+}
+
+fn test_pack_unpack_24() void {
+    _clear_buf();
+    for (@range(u16, 4)) |i| {  // 24-bit messages straddle words
+        g[0] = 0xFF000000 | (0x010101 * @as(u32, i + 1));
+        g[1] = 0xFFFFFFFF;  // not in message
+        message24.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+    }
+    @assert(buf[0] == 0x02010101);
+    @assert(buf[1] == 0x03030202);
+    @assert(buf[2] == 0x04040403);
+    for (@range(u16, 4)) |i| {
+        g[0] = 0xEE000000; g[1] = 0x12345678;
+        message24.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        @assert(g[0] == (0xEE000000 | (0x010101 * @as(u32, i + 1))));
+        @assert(g[1] == 0x12345678);
+    }
+}
+
+fn test_pack_unpack_64() void {
+    _clear_buf();
+    for (@range(u16, 2)) |i| {
+        g[0] = 10 + @as(u32, i); g[1] = 20 + @as(u32, i);
+        g[2] = 0xFFFFFFFF;  // not in message
+        message64.pack_msg(@ptrcast([*]u32, &g), @ptrcast([*]u32, &buf), i);
+    }
+    @assert(buf[0] == 10 and buf[1] == 20 and buf[2] == 11 and buf[3] == 21);
+    @assert(buf[4] == 0);
+    for (@range(u16, 2)) |i| {
+        g[0] = 0; g[1] = 0; g[2] = 7;
+        message64.unpack_msg(@ptrcast([*]u32, &buf), i, @ptrcast([*]u32, &g));
+        @assert(g[0] == 10 + @as(u32, i) and g[1] == 20 + @as(u32, i));
+        @assert(g[2] == 7);
+    }
+}
+
+fn do_test() void {
+    test_calc_words_to_fit();
+    test_pack_unpack_1();
+    test_pack_unpack_4();
+    test_pack_unpack_16();
+    test_pack_unpack_12();
+    test_pack_unpack_24();
+    test_pack_unpack_64();
+}

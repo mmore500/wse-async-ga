@@ -223,4 +223,14 @@ fn notify_extinct() void {}
 // cleared genome?
 fn is_empty(genome: genomePtr_t) bool { return _is_clear(genome); }
 
+// copy genome into buf as buf's ith message (whole genome)
+fn msg_pack(srcPtr: genomePtr_t, destBuf: [*]u32, i: u16) void {
+    for (@range(u16, _gSize)) |w| { destBuf[i * _gSize + w] = srcPtr[w]; }
+}
+
+// copy buf's ith message (whole genome) into genome
+fn msg_unpack(srcBuf: [*]u32, i: u16, destPtr: genomePtr_t) void {
+    for (@range(u16, _gSize)) |w| { destPtr[w] = srcBuf[i * _gSize + w]; }
+}
+
 fn export_symbol_names() void {}  // hook into top-level layout block
