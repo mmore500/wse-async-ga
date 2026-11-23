@@ -78,22 +78,24 @@ fn test_emigrate_live_genomes() void {
     @assert(migration.emigrate_live_genomes(popPtr, msgPtr, nMsg) == nMsg);
     @assert(_count_live_messages(0xFF) == nMsg);
 
+    // two live: nothing if sampled host is empty, else short batch of both
+    // with unused slots zeroed
+    _setup(0x24);
+    for (@range(u16, nMsg)) |k| { msgBuf[k / 2] = 0x00FF00FF; }  // stale
+    var nSent: u16 = 0;
+    for (@range(u16, 64)) |rep| {
+        const count = migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);
+        @assert(count == 0 or count == 2);
+        if (count == 2) {
+            @assert(_count_live_messages(0x24) == 2);
+            nSent += 1;
+        }
+    }
+    @assert(0 < nSent and nSent < 64);  // sent about 1 in 4 times
+
     // none live: nothing sent
     _setup(0x00);
     @assert(migration.emigrate_live_genomes(popPtr, msgPtr, nMsg) == 0);
-    @assert(_count_live_messages(0x00) == 0);
-
-    // two live: nothing if sampled host is empty, else short batch of both
-    _setup(0x24);
-    var nSent: u16 = 0;
-    for (@range(u16, 64)) |rep| {
-        msgBuf[0] = 0; msgBuf[1] = 0;
-        const count = migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);
-        @assert(count == 0 or count == 2);
-        @assert(_count_live_messages(0x24) == count);
-        if (count == 2) { nSent += 1; }
-    }
-    @assert(0 < nSent and nSent < 64);  // sent about 1 in 4 times
 }
 
 fn do_test() void {

@@ -606,16 +606,16 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // p2p send/recv tasks
 // ============================================================================
 // exchange genomes with another PE via p2p message passing,
-// each message is a header wavelet, a count wavelet, a batch of up to
-// p2pBatchSize non-empty genomes, and a pad wavelet
+// each message is a header wavelet, a batch of up to p2pBatchSize non-empty
+// genomes (unused slots zeroed, which must read as empty), and a pad wavelet
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
 const p2pBatchSize: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_BATCH_SIZE", @as(u16, 1)
 );
 comptime { @comptime_assert(1 <= p2pBatchSize and p2pBatchSize <= popSize); }
-const p2pMsgSize: u16 = if (p2pEnabled) (  // header, count, batch, and pad
-  3 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
+const p2pMsgSize: u16 = if (p2pEnabled) (  // header, batch, and pad
+  2 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
 ) else 0;
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
 const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
@@ -632,7 +632,7 @@ var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
 // send P2P ===================================================================
 var sendFlag_P: u8 = 0;  // need refill? initialized at startup
 var sendThread_P: u8;  // which thread is sending?
-var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, count, batch, pad
+var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, batch, pad
 const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{p2pMsgSize} -> sendBuf_P[i], });
 
@@ -687,7 +687,7 @@ const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
   .activate_push = ignRecvTaskID_P,  // blocked until closeout
 } else .{});
 const p2pPayloadWords: u16 = if (p2pEnabled) p2pMsgSize - 2 else 0;
-var recvBuf_P = @zeros([p2pPayloadWords]u32);  // batch count, then batch
+var recvBuf_P = @zeros([p2pPayloadWords]u32);  // batch
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
   .tensor_access = |i|{1} -> recvBuf_P[i], });
 var recvFill_P: u16 = 0;  // words of current message popped
@@ -704,10 +704,8 @@ fn drainRecv_P() void {
   while (@mov32(_recvBufWordDsd_P(), recvFifo_P)) {  // false once FIFO is empty
     recvFill_P += 1;
     if (recvFill_P == 1 + p2pPayloadWords) {  // payload complete
-      // batch is short if sender found few non-empty genomes
-      const recvCount_P = @as(u16, math.min(recvBuf_P[0], p2pBatchSize));
       clobberCounter[0] += immigrateEnriched(
-        @ptrcast([*]u32, &recvBuf_P[1]), recvCount_P, immEnrichP2p
+        @ptrcast([*]u32, &recvBuf_P), p2pBatchSize, immEnrichP2p
       );
       immCounter_P[0] += 1;
     }
@@ -865,9 +863,8 @@ task cycleTask() void {
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
     const sendCount_P = population.emigrate_live_genomes(
-      @ptrcast([*]u32, &sendBuf_P[2]), p2pBatchSize
+      @ptrcast([*]u32, &sendBuf_P[1]), p2pBatchSize
     );
-    sendBuf_P[1] = sendCount_P;
     if (sendCount_P > 0 and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
@@ -980,7 +977,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
       sendBuf_P[0] = mp.encode_header(
         @as(u16, p2pTarget >> 16),  // dest_col
         @as(u16, p2pTarget & 0xFFFF),  // dest_row
-        p2pMsgSize - 1  // body length: count, batch, and pad
+        p2pMsgSize - 1  // body length: batch and pad
       );
       sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet;
       sendFlag_P = 1;
