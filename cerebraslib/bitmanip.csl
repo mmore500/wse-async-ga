@@ -19,6 +19,20 @@ fn set_nth_bit(bitfield: [*]u8, n: u16, value: bool) void {
     }
 }
 
+/// Get the nth nibble in a bitfield.
+fn get_nth_nibble(bitfield: [*]u8, n: u16) u8 {
+    const shift = @as(u8, 4 * (n & 1)); // low nibble of each byte first
+    return (bitfield[n >> 1] >> shift) & 0xF;
+}
+
+/// Set the nth nibble in a bitfield.
+fn set_nth_nibble(bitfield: [*]u8, n: u16, value: u8) void {
+    @assert(value < 16);
+    const shift = @as(u8, 4 * (n & 1)); // low nibble of each byte first
+    bitfield[n >> 1] &= ~(@as(u8, 0xF) << shift);
+    bitfield[n >> 1] |= value << shift;
+}
+
 // Toggle the nth bit in a bitfield, with desired bit/byte endianness.
 // WARNING: note that bitfield size must be a multiple of 4 bytes.
 fn flip_nth_bit_with_swaps(

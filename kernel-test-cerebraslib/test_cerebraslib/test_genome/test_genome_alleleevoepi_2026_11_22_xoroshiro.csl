@@ -1,0 +1,340 @@
+const math = @import_module("<math>");
+const random = @import_module("<random>");
+
+const rng = @import_module("cerebraslib/rng_xoroshiro64starstar.csl");
+const genome = @import_module(
+    "cerebraslib/genome/genome_alleleevoepi_2026_11_22_xoroshiro.csl",
+    .{ .rng = rng },
+);
+
+fn _is_close(actual: f32, expected: f32) bool {
+    return math.abs(actual - expected) < 1e-3 * math.abs(expected);
+}
+
+// make genome with given pathogen sites, infection, and immunity nibbles
+fn _make(g: *genome.genome_t, sites: u16, infected: bool, immunity: u16) void {
+    const f = genome._cast_fields(g);
+    f.*.pathogen = sites | (if (infected) genome.infectedFlag else 0);
+    f.*.immunity = immunity;
+}
+
+// 0.3 (full immunity's susceptibility) to the number of enabled sites
+fn _full_susceptibility() f32 {
+    var res: f32 = 1.0;
+    for (@range(u16, genome.nSites)) |_| { res *= 0.3; }
+    return res;
+}
+
+// immunity nibbles, all set to value for each enabled allele
+fn _all_nibbles(value: u16) u16 {
+    var immunity: u16 = 0;
+    for (@range(u16, 2 * genome.nSites)) |j| { immunity |= value << (4 * j); }
+    return immunity;
+}
+
+fn test_enabled_sites() void {
+    @assert(genome.nSitesMax == 2);
+    @assert(0 < genome.nSites and genome.nSites <= genome.nSitesMax);
+    @assert(genome.sitesMask == (@as(u16, 1) << genome.nSites) - 1);
+    var g = @zeros(genome.genome_t);
+    _make(&g, 0xFF, true, 0);
+    @assert(genome._get_sites(&g) == genome.sitesMask);
+}
+
+fn test_comptime_math() void {
+    @assert(_is_close(genome._comptime_ln(0.05), -2.995732274));
+    @assert(_is_close(genome._comptime_ln(0.99), -0.01005033585));
+    @assert(_is_close(genome._comptime_exp(-0.2139809), 0.8073586));
+}
+
+fn test_tables() void {
+    // default compconf: floor 0.05, so level ratio 0.05 ^ (1 / 14)
+    @assert(_is_close(genome._levelRatio, 0.8073586));
+    @assert(genome._immunityLevel[0] == 0.0);  // never immune
+    @assert(_is_close(genome._immunityLevel[1], 0.05));  // floor
+    @assert(genome._immunityLevel[15] == 1.0);  // full
+    for (@range(u16, 1, 15, 1)) |c| {
+        const ratio = genome._immunityLevel[c] / genome._immunityLevel[c + 1];
+        @assert(_is_close(ratio, genome._levelRatio));
+    }
+    // default waning rate 0.01: ln(0.99) / ln(ratio)
+    @assert(_is_close(genome._waningStepP, 0.04696885));
+    // default immune strength 0.7
+    @assert(genome._susceptibility[0] == 1.0);
+    @assert(_is_close(genome._susceptibility[15], 0.3));
+    @assert(_is_close(genome._susceptibility[1], 0.965));
+}
+
+fn test_transmission_p() void {
+    // default contact rate 0.35, times susceptibility to each carried allele
+    @assert(_is_close(genome._calc_transmission_p(0, 0x00), 0.35));
+    const full = _all_nibbles(15);
+    @assert(_is_close(
+        genome._calc_transmission_p(full, 0x00),
+        0.35 * _full_susceptibility(),
+    ));
+    // immune only to site 0's allele 1: matters only if pathogen carries it
+    const site0Allele1: u16 = 15 << 4;
+    @assert(_is_close(genome._calc_transmission_p(site0Allele1, 0x00), 0.35));
+    @assert(_is_close(genome._calc_transmission_p(site0Allele1, 0x01), 0.105));
+    // floor immunity still protects a little
+    @assert(_is_close(genome._calc_transmission_p(1, 0x00), 0.35 * 0.965));
+}
+
+fn test_mutation_p() void {
+    // default mutation rate 1e-6, within-host T 1; runtime config overrides
+    const default = genome.rtc_evoepi_mutationRate[0];
+    @assert(_is_close(genome._get_mutation_p(), 1e-6));
+    genome.rtc_evoepi_mutationRate[0] = 0.25;
+    @assert(_is_close(genome._get_mutation_p(), 0.25));
+    genome.rtc_evoepi_mutationRate[0] = 2.0;
+    @assert(genome._get_mutation_p() == 1.0);
+    genome.rtc_evoepi_mutationRate[0] = default;
+}
+
+fn test_initialize_one() void {
+    // test layout is a single PE, at col 0, row 0, so it is seeded: infected
+    // with wildtype pathogen, no immunity
+    var g = @zeros(genome.genome_t);
+    g[0] = 0xFFFFFFFF;
+    genome.initialize_one(&g);
+    @assert(genome._is_infected(&g));
+    @assert(genome._get_sites(&g) == 0);
+    @assert(genome._cast_fields(&g).*.immunity == 0);
+}
+
+fn test_is_empty() void {
+    // messages smaller than a word are zero padded,
+    // so all-zero messages must read as empty
+    if (genome.gBitsMsg < 32) {
+        var zeroMsg = @zeros(genome.genome_t);
+        @assert(genome.is_empty(&zeroMsg));
+    }
+    var g = @zeros(genome.genome_t);
+    _make(&g, 0x00, false, _all_nibbles(15));
+    @assert(genome.is_empty(&g));  // uninfected, even if immune
+    _make(&g, 0x03, true, 0);
+    @assert(!genome.is_empty(&g));  // infected
+
+    // the 4-bit message (pathogen nibble, by default) holds sites and
+    // infection flag
+    @assert(genome.gBitsMsg == 4 or genome.gBitsMsg == 32);
+    @assert((genome._cast_fields(&g).*.pathogen & ~@as(u16, 0xF)) == 0);
+    g[0] = 0xFFFFFFF0;  // all but message
+    @assert(genome.is_empty(&g));
+}
+
+fn test_recovery() void {
+    random.set_global_prng_seed(1);
+    var g = @zeros(genome.genome_t);
+    // memoryless: recovers w.p. 0.1 (default) per generation, gaining full
+    // immunity to carried alleles only, whatever its prior level
+    const sites = 0x01 & genome.sitesMask;
+    const prior: u16 = 0x0021;  // site 0: allele 0 at 1, allele 1 at 2
+    var nRecovered: u32 = 0;
+    const nTrials: u16 = 1000;
+    for (@range(u16, nTrials)) |_| {
+        _make(&g, sites, true, prior);
+        genome._apply_recovery(&g);
+        if (genome._is_infected(&g)) {
+            @assert(genome._cast_fields(&g).*.immunity == prior);
+        } else {
+            nRecovered += 1;
+            @assert(genome._cast_fields(&g).*.pathogen == 0);
+            // site 0 carries allele 1 (nibble 1), and site 1 allele 0
+            var expected = (prior & ~@as(u16, 0x00F0)) | (15 << 4);
+            if (genome.nSites > 1) expected = (expected & 0xF0FF) | (15 << 8);
+            @assert(genome._cast_fields(&g).*.immunity == expected);
+        }
+    }
+    // expect 100, sd ~9.5
+    @assert(nRecovered > 70 and nRecovered < 130);
+
+    // uninfected hosts are unchanged
+    _make(&g, 0, false, 0x8000);
+    genome._apply_recovery(&g);
+    @assert(g[0] == (@as(u32, 0x8000) << 16));
+}
+
+fn test_waning() void {
+    random.set_global_prng_seed(1);
+    var g = @zeros(genome.genome_t);
+    // nibbles above floor step down w.p. ~0.047 (default), never below floor
+    var nSteps: u32 = 0;
+    const nTrials: u16 = 2000;
+    const full = _all_nibbles(15);
+    for (@range(u16, nTrials)) |_| {
+        _make(&g, 0x03 & genome.sitesMask, true, full);
+        genome._apply_waning(&g);
+        @assert(genome._is_infected(&g));  // waning never touches pathogen
+        const remaining = genome._cast_fields(&g).*.immunity;
+        for (@range(u16, 2 * genome.nSites)) |j| {
+            const nibble = (remaining >> (4 * j)) & 0xF;
+            @assert(nibble == 15 or nibble == 14);
+            nSteps += @as(u32, nibble == 14);
+        }
+    }
+    // expect 0.047 * 2000 * 4 = 376 steps (2 sites), sd ~19
+    const expected = genome._waningStepP * 2000.0 * 2.0 * @as(f32, genome.nSites);
+    @assert(@as(f32, nSteps) > 0.8 * expected and @as(f32, nSteps) < 1.2 * expected);
+
+    // floor nibbles and never-immune nibbles stay put
+    for (@range(u16, 256)) |_| {
+        _make(&g, 0, false, _all_nibbles(1));
+        genome._apply_waning(&g);
+        @assert(genome._cast_fields(&g).*.immunity == _all_nibbles(1));
+        _make(&g, 0, false, 0);
+        genome._apply_waning(&g);
+        @assert(g[0] == 0);
+    }
+}
+
+fn test_mean_log_decay() void {
+    // expected log immunity level decays by ln(1 - 0.01) per generation, so
+    // over 50 generations (before nibbles reach floor), mean log level is
+    // about 50 * ln(0.99) = -0.5025
+    random.set_global_prng_seed(1);
+    var g = @zeros(genome.genome_t);
+    var total: f32 = 0.0;
+    const nTrials: u16 = 400;
+    for (@range(u16, nTrials)) |_| {
+        _make(&g, 0, false, 15);
+        for (@range(u16, 50)) |_| { genome._apply_waning(&g); }
+        const nibble = genome._cast_fields(&g).*.immunity & 0xF;
+        total += genome._comptime_ln(genome._immunityLevel[nibble]);
+    }
+    const mean = total / @as(f32, nTrials);
+    // per-trial sd ~0.32, so sd of mean ~0.016
+    @assert(mean < -0.44 and mean > -0.56);
+}
+
+fn test_trample_resident() void {
+    random.set_global_prng_seed(1);
+    var resident = @zeros(genome.genome_t);
+    var spawn = @zeros(genome.genome_t);
+
+    // uninfected spawn never infects
+    _make(&spawn, 0x01, false, 0x1234);
+    for (@range(u16, 64)) |_| {
+        _make(&resident, 0, false, 0xF00F);
+        genome.trample_resident(&resident, &spawn);
+        @assert(resident[0] == (@as(u32, 0xF00F) << 16));
+    }
+
+    // infected resident is never reinfected
+    _make(&spawn, 0x02 & genome.sitesMask, true, 0x1234);
+    for (@range(u16, 64)) |_| {
+        _make(&resident, 0x01, true, 0x0003);
+        genome.trample_resident(&resident, &spawn);
+        @assert(genome._get_sites(&resident) == (0x01 & genome.sitesMask));
+        @assert(genome._cast_fields(&resident).*.immunity == 0x0003);
+    }
+
+    // uninfected nonimmune resident infected w.p. 0.35, keeping its immunity
+    var nInfected: u32 = 0;
+    for (@range(u16, 1000)) |_| {
+        _make(&resident, 0, false, 0);
+        genome.trample_resident(&resident, &spawn);
+        nInfected += @as(u32, genome._is_infected(&resident));
+        @assert(genome._cast_fields(&resident).*.immunity == 0);
+    }
+    @assert(nInfected > 300 and nInfected < 400);  // expect 350, sd ~15
+
+    // fully immune resident infected w.p. 0.35 * 0.3 ^ nSites
+    nInfected = 0;
+    for (@range(u16, 4000)) |_| {
+        _make(&resident, 0, false, _all_nibbles(15));
+        genome.trample_resident(&resident, &spawn);
+        nInfected += @as(u32, genome._is_infected(&resident));
+        @assert(genome._cast_fields(&resident).*.immunity == _all_nibbles(15));
+    }
+    const expected = 4000.0 * 0.35 * _full_susceptibility();
+    @assert(@as(f32, nInfected) > 0.75 * expected and @as(f32, nInfected) < 1.25 * expected);
+}
+
+fn test_clobber_immigrant() void {
+    random.set_global_prng_seed(1);
+    var resident = @zeros(genome.genome_t);
+    var immigrant = @zeros(genome.genome_t);
+    // immigrant always takes resident's immunity; it carries its own pathogen
+    // only if it infects resident (counted as clobbered if infected, but not)
+    var nInfects: u32 = 0;
+    var nClobbered: u32 = 0;
+    for (@range(u16, 1000)) |_| {
+        _make(&resident, 0, false, 0x0F0F);
+        _make(&immigrant, 0x01, true, 0xFFFF);
+        const isClobbered = genome._clobber_immigrant_genome(
+            &resident, &immigrant
+        );
+        @assert(genome._cast_fields(&immigrant).*.immunity == 0x0F0F);
+        if (isClobbered) {
+            nClobbered += 1;
+            @assert(genome._cast_fields(&immigrant).*.pathogen == 0);
+        } else {
+            nInfects += 1;
+            @assert(genome._is_infected(&immigrant));
+        }
+    }
+    @assert(nInfects + nClobbered == 1000);
+    @assert(nInfects > 0 and nClobbered > 0);
+
+    // uninfected immigrant never clobbered, and leaves resident as is
+    _make(&resident, 0x01, true, 0x0F00);
+    _make(&immigrant, 0, false, 0);
+    @assert(!genome._clobber_immigrant_genome(&resident, &immigrant));
+    @assert(immigrant[0] == resident[0]);
+}
+
+fn test_calc_fitness_and_trait() void {
+    var g = @zeros(genome.genome_t);
+    _make(&g, 0x03, false, 0xFFFF);
+    @assert(genome.calc_fitness_of(&g) == 0.0);
+    @assert(genome.get_trait_value(&g) == 0);
+    _make(&g, 0x02 & genome.sitesMask, true, 0);
+    @assert(genome.calc_fitness_of(&g) == 1.0);
+    @assert(genome.get_trait_value(&g) == (1 | (@as(u32, 0x02 & genome.sitesMask) << 1)));
+    @assert(genome.get_trait_value(&g) < genome.nTraitVals);
+}
+
+fn test_elapse_inheritance_of() void {
+    random.set_global_prng_seed(1);
+    var g = @zeros(genome.genome_t);
+    // uninfected, nonimmune hosts are unchanged
+    for (@range(u16, 16)) |_| {
+        genome.elapse_inheritance_of(&g);
+        @assert(g[0] == 0);
+    }
+    // infected host eventually recovers, immune; mean duration 10
+    var total: u32 = 0;
+    const nTrials: u16 = 200;
+    for (@range(u16, nTrials)) |_| {
+        _make(&g, 0, true, 0);
+        var nGenerations: u32 = 0;
+        while (genome._is_infected(&g) and nGenerations < 10000) {
+            genome.elapse_inheritance_of(&g);
+            nGenerations += 1;
+        }
+        @assert(!genome._is_infected(&g));
+        @assert(genome._cast_fields(&g).*.immunity != 0);
+        total += nGenerations;
+    }
+    const mean = @as(f32, total) / @as(f32, nTrials);
+    @assert(mean > 8.0 and mean < 12.0);  // sd of mean ~0.67
+}
+
+fn do_test() void {
+    test_is_empty();
+    test_enabled_sites();
+    test_comptime_math();
+    test_tables();
+    test_transmission_p();
+    test_mutation_p();
+    test_initialize_one();
+    test_recovery();
+    test_waning();
+    test_mean_log_decay();
+    test_trample_resident();
+    test_clobber_immigrant();
+    test_calc_fitness_and_trait();
+    test_elapse_inheritance_of();
+}

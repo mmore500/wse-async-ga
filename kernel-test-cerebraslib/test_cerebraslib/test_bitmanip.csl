@@ -72,6 +72,20 @@ fn test_set_nth_bit() void {
     @assert(bitfield[1] == 0b00000000);
 }
 
+fn test_nth_nibble() void {
+    var bitfield = [4]u8{ 0x21, 0x43, 0x65, 0x87 }; // word 0x87654321
+    for (@range(u16, 8)) |n| {
+        @assert(bitmanip.get_nth_nibble(&bitfield, n) == @as(u8, n + 1));
+    }
+    bitmanip.set_nth_nibble(&bitfield, 0, 0xA);
+    bitmanip.set_nth_nibble(&bitfield, 5, 0xB);
+    bitmanip.set_nth_nibble(&bitfield, 7, 0xC);
+    @assert(bitfield[0] == 0x2A);
+    @assert(bitfield[1] == 0x43);
+    @assert(bitfield[2] == 0xB5);
+    @assert(bitfield[3] == 0xC7);
+}
+
 fn test_set_nth_bit_regression1() void {
     var bitfield = @zeros([16]u8); // Initialize a 2-byte bitfield
 
@@ -594,6 +608,7 @@ fn test_mutate_log2p() void {
 fn do_test() void {
     test_flip_nth_bit();
     test_set_nth_bit();
+    test_nth_nibble();
     test_set_nth_bit_regression1();
     test_set_nth_bit_regression2();
     test_flip_nth_bit_with_swaps();
