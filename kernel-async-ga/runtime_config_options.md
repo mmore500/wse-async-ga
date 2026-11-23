@@ -4,6 +4,11 @@ Each line of a jsonl file passed to `runtime_config_generate.py` generates
 one runtime config from `runtime_config_template/default.py.in`.
 If no runtime config value is specified, symbols keep compile time default.
 
+The values set are saved per PE to `a=rtc+...+ext=.pqt` in the output folder:
+each symbol word as a `UInt32` column named for the symbol, and, reinterpreted
+as a float, as a `Float32` column with suffix `_f32` (e.g.,
+`rtc_p2pSendProbability_f32`).
+
 - `dispatch_slug` (required)
   - names the runtime config, its script
     `runtime_config_dispatch/<dispatch_slug>.py`, and its output folder

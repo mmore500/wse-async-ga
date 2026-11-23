@@ -948,6 +948,42 @@ metadata = {
 }
 log(metadata)
 
+if runtimeConfig:
+    log("runtime config df ==========================================")
+    # one row per PE; each symbol word as given (UInt32) and, as float
+    # symbols are stored by their bits, reinterpreted (Float32)
+    rows, cols = np.indices((nRow, nCol))
+    df = pl.DataFrame(
+        {
+            "row": pl.Series(rows.ravel(), dtype=pl.UInt16),
+            "col": pl.Series(cols.ravel(), dtype=pl.UInt16),
+        },
+    )
+    for symbol, data in runtimeConfig.items():
+        for i in range(data.shape[2]):
+            name = symbol if data.shape[2] == 1 else f"{symbol}_{i}"
+            words = np.ascontiguousarray(data[:, :, i]).ravel()
+            df = df.with_columns(
+                pl.Series(name, words, dtype=pl.UInt32),
+                pl.Series(f"{name}_f32", words.view(np.float32)),
+            )
+    df = with_subgrid_columns(df.lazy(), rowSubgrid, colSubgrid).collect()
+    df = df.with_columns(
+        *(
+            pl.lit(value, dtype=dtype).alias(key)
+            for key, (value, dtype) in metadata.items()
+        ),
+    )
+    write_parquet_verbose(
+        df,
+        "a=rtc"
+        f"+flavor={genomeFlavor}"
+        f"+seed={globalSeed}"
+        f"+ncycle={nCycleAtLeast}"
+        "+ext=.pqt",
+    )
+    del df, rows, cols
+
 if args.process_fossils is True:
     log(f" - processing fossils {nWav=}...")
     process_fossils(nWav)

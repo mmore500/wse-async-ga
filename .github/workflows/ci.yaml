@@ -323,6 +323,18 @@ jobs:
           assert len(paired) == 8, paired
           exchanged = paired['p2p_imm_count'] + paired['partner_imm_count']
           assert (exchanged > 0).all(), paired
+
+          # runtime config values are saved per PE
+          (path,) = glob.glob(
+              './kernel-async-ga/dispatch=ci-p2p-pairs/a=rtc+*.pqt'
+          )
+          rtc = pl.read_parquet(path)
+          print(rtc)
+          assert len(rtc) == 3 * 3, len(rtc)
+          rtc = rtc.join(df, on=['row', 'col'])
+          target = rtc['rtc_p2pTarget']
+          assert ((target & 0xFFFF) == rtc['p2p_target_row']).all(), rtc
+          assert ((target >> 16) == rtc['p2p_target_col']).all(), rtc
           "
 
   test-sample-populations:
