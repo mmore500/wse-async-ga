@@ -174,7 +174,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #   probability, if the 0th population member is live (infected), a batch of
 #   up to 8 live genomes (1 wavelet) is sent, so batches go at a rate that
 #   tracks live population
-# ten independent runs (one job each, run in job order), each set by its
+# two independent runs (one job each, run in job order), each set by its
 # own runtime config (p2p targets, and per run p2p send probability,
 # mutation rate, seed), from two compiles:
 # 1. control, resembling 2026-11-22-alleleevoepi-partialimmunity-xoroshiro-
@@ -185,15 +185,17 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #    whose col and row are multiples of 9; p2p send probability 1 in 40; p2p
 #    immigrants immigrated once; neighbor sends of 8 genomes (1 wavelet),
 #    received 2 sends at a time; mutation rate 2^-12
-# 2-10. genome_alleleevoepi_2026_11_23, with 3 enabled sites, i.e., 8 strains;
+# 2. genome_alleleevoepi_2026_11_23, with 3 enabled sites, i.e., 8 strains;
 #    16 x 16 PE subgrids throughout the 1152 x 576 PEs (no nesting);
 #    population 4096 per PE, so each subgrid holds about 1 million hosts;
 #    infection seeded on the corner PE of each subgrid (seed PE stride 16);
 #    p2p send probability 1 in 20; each p2p immigrant immigrated 8 times
 #    (ASYNC_GA_ENRICH_IMMIGRANTS_P2P 8); neighbor sends of 32 genomes (4
-#    wavelets), received 1 send at a time; sweeping mutation rate 2^-26 to
-#    2^-10 by factors of 4 (named runtime config rtc_evoepi_mutationRate),
-#    one run each
+#    wavelets), received 1 send at a time; mutation rate set per subgrid
+#    (runtime config calcSymbolValues of rtc_evoepi_mutationRate), 2^-26 to
+#    2^-10 by factors of 4: the subgrid at subgrid row r, col c gets
+#    2^-(26 - 2 * ((r + c) mod 9)), i.e., diagonal stripes, 288 of the 2592
+#    subgrids per rate
 # per-PE trait logger records the trait value of each sampled host (0th
 # population member), one multiplexed record per bit: bit 0 set if infected,
 # and bit 1 + i the allele at site i
@@ -225,7 +227,7 @@ for compileConfig in control sites3; do
             recvgenomes=16  # 2 sends
             nest=", \"nestingFactorSubgrid\": 2"
             # run configs, one job each, as name:mutexp:seed, for mutation
-            # rate 2^-mutexp and seed
+            # rate 2^-mutexp (or sweep, set per subgrid) and seed
             RUN_CONFIGS="control-mutlog2-12:12:1151"
             ;;
         sites3)
@@ -240,7 +242,7 @@ for compileConfig in control sites3; do
             sendgenomes=32  # 4 wavelets of 4-bit messages
             recvgenomes=32  # 1 send
             nest=""
-            RUN_CONFIGS="sites3-mutlog2-26:26:1161 sites3-mutlog2-24:24:1163 sites3-mutlog2-22:22:1165 sites3-mutlog2-20:20:1167 sites3-mutlog2-18:18:1169 sites3-mutlog2-16:16:1171 sites3-mutlog2-14:14:1173 sites3-mutlog2-12:12:1175 sites3-mutlog2-10:10:1177"
+            RUN_CONFIGS="sites3-mutsweep:sweep:1161"
             ;;
     esac
     compileseed=1141  # runtime config overrides, per run
@@ -365,8 +367,15 @@ EOF
         # p2p targets (random pairs, within subgrids if any), nested subgrid
         # sizes, p2p send probability, mutation rate, and seed
         rm -rf "${WORKDIR}/src/kernel-async-ga/runtime_config_dispatch"
-        mutation="$(python3 -c "print(repr(2.0 ** -${runMutexp}))")"  # exact f32
-        echo "{\"dispatch_slug\": \"${runName}\", \"p2pMode\": \"${p2pMode}\"${nest}, \"p2pSendProbability\": ${runP2p}, \"globalSeed\": ${runSeed}, \"setSymbolValues\": {\"rtc_evoepi_mutationRate\": \"lambda shape: np.full(shape, ${mutation}, np.float32)\"}}" \
+        if [ "${runMutexp}" = "sweep" ]; then
+            # per subgrid, 2^-26 to 2^-10 by factors of 4, in diagonal stripes
+            mutIdx="(pl.col('subgridOriginRow') // pl.col('nRowSubgrid') + pl.col('subgridOriginCol') // pl.col('nColSubgrid')) % 9"
+            mutation="\"calcSymbolValues\": {\"with_values\": {\"rtc_evoepi_mutationRate\": \"pl.lit(2.0).pow(2 * (${mutIdx}) - 26).cast(pl.Float32)\"}}"
+        else
+            mutation="$(python3 -c "print(repr(2.0 ** -${runMutexp}))")"  # exact f32
+            mutation="\"setSymbolValues\": {\"rtc_evoepi_mutationRate\": \"lambda shape: np.full(shape, ${mutation}, np.float32)\"}"
+        fi
+        echo "{\"dispatch_slug\": \"${runName}\", \"p2pMode\": \"${p2pMode}\"${nest}, \"p2pSendProbability\": ${runP2p}, \"globalSeed\": ${runSeed}, ${mutation}}" \
             | tee "${CONFIG_WORKDIR}/runtime_config.jsonl"
         cp "${CONFIG_WORKDIR}/runtime_config.jsonl" "${CONFIG_RESULTDIR}/"
         python3 "${WORKDIR}/src/kernel-async-ga/runtime_config_generate.py" \
