@@ -299,8 +299,8 @@ fn test_calc_fitness_and_trait() void {
 }
 
 fn test_is_empty() void {
-    // messages under a word are zero padded, so all-zero messages must be
-    // empty
+    // messages smaller than a word are zero padded,
+    // so all-zero messages must read as empty
     if (genome.gBitsMsg < 32) {
         var zeroMsg = @zeros(genome.genome_t);
         @assert(genome.is_empty(&zeroMsg));

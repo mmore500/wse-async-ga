@@ -114,6 +114,7 @@ fn test_divceil16() void {
     @assert(opscalar.divceil16(32, 32) == 1);
     @assert(opscalar.divceil16(33, 32) == 2);
     @assert(opscalar.divceil16(7, 1) == 7);
+    @assert(opscalar.divceil16(65535, 65535) == 1);  // no u16 overflow
 }
 
 fn test_mul32() void {
