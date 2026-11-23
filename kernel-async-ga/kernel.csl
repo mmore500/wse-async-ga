@@ -614,7 +614,7 @@ const p2pBatchSize: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_BATCH_SIZE", @as(u16, 1)
 );
 comptime { @comptime_assert(1 <= p2pBatchSize and p2pBatchSize <= popSize); }
-// include only non-empty genomes in p2p batches? else sample uniformly
+// include only non-empty genomes in p2p batches? otherwise, sample uniformly
 const p2pSendExcludeEmpty: bool = compconf.get_value_or(
   "ASYNC_GA_P2P_SEND_EXCLUDE_EMPTY", @as(u16, 0)
 ) > 0;
