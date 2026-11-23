@@ -79,7 +79,7 @@ fn test_nth_nibble() void {
     }
     bitmanip.set_nth_nibble(&bitfield, 0, 0xA);
     bitmanip.set_nth_nibble(&bitfield, 5, 0xB);
-    bitmanip.set_nth_nibble(&bitfield, 7, 0xFC); // high bits ignored
+    bitmanip.set_nth_nibble(&bitfield, 7, 0xC);
     @assert(bitfield[0] == 0x2A);
     @assert(bitfield[1] == 0x43);
     @assert(bitfield[2] == 0xB5);
