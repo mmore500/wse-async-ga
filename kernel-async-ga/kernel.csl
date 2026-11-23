@@ -479,7 +479,7 @@ const recvNumGenomes: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_NUM_GENOMES", @as(u16, 4)
 );
 comptime { @comptime_assert(recvNumGenomes >= 1); }
-comptime {  // sends and recv batches must fill whole words, without padding
+comptime {  // neighbor send/recv batches must align to whole words
   @comptime_assert((sendNumGenomes * genome_.gBitsMsg) % 32 == 0);
   @comptime_assert((recvNumGenomes * genome_.gBitsMsg) % 32 == 0);
 }
@@ -607,17 +607,17 @@ fn dispatchRecv_W() void { // open an async microthread to recv into recvBuf
 // ============================================================================
 // exchange genomes with another PE via p2p message passing,
 // each message is a header wavelet, a batch of up to p2pBatchSize genomes,
-// and a pad wavelet, which carries how many genomes are in the batch
+// and a pad wavelet (control wavelet, also encoding batch size)
 ///////////////////////////////////////////////////////////////////////////////
 const p2pRecvThread: u8 = 3;  // reserved from send thread pool when enabled
 const p2pBatchSize: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_BATCH_SIZE", @as(u16, 1)
 );
 comptime { @comptime_assert(1 <= p2pBatchSize and p2pBatchSize <= popSize); }
-// should fill p2p batches with only non-empty genomes? else sample uniformly
-const p2pSendExcludeEmpty: bool = 0 != comptime compconf.get_value_or(
+// include only non-empty genomes in p2p batches? else sample uniformly
+const p2pSendExcludeEmpty: bool = compconf.get_value_or(
   "ASYNC_GA_P2P_SEND_EXCLUDE_EMPTY", @as(u16, 0)
-);
+) > 0;
 const p2pMsgSize: u16 = if (p2pEnabled) (  // header, batch, and pad
   2 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
 ) else 0;
@@ -712,9 +712,9 @@ fn drainRecv_P() void {
       // (e.g., sender found few non-empty genomes)
       const recvCount = @as(u16, recvBuf_P[p2pPayloadWords] & 0xFFFF);
       clobberCounter[0] += immigrateEnriched(
-        @ptrcast([*]u32, &recvBuf_P),
-        math.min(recvCount, p2pBatchSize),
-        immEnrichP2p,
+        @ptrcast([*]u32, &recvBuf_P),  // batch
+        math.min(recvCount, p2pBatchSize),  // nGenomes
+        immEnrichP2p,  // enrichment
       );
       immCounter_P[0] += 1;
       recvFill_P = 0;  // reset for next msg
@@ -869,7 +869,8 @@ task cycleTask() void {
   // --------------------------------------------------------------------------
   // p2p send goes first, so neighbor sends can't starve it of threads
   // sample a batch of genomes into the send buffer, and send unless all are
-  // empty; if excluding empty, send unless the 0th population member is empty
+  // empty (if filtering for only live genomes, skip batch if sampled genome
+  // is empty)
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
     const sendBatch = @ptrcast([*]u32, &sendBuf_P[1]);

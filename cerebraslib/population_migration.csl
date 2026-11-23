@@ -34,7 +34,7 @@ fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
 // immigrate nGenomes messages from srcBuf, each over a uniformly sampled
 // resident (with replacement); returns how many immigrants clobbered
 fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
-    var nClobbers: u32 = 0;
+    var nClobbers: u16 = 0;
     for (@range(u16, nGenomes)) |i| {
         const resident = _get_ith_genome(pop, opscalar.unif16(popSize));
         if (genome.hasImmClobber) {  // hook edits immigrant's message in srcBuf
@@ -46,11 +46,11 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
                 else  // needs bit offset
                     genome.clobber_immigrant(resident, immigrant, bit % 32)
             );
-            nClobbers += @as(u32, isClobbered);
+            nClobbers += @as(u16, isClobbered);
         }
         genome.msg_unpack(srcBuf, i, resident);
     }
-    return nClobbers;
+    return @as(u32, nClobbers);
 }
 
 // pack up to nGenomes non-empty genomes as messages into destBuf,
