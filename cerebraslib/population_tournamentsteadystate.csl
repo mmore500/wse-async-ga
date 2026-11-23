@@ -95,8 +95,10 @@ fn _perform_selection_all() void {
 }
 
 // public API =================================================================
-fn emigrate_genomes(destBuf: [*]u32, nGenomes: u16) void {
-    migration.emigrate_genomes(@ptrcast([*]u32, &buffer), destBuf, nGenomes);
+fn emigrate_genomes(destBuf: [*]u32, nGenomes: u16) u16 {
+    return migration.emigrate_genomes(
+        @ptrcast([*]u32, &buffer), destBuf, nGenomes
+    );
 }
 
 fn immigrate_genomes(srcBuf: [*]u32, nGenomes: u16) u32 {

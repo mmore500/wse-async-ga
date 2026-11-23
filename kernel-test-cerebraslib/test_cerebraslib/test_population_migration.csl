@@ -51,8 +51,15 @@ fn _count_live_messages(mask: u16) u16 {
 
 fn test_emigrate_genomes() void {
     _setup(0xFF);
-    migration.emigrate_genomes(popPtr, msgPtr, nMsg);
+    @assert(migration.emigrate_genomes(popPtr, msgPtr, nMsg) == nMsg);
     @assert(_count_live_messages(0xFF) == nMsg);
+
+    // returns how many sampled genomes are non-empty
+    _setup(0x24);
+    for (@range(u16, 16)) |rep| {
+        const nLive = migration.emigrate_genomes(popPtr, msgPtr, nMsg);
+        @assert(nLive == _count_live_messages(0x24));
+    }
 }
 
 fn test_immigrate_genomes() void {

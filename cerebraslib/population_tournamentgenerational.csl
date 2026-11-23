@@ -187,8 +187,10 @@ fn _offset_word_index(wordIndex: u16, offset: u16) u32 {
 }
 
 // public API =================================================================
-fn emigrate_genomes(destBuf: [*]u32, nGenomes: u16) void {
-    migration.emigrate_genomes(@ptrcast([*]u32, &buffer), destBuf, nGenomes);
+fn emigrate_genomes(destBuf: [*]u32, nGenomes: u16) u16 {
+    return migration.emigrate_genomes(
+        @ptrcast([*]u32, &buffer), destBuf, nGenomes
+    );
 }
 
 fn immigrate_genomes(srcBuf: [*]u32, nGenomes: u16) u32 {

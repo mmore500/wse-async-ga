@@ -19,12 +19,16 @@ fn _get_ith_genome(pop: [*]u32, i: u16) [*]u32 {
 }
 
 // public API =================================================================
-// pack messages of nGenomes uniformly sampled genomes into destBuf
-fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) void {
+// pack messages of nGenomes uniformly sampled genomes into destBuf; returns
+// how many are non-empty
+fn emigrate_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
+    var nLive: u16 = 0;
     for (@range(u16, nGenomes)) |i| {
         const sampled = _get_ith_genome(pop, opscalar.unif16(popSize));
         genome.msg_pack(sampled, destBuf, i);
+        nLive += @as(u16, !genome.is_empty(sampled));
     }
+    return nLive;
 }
 
 // immigrate nGenomes messages from srcBuf, each over a uniformly sampled
