@@ -50,8 +50,8 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
 }
 
 // pack up to nGenomes non-empty genomes as messages into destBuf,
-// scanning forward from a sampled genome; returns how many messages were
-// packed (low half-word) and empty genomes skipped (high)
+// scanning forward from a sampled genome
+// returns num messages packed (lo) | num empty genomes skipped (hi)
 fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u32 {
     const start = opscalar.unif16(popSize);
     var nFound: u16 = 0;

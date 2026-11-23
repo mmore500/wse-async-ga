@@ -635,7 +635,8 @@ var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
 var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
 
 // send P2P ===================================================================
-var sendFlag_P: u16 = 0;  // need refill? above 1: cycles to wait first
+// need refill? ready at p2pBatchSize, with p2pBatchSize more per cycle to wait
+var sendFlag_P: u16 = 0;
 var sendSkipped_P: u16 = 0;  // empty genomes skipped filling batch in flight
 var sendThread_P: u8;  // which thread is sending?
 var sendBuf_P = @zeros([p2pMsgSize]u32);  // header, batch, pad
@@ -644,8 +645,9 @@ const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
 
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_P() void {
-  // wait a cycle per empty genome skipped, so send rate tracks non-empty
-  sendFlag_P = 1 + sendSkipped_P; busyThreads[sendThread_P] = 0;
+  // wait a cycle per batch of empty genomes skipped, so send rate tracks
+  // non-empty genomes
+  sendFlag_P = p2pBatchSize + sendSkipped_P; busyThreads[sendThread_P] = 0;
 }
 
 // open async uthread to send from sendBuf, header & pad emplaced at launch
@@ -873,7 +875,8 @@ task cycleTask() void {
   // send a batch of sampled genomes, unless the first is empty; or, if
   // excluding empty, of up to a batch of non-empty genomes, if any
   const p2pSendProbability = rtc_p2pSendProbability[0];
-  if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
+  const isSendReady_P = p2pEnabled and sendFlag_P / p2pBatchSize == 1;
+  if (isSendReady_P and rng.p(p2pSendProbability)) {
     const sendBatch_P = @ptrcast([*]u32, &sendBuf_P[1]);
     var sendCount_P: u16 = p2pBatchSize;
     sendSkipped_P = 0;
@@ -883,13 +886,14 @@ task cycleTask() void {
       sendSkipped_P = @as(u16, res >> 16);  // skipped count from hi
     } else {
       population.emigrate_genomes(sendBatch_P, p2pBatchSize);
+      // no send if first sampled genome is empty, so send rate tracks non-empty
       if (genome_.is_empty(sendBatch_P)) { sendCount_P = 0; }
     }
     @assert(p2pPadWavelet & sendCount_P == 0);
     sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount_P;
     if (sendCount_P > 0 and dispatchSend_P()) { sendFlag_P = 0; }
-  } else if (p2pEnabled and sendFlag_P > 1) {
-    sendFlag_P -= 1;  // wait out empty genomes skipped
+  } else if (p2pEnabled and sendFlag_P / p2pBatchSize > 1) {
+    sendFlag_P -= p2pBatchSize;  // wait out empty genomes skipped
   }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
@@ -1003,13 +1007,14 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
         @as(u16, p2pTarget & 0xFFFF),  // dest_row
         p2pMsgSize - 1  // body length: genomes and pad
       );
-      sendFlag_P = 1;
+      sendFlag_P = p2pBatchSize;
     }
   }
 
   //  how many active neighbors?
   closeoutRemaining = (
-    sendFlag_N + sendFlag_S + sendFlag_E + sendFlag_W + @as(u8, sendFlag_P)
+    sendFlag_N + sendFlag_S + sendFlag_E + sendFlag_W
+    + @as(u8, sendFlag_P > 0)
   );
 
   const globalSeed = rtc_globalSeed[0];
