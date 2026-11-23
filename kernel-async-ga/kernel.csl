@@ -874,11 +874,12 @@ task cycleTask() void {
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
     const sendBatch = @ptrcast([*]u32, &sendBuf_P[1]);
     var sendCount: u16 = p2pBatchSize;  // genomes in batch
-    var numLive: u16 = 0;  // of which, non-empty
+    var numLive: u16 = 0;  // num non-empty in batch
     if (!p2pSendExcludeEmpty) {
       numLive = population.emigrate_genomes(sendBatch, p2pBatchSize);
     } else if (
-      !genome_.is_empty(population._get_ith_genome(0))  // else, skip send
+      // skip live-packed batch if sample genome empty, for fairness
+      !genome_.is_empty(population._get_ith_genome(0))
     ) {
       numLive = population.emigrate_live_genomes(sendBatch, p2pBatchSize);
       sendCount = numLive;
