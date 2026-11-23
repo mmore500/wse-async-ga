@@ -38,7 +38,7 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
             const bit = i * genome.gBitsMsg;
             const immigrant = @ptrcast([*]u32, &srcBuf[bit / 32]);
             const isClobbered = (
-                if (genome.gBitsMsg % 32 == 0)
+                if (comptime genome.gBitsMsg % 32 == 0)
                     genome.clobber_immigrant(resident, immigrant)
                 else  // message under a word: hook takes its bit offset
                     genome.clobber_immigrant(resident, immigrant, bit % 32)
@@ -50,9 +50,9 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     return nClobbers;
 }
 
-// pack messages of up to nGenomes live genomes into destBuf, returning how
-// many: if a sampled genome is live, it and those after it (wrapping), so
-// nonzero with probability equal to the live fraction
+// sample a genome: if empty, return 0; else pack its message and those of
+// the non-empty genomes after it (wrapping), up to nGenomes in all, into
+// destBuf, returning how many messages were packed
 fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
     const start = opscalar.unif16(popSize);
     if (genome.is_empty(_get_ith_genome(pop, start))) { return 0; }

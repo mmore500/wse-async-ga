@@ -25,7 +25,7 @@ const unitBits: u16 = comptime (
     else 1
 );
 const gSizeUnits: u16 = gBitsMsg / unitBits;
-const unitMask: u32 = (
+const unitMask: u32 = comptime (
     if (unitBits == 32) 0xFFFFFFFF
     else (@as(u32, 1) << unitBits) - 1
 );
