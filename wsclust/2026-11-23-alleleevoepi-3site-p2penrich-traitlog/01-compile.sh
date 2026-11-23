@@ -172,7 +172,8 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # - neighbors are sent uniformly sampled genomes
 # - p2p edges are random PE pairs (within subgrids); with the p2p send
 #   probability, if the 0th population member is live (infected), a batch of
-#   live genomes is sent, so batches go at a rate that tracks live population
+#   up to 8 live genomes (1 wavelet) is sent, so batches go at a rate that
+#   tracks live population
 # ten independent runs (one job each, run in job order), each set by its
 # own runtime config (p2p targets, and per run p2p send probability,
 # mutation rate, seed), from two compiles:
@@ -182,14 +183,14 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #    (runtime config nestingFactorSubgrid 2), from 9 x 9 PE subgrids up to one
 #    576 x 576 subgrid; population 1055 per PE; infection seeded on every PE
 #    whose col and row are multiples of 9; p2p send probability 1 in 40; p2p
-#    batches of up to 8 genomes (1 wavelet), immigrated once; neighbor sends of 8 genomes (1 wavelet),
+#    immigrants immigrated once; neighbor sends of 8 genomes (1 wavelet),
 #    received 2 sends at a time; mutation rate 2^-12
 # 2-10. genome_alleleevoepi_2026_11_23, with 3 enabled sites, i.e., 8 strains;
 #    16 x 16 PE subgrids throughout the 1152 x 576 PEs (no nesting);
 #    population 4096 per PE, so each subgrid holds about 1 million hosts;
 #    infection seeded on the corner PE of each subgrid (seed PE stride 16);
-#    p2p send probability 1 in 20; p2p batches of up to 16 genomes (2
-#    wavelets), each immigrated 8 times (ASYNC_GA_ENRICH_IMMIGRANTS_P2P 8); neighbor sends of 32 genomes (4
+#    p2p send probability 1 in 20; each p2p immigrant immigrated 8 times
+#    (ASYNC_GA_ENRICH_IMMIGRANTS_P2P 8); neighbor sends of 32 genomes (4
 #    wavelets), received 1 send at a time; sweeping mutation rate 2^-26 to
 #    2^-10 by factors of 4 (named runtime config rtc_evoepi_mutationRate),
 #    one run each
@@ -201,6 +202,7 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 # note: globalSeed is u16 in kernel, and globalSeed * nRow * nCol is computed
 # as u32, so seed must stay below 2**32 / (1152 * 576) ~= 6473 to avoid wrap
 p2pMode=pairs
+p2pbatch=8  # 1 wavelet of 4-bit messages
 jobnum=0  # job order, in config names, as run step runs them in name order
 
 # compile, for each compile config; and write each run config's runtime
@@ -216,7 +218,6 @@ for compileConfig in control sites3; do
             ntrait=8
             p2p=0.025  # compiled-in, runtime config sets it too
             p2penrich=1
-            p2pbatch=8  # 1 wavelet of 4-bit messages
             subgrid=9
             seedstride=9
             popsize=1055  # 576 * 576 * 1055 ~= 350 million hosts
@@ -233,7 +234,6 @@ for compileConfig in control sites3; do
             ntrait=16
             p2p=0.05  # compiled-in, runtime config sets it too
             p2penrich=8
-            p2pbatch=16  # 2 wavelets of 4-bit messages
             subgrid=16
             seedstride=16
             popsize=4096  # 16 * 16 * 4096 ~= 1 million hosts per subgrid
