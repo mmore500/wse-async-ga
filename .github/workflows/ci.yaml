@@ -125,12 +125,13 @@ jobs:
             genome: genome_alleleevoepi_2026_11_19
             p2p: 0.5
             sendNumGenomes: 2
-          - arch: wse3  # p2p batches
+          - arch: wse3  # p2p batches of non-empty genomes
             nonBlock: 1
             genome: genome_alleleevoepi_2026_11_19
             p2p: 0.5
             sendNumGenomes: 2
             p2pBatch: 4
+            p2pExcludeEmpty: 1
     env:
       CSLC: cslc
       CS_PYTHON: cs_python
@@ -226,6 +227,7 @@ jobs:
           export ASYNC_GA_NONBLOCK="${{ matrix.nonBlock }}"
           export COMPCONFENV_ASYNC_GA_P2P_SEND_PROBABILITY__f32="${{ matrix.p2p }}"
           export COMPCONFENV_ASYNC_GA_P2P_BATCH_SIZE__u16="${{ matrix.p2pBatch || 1 }}"
+          export COMPCONFENV_ASYNC_GA_P2P_SEND_EXCLUDE_EMPTY__u16="${{ matrix.p2pExcludeEmpty || 0 }}"
           export COMPCONFENV_ASYNC_GA_NEIGHBOR_SEND_NUM_GENOMES__u16="${{ matrix.sendNumGenomes || 1 }}"
           # before compile, so it is the only runtime config
           if [ "${{ matrix.p2p }}" != "0" ]; then

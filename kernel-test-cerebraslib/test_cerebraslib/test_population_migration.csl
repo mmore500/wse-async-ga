@@ -72,28 +72,35 @@ fn test_immigrate_genomes() void {
     }
 }
 
+// packed (low half-word) and skipped (high) counts
+fn _emigrate_live() u32 {
+    return migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);
+}
+
 fn test_emigrate_live_genomes() void {
-    // all live: full batch
+    // all live: full batch, none skipped
     _setup(0xFF);
-    @assert(migration.emigrate_live_genomes(popPtr, msgPtr, nMsg) == nMsg);
+    @assert(_emigrate_live() == nMsg);
     @assert(_count_live_messages(0xFF) == nMsg);
 
-    // two live: nothing if sampled host is empty, else short batch of both
-    _setup(0x24);
-    var nSent: u16 = 0;
-    for (@range(u16, 64)) |rep| {
-        const count = migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);
-        @assert(count == 0 or count == 2);
-        if (count == 2) {
-            @assert(_count_live_messages(0x24) == 2);
-            nSent += 1;
-        }
-    }
-    @assert(0 < nSent and nSent < 64);  // sent about 1 in 4 times
-
-    // none live: nothing sent
+    // none live: nothing packed, whole population skipped
     _setup(0x00);
-    @assert(migration.emigrate_live_genomes(popPtr, msgPtr, nMsg) == 0);
+    @assert(_emigrate_live() == (8 << 16));
+
+    // two live: both packed, other six skipped
+    _setup(0x24);
+    for (@range(u16, 16)) |rep| {
+        @assert(_emigrate_live() == ((6 << 16) | 2));
+        @assert(_count_live_messages(0x24) == 2);
+    }
+
+    // six live: full batch, skipping between 0 and 2 empty genomes
+    _setup(0x7E);
+    for (@range(u16, 16)) |rep| {
+        const res = _emigrate_live();
+        @assert((res & 0xFFFF) == nMsg and (res >> 16) <= 2);
+        @assert(_count_live_messages(0x7E) == nMsg);
+    }
 }
 
 fn do_test() void {

@@ -197,7 +197,7 @@ fn immigrate_genomes(srcBuf: [*]u32, nGenomes: u16) u32 {
     );
 }
 
-fn emigrate_live_genomes(destBuf: [*]u32, nGenomes: u16) u16 {
+fn emigrate_live_genomes(destBuf: [*]u32, nGenomes: u16) u32 {
     return migration.emigrate_live_genomes(
         @ptrcast([*]u32, &buffer), destBuf, nGenomes
     );

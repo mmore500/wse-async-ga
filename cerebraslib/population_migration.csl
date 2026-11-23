@@ -50,22 +50,20 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
     return nClobbers;
 }
 
-// sample a genome: if empty, return 0; else pack its message and those of
-// the non-empty genomes after it (wrapping), up to nGenomes in all, into
-// destBuf, returning how many messages were packed
-fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
+// pack messages of non-empty genomes into destBuf, scanning from a sampled
+// genome until nGenomes are found or all were tried; returns how many
+// messages were packed (low half-word) and empty genomes skipped (high)
+fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u32 {
     const start = opscalar.unif16(popSize);
-    if (genome.is_empty(_get_ith_genome(pop, start))) { return 0; }
-
     var nFound: u16 = 0;
-    var offset: u16 = 0;
-    while (nFound < nGenomes and offset < popSize) : (offset += 1) {
-        const i = opscalar.addmod16(start, offset, popSize);
+    var nTried: u16 = 0;
+    while (nFound < nGenomes and nTried < popSize) : (nTried += 1) {
+        const i = opscalar.addmod16(start, nTried, popSize);
         const candidate = _get_ith_genome(pop, i);
         if (!genome.is_empty(candidate)) {
             genome.msg_pack(candidate, destBuf, nFound);
             nFound += 1;
         }
     }
-    return nFound;
+    return (@as(u32, nTried - nFound) << 16) | @as(u32, nFound);
 }
