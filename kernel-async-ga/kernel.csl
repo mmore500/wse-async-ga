@@ -710,10 +710,10 @@ fn drainRecv_P() void {
     if (recvFill_P == p2pMsgSize) {  // message complete
       // batch count may not be full batch size
       // (e.g., sender found few non-empty genomes)
-      const recvCount_P = @as(u16, recvBuf_P[p2pPayloadWords] & 0xFFFF);
+      const recvCount = @as(u16, recvBuf_P[p2pPayloadWords] & 0xFFFF);
       clobberCounter[0] += immigrateEnriched(
         @ptrcast([*]u32, &recvBuf_P),
-        math.min(recvCount_P, p2pBatchSize),
+        math.min(recvCount, p2pBatchSize),
         immEnrichP2p,
       );
       immCounter_P[0] += 1;
@@ -872,18 +872,20 @@ task cycleTask() void {
   // empty; if excluding empty, send unless the 0th population member is empty
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
-    const sendBatch_P = @ptrcast([*]u32, &sendBuf_P[1]);
-    var sendCount_P: u16 = p2pBatchSize;  // genomes in batch
-    var numLive_P: u16 = 0;  // of which, non-empty
+    const sendBatch = @ptrcast([*]u32, &sendBuf_P[1]);
+    var sendCount: u16 = p2pBatchSize;  // genomes in batch
+    var numLive: u16 = 0;  // of which, non-empty
     if (!p2pSendExcludeEmpty) {
-      numLive_P = population.emigrate_genomes(sendBatch_P, p2pBatchSize);
-    } else if (!genome_.is_empty(population._get_ith_genome(0))) {
-      numLive_P = population.emigrate_live_genomes(sendBatch_P, p2pBatchSize);
-      sendCount_P = numLive_P;
+      numLive = population.emigrate_genomes(sendBatch, p2pBatchSize);
+    } else if (
+      !genome_.is_empty(population._get_ith_genome(0))  // else, skip send
+    ) {
+      numLive = population.emigrate_live_genomes(sendBatch, p2pBatchSize);
+      sendCount = numLive;
     }
-    @assert(p2pPadWavelet & sendCount_P == 0);
-    sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount_P;
-    if (numLive_P > 0 and dispatchSend_P()) { sendFlag_P = 0; }
+    @assert(p2pPadWavelet & sendCount == 0);
+    sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount;
+    if (numLive > 0 and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
