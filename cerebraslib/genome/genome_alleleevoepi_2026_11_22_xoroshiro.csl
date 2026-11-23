@@ -132,6 +132,7 @@ param rng: imported_module;  // seeded xoroshiro64** PRNG, for mutation
 const compconf = @import_module("<compconf>");
 const layout_module = @import_module("<layout>");
 
+const bitmanip = @import_module("cerebraslib/bitmanip.csl");
 const opscalar = @import_module("cerebraslib/opscalar.csl");
 // only the pathogen migrates, by default; immunity stays with host
 const gmsg_util = @import_module("cerebraslib/genome_message.csl", .{
@@ -437,19 +438,18 @@ fn _clobber_immigrant_genome(
     return isClobbered;
 }
 
-// as above, for a message (pathogen) bitOffset bits into immigrant[0]: it
-// may infect resident, whose pathogen is then written back so unpacking the
-// message leaves resident as is
+// as above, for a message (pathogen nibble) bitOffset bits into
+// immigrant[0]: it may infect resident, whose pathogen is then written back
+// so unpacking the message leaves resident as is
 fn _clobber_immigrant_msg(
     resident: genomePtr_t, immigrant: [*]u32, bitOffset: u16
 ) bool {
-    const mask: u32 = (@as(u32, 1) << gBitsMsg) - 1;
+    const nibbles = @ptrcast([*]u8, immigrant);
     var donor = @zeros(genome_t);  // message, as a genome
-    donor[0] = (immigrant[0] >> bitOffset) & mask;
+    donor[0] = bitmanip.get_nth_nibble(nibbles, bitOffset / 4);
     const infects = _sample_transmission(resident, &donor);
     if (infects) _infect(resident, &donor);
-    immigrant[0] &= ~(mask << bitOffset);
-    immigrant[0] |= (resident[0] & mask) << bitOffset;
+    bitmanip.set_nth_nibble(nibbles, bitOffset / 4, @as(u8, resident[0] & 0xF));
     return !infects and _is_infected(&donor);
 }
 
