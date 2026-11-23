@@ -371,13 +371,15 @@ fn initialize_one(genome: genomePtr_t) void {
 fn clobber_immigrant(
     resident: genomePtr_t, immigrant: [*]u32, bitOffset: u16
 ) bool {
-    var donor = @zeros(genome_t);  // message, as a genome
-    donor[0] = (immigrant[0] >> bitOffset) & 0xFFFF;
-    const infects = _sample_transmission(resident, &donor);
-    if (infects) _infect(resident, &donor);
-    immigrant[0] &= ~(@as(u32, 0xFFFF) << bitOffset);
-    immigrant[0] |= @as(u32, _cast_fields(resident).*.pathogen) << bitOffset;
-    return !infects and _is_infected(&donor);
+    // message is a half-word: viewed as a genome, only its pathogen is valid
+    const halfWords = @ptrcast([*]u16, immigrant);
+    const pathogen = &halfWords[bitOffset / 16];
+    const donor = @ptrcast(genomePtr_t, pathogen);
+    const isInfected = _is_infected(donor);
+    const infects = _sample_transmission(resident, donor);
+    if (infects) _infect(resident, donor);
+    pathogen.* = _cast_fields(resident).*.pathogen;
+    return !infects and isInfected;
 }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
