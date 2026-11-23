@@ -195,7 +195,9 @@ echo ">>>>> ${FLOWNAME} :: ${STEPNAME} || ${SECONDS}"
 #    (runtime config calcSymbolValues of rtc_evoepi_mutationRate), 2^-26 to
 #    2^-10 by factors of 4: the subgrid at subgrid row r, col c gets
 #    2^-(26 - 2 * ((r + c) mod 9)), i.e., diagonal stripes, 288 of the 2592
-#    subgrids per rate
+#    subgrids per rate; each PE's rate is saved in the run's a=rtc parquet
+#    (column rtc_evoepi_mutationRate_f32), as genome metadata column
+#    evoepi_mutation_rate holds only the first PE's
 # per-PE trait logger records the trait value of each sampled host (0th
 # population member), one multiplexed record per bit: bit 0 set if infected,
 # and bit 1 + i the allele at site i
