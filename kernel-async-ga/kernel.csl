@@ -614,15 +614,18 @@ const p2pBatchSize: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_BATCH_SIZE", @as(u16, 1)
 );
 comptime { @comptime_assert(1 <= p2pBatchSize and p2pBatchSize <= popSize); }
+
+const p2pMsgSize: u16 = if (p2pEnabled) (  // header, batch, and pad
+  2 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
+) else 0;
+
 // include only non-empty genomes in p2p batches? otherwise, sample uniformly
 const p2pSendExcludeEmpty: bool = compconf.get_value_or(
   "ASYNC_GA_P2P_SEND_EXCLUDE_EMPTY", @as(u16, 0)
 ) > 0;
-const p2pMsgSize: u16 = if (p2pEnabled) (  // header, batch, and pad
-  2 + comptime opscalar.divceil16(p2pBatchSize * genome_.gBitsMsg, 32)
-) else 0;
+
 // last wavelet of message arrives as control wavelet, so pad w/ no-op task ID
-// (low 16 bits are free, and are used for the batch's genome count)
+// (low 16 bits are free, used for the batch's genome count)
 const p2pPadWavelet: u32 = @as(u32, @get_int(ignorePadCtrlWavTaskID)) << 16;
 comptime {  // fixed-length message passing supports at most 31 wavelets
   if (p2pEnabled) @comptime_assert(p2pMsgSize - 1 < 32);
@@ -679,6 +682,7 @@ fn dispatchSend_P() bool {
 // recv P2P ===================================================================
 // RE https://cerebras-sdk-docs-130.netlify.app/csl/code-examples/tutorial-pipeline-02-fifo
 const INFINITE_DSD_LEN: u16 = 0x7fff;
+
 const p2pRecvFifoBufMsgs: u16 = comptime compconf.get_value_or(
   "ASYNC_GA_P2P_RECV_FIFO_BUF_MSGS", @as(u16, 16)
 );
@@ -691,6 +695,7 @@ var recvFifoBuf_P = @zeros([
 const recvFifo_P = @allocate_fifo(recvFifoBuf_P, if (p2pEnabled) .{
   .activate_push = ignRecvTaskID_P,  // blocked until closeout
 } else .{});
+
 const p2pPayloadWords: u16 = if (p2pEnabled) p2pMsgSize - 2 else 0;
 var recvBuf_P = @zeros([p2pPayloadWords + 1]u32);  // batch, then pad
 const recvBufDsd_P = @get_dsd(mem1d_dsd, .{
@@ -885,8 +890,10 @@ task cycleTask() void {
       numLive = population.emigrate_live_genomes(sendBatch, p2pBatchSize);
       sendCount = numLive;
     }
+
     @assert(p2pPadWavelet & sendCount == 0);
     sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount;
+
     if (numLive > 0 and dispatchSend_P()) { sendFlag_P = 0; }
   }
   const shuf2 = @random16() & 3;
