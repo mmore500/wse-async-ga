@@ -615,7 +615,7 @@ const p2pBatchSize: u16 = comptime compconf.get_value_or(
 );
 comptime { @comptime_assert(1 <= p2pBatchSize and p2pBatchSize <= popSize); }
 // should fill p2p batches with only non-empty genomes? else sample uniformly
-// (either way, no send if a sampled genome is empty)
+// (no send if first sampled genome is empty; else, if all sampled are empty)
 const p2pSendExcludeEmpty: bool = 0 != comptime compconf.get_value_or(
   "ASYNC_GA_P2P_SEND_EXCLUDE_EMPTY", @as(u16, 0)
 );
@@ -634,6 +634,17 @@ var rtc_p2pTarget = [1]u32{ 0xFFFFFFFF };  // default none
 var ptr_rtc_p2pTarget : [*]u32 = &rtc_p2pTarget;
 var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
 var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
+
+// is every genome in a batch of messages empty?
+fn isBatchEmpty(batch: [*]u32, nGenomes: u16) bool {
+  var unpacked = @zeros([genome_.gWordsPop]u32);
+  const unpackedPtr = @ptrcast([*]u32, &unpacked);
+  for (@range(u16, nGenomes)) |i| {
+    genome_.msg_unpack(batch, i, unpackedPtr);
+    if (!genome_.is_empty(unpackedPtr)) { return false; }
+  }
+  return true;
+}
 
 // send P2P ===================================================================
 var sendFlag_P: u8 = 0;  // need refill? initialized at startup
@@ -869,13 +880,15 @@ task cycleTask() void {
   // handle send flags, load send buffer from pop and start next async send
   // --------------------------------------------------------------------------
   // p2p send goes first, so neighbor sends can't starve it of threads
-  // sample a batch of genomes into the send buffer, and send unless the first
-  // is empty, so sends go at a rate that tracks the non-empty population
+  // sample a batch of genomes into the send buffer, and send unless empty
   const p2pSendProbability = rtc_p2pSendProbability[0];
   if (p2pEnabled and sendFlag_P == 1 and rng.p(p2pSendProbability)) {
     const sendBatch_P = @ptrcast([*]u32, &sendBuf_P[1]);
     population.emigrate_genomes(sendBatch_P, p2pBatchSize);
-    const isEmpty = genome_.is_empty(sendBatch_P);
+    const isEmpty = (
+      if (p2pSendExcludeEmpty) genome_.is_empty(sendBatch_P)  // first sampled
+      else isBatchEmpty(sendBatch_P, p2pBatchSize)
+    );
     var sendCount_P: u16 = p2pBatchSize;
     if (p2pSendExcludeEmpty and !isEmpty) {  // refill, skipping empty genomes
       sendCount_P = population.emigrate_live_genomes(sendBatch_P, p2pBatchSize);
