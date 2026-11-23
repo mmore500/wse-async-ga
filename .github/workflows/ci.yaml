@@ -106,6 +106,10 @@ jobs:
             sendNumGenomes: 2
           - genome: genome_alleleevoepi_2026_11_21
             sendNumGenomes: 2
+          - genome: genome_alleleevoepi_2026_11_22  # 4-bit messages
+            sendNumGenomes: 8
+          - genome: genome_alleleevoepi_2026_11_22_xoroshiro
+            sendNumGenomes: 8
           - arch: wse3
             nonBlock: 0
             genome: genome_bitdrift
