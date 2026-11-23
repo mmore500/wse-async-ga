@@ -457,26 +457,19 @@ fn initialize_one(genome: genomePtr_t) void {
     );
 }
 
-// immigrant is a message (pathogen) bitOffset bits into immigrant[0]; swap in
-// resident's pathogen unless immigrant's infects resident, so unpacking it
-// leaves resident as it should be; count blocked infected immigrants
+// immigrant's message (pathogen), bitOffset bits into immigrant[0], may infect
+// resident, whose pathogen is then written back so unpacking the message
+// leaves resident as is; count blocked infected immigrants
 fn clobber_immigrant(
     resident: genomePtr_t, immigrant: [*]u32, bitOffset: u16
 ) bool {
-    var incoming = @zeros(genome_t);  // immigrant's pathogen in resident's host
-    const f = _cast_fields(&incoming);
-    f.*.immunity = _cast_fields(resident).*.immunity;
-    f.*.pathogen = @as(u16, (immigrant[0] >> bitOffset) & 0xFFFF);
-    const infects = _sample_transmission(resident, &incoming);
-    const isClobbered = !infects and _is_infected(&incoming);
-    if (infects) {
-        _infect(&incoming, &incoming); // mutates within resident's immunity
-    } else {
-        f.*.pathogen = _cast_fields(resident).*.pathogen;
-    }
+    var donor = @zeros(genome_t);  // message, as a genome
+    donor[0] = (immigrant[0] >> bitOffset) & 0xFFFF;
+    const infects = _sample_transmission(resident, &donor);
+    if (infects) _infect(resident, &donor);
     immigrant[0] &= ~(@as(u32, 0xFFFF) << bitOffset);
-    immigrant[0] |= @as(u32, f.*.pathogen) << bitOffset;
-    return isClobbered;
+    immigrant[0] |= @as(u32, _cast_fields(resident).*.pathogen) << bitOffset;
+    return !infects and _is_infected(&donor);
 }
 
 fn trample_resident(resident: genomePtr_t, spawn: genomePtr_t) void {
