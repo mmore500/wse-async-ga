@@ -50,9 +50,8 @@ fn immigrate_genomes(pop: [*]u32, srcBuf: [*]u32, nGenomes: u16) u32 {
 }
 
 // pack up to nGenomes non-empty genomes as messages into destBuf,
-// scanning forward from a sampled genome
-// returns num messages packed (lo) | num empty genomes skipped (hi)
-fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u32 {
+// scanning forward from a sampled genome; returns num messages packed
+fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u16 {
     const start = opscalar.unif16(popSize);
     var nFound: u16 = 0;
     var nTried: u16 = 0;
@@ -64,5 +63,5 @@ fn emigrate_live_genomes(pop: [*]u32, destBuf: [*]u32, nGenomes: u16) u32 {
             nFound += 1;
         }
     }
-    return (@as(u32, nTried - nFound) << 16) | @as(u32, nFound);
+    return nFound;
 }

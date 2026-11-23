@@ -72,33 +72,31 @@ fn test_immigrate_genomes() void {
     }
 }
 
-// packed (low half-word) and skipped (high) counts
-fn _emigrate_live() u32 {
+fn _emigrate_live() u16 {
     return migration.emigrate_live_genomes(popPtr, msgPtr, nMsg);
 }
 
 fn test_emigrate_live_genomes() void {
-    // all live: full batch, none skipped
+    // all live: full batch
     _setup(0xFF);
     @assert(_emigrate_live() == nMsg);
     @assert(_count_live_messages(0xFF) == nMsg);
 
-    // none live: nothing packed, whole population skipped
+    // none live: nothing packed
     _setup(0x00);
-    @assert(_emigrate_live() == (8 << 16));
+    @assert(_emigrate_live() == 0);
 
-    // two live: both packed, other six skipped
+    // two live: both packed, wherever the scan starts
     _setup(0x24);
     for (@range(u16, 16)) |rep| {
-        @assert(_emigrate_live() == ((6 << 16) | 2));
+        @assert(_emigrate_live() == 2);
         @assert(_count_live_messages(0x24) == 2);
     }
 
-    // six live: full batch, skipping between 0 and 2 empty genomes
+    // six live: full batch
     _setup(0x7E);
     for (@range(u16, 16)) |rep| {
-        const res = _emigrate_live();
-        @assert((res & 0xFFFF) == nMsg and (res >> 16) <= 2);
+        @assert(_emigrate_live() == nMsg);
         @assert(_count_live_messages(0x7E) == nMsg);
     }
 }
