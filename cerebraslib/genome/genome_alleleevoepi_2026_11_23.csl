@@ -104,7 +104,9 @@
 //!         "CEREBRASLIB_EVOEPI_IMMUNITY_FLOOR:f32", 0.05,
 //!     )), pl.Float32),
 //!     "evoepi_mutation_rate": (float(
-//!         rtc_data["rtc_evoepi_mutationRate"].view(np.float32).flat[0]
+//!         (lambda rates: (
+//!             rates.flat[0] if (rates == rates.flat[0]).all() else np.nan
+//!         ))(rtc_data["rtc_evoepi_mutationRate"].view(np.float32))
 //!         if "rtc_evoepi_mutationRate" in rtc_data else (
 //!             compconf_data.get("CEREBRASLIB_EVOEPI_MUTATION_RATE:f32", 1e-6)
 //!         )
@@ -184,9 +186,10 @@ const _mutation_rate: f32 = comptime compconf.get_value_or( //nofmt
 );
 comptime { @comptime_assert(0.0 <= _mutation_rate); }
 
-// named runtime config, constant across device: mutation rate, defaulting to
-// compconf value; host may overwrite it before launch (see layout.csl and
-// kernel-async-ga/runtime_config_options.md)
+// named runtime config: mutation rate, defaulting to compconf value; host may
+// overwrite it before launch (see layout.csl and
+// kernel-async-ga/runtime_config_options.md), and may vary it between PEs
+// (metadata evoepi_mutation_rate is then NaN; see the run's a=rtc output)
 var rtc_evoepi_mutationRate = [1]f32{ _mutation_rate };
 var ptr_rtc_evoepi_mutationRate: [*]f32 = &rtc_evoepi_mutationRate;
 comptime {
