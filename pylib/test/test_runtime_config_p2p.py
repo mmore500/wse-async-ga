@@ -634,12 +634,12 @@ def test_rtc_evoepi_mutation_rate_validator(rate: float, ok: bool) -> None:
     assert (result.returncode == 0) == ok
 
 
-def _validate_range(validator: str, npz: bytes, comptime: dict) -> bool:
-    """Does npz pass an rtc_p2pPartnerRange validator?"""
+def _validate_spread(validator: str, npz: bytes, comptime: dict) -> bool:
+    """Does npz pass an rtc_p2pPartnerSpread validator?"""
     return not subprocess.run(
         [
             sys.executable,
-            validate_dir.with_name("rtc_p2pPartnerRange") / validator,
+            validate_dir.with_name("rtc_p2pPartnerSpread") / validator,
             json.dumps(comptime),
         ],
         input=npz,
@@ -648,9 +648,9 @@ def _validate_range(validator: str, npz: bytes, comptime: dict) -> bool:
     ).returncode
 
 
-@pytest.mark.parametrize("partnerRange", [0, 1, 2 << 16 | 3])
-def test_p2p_partner_range_template(
-    tmp_path: pathlib.Path, partnerRange: int
+@pytest.mark.parametrize("partnerSpread", [0, 1, 2 << 16 | 3])
+def test_p2p_partner_spread_template(
+    tmp_path: pathlib.Path, partnerSpread: int
 ) -> None:
     comptime = {
         "nRow": 4,
@@ -663,59 +663,59 @@ def test_p2p_partner_range_template(
     }
     # unset by default, so the kernel's own default (no offset) stands
     npz = _generate(tmp_path, comptime, {"p2pMode": "pairs"})
-    assert "rtc_p2pPartnerRange" not in np.load(io.BytesIO(npz)).files
+    assert "rtc_p2pPartnerSpread" not in np.load(io.BytesIO(npz)).files
 
     npz = _generate(
         tmp_path,
         comptime,
-        {"p2pMode": "pairs", "p2pPartnerRange": partnerRange},
+        {"p2pMode": "pairs", "p2pPartnerSpread": partnerSpread},
     )
-    data = np.load(io.BytesIO(npz))["rtc_p2pPartnerRange"]
+    data = np.load(io.BytesIO(npz))["rtc_p2pPartnerSpread"]
     assert data.shape == (4, 4, 1) and data.dtype == np.uint32
-    assert (data == partnerRange).all()
+    assert (data == partnerSpread).all()
 
 
-def test_p2p_partner_range_validators_reject() -> None:
+def test_p2p_partner_spread_validators_reject() -> None:
     comptime = {"nRow": 4, "nCol": 4, "nRowSubgrid": 0, "nColSubgrid": 0}
     none = 0xFFFFFFFF
     # (0, 0) <-> (1, 1) paired, others lack target; values are col << 16 | row
     target = np.full((4, 4, 1), none, np.uint32)
     target[0, 0], target[1, 1] = 1 << 16 | 1, 0
 
-    def npz(partnerRange: int, **kwargs: np.ndarray) -> bytes:
+    def npz(partnerSpread: int, **kwargs: np.ndarray) -> bytes:
         return _to_npz(
             rtc_p2pTarget=target,
-            rtc_p2pPartnerRange=np.full((4, 4, 1), partnerRange, np.uint32),
+            rtc_p2pPartnerSpread=np.full((4, 4, 1), partnerSpread, np.uint32),
             **kwargs,
         )
 
     for validator in "default.py", "intersubgrid.py":
-        assert _validate_range(validator, npz(0), comptime), validator
-        assert _validate_range(validator, npz(2 << 16 | 2), comptime)
+        assert _validate_spread(validator, npz(0), comptime), validator
+        assert _validate_spread(validator, npz(2 << 16 | 2), comptime)
         # (1, 1) plus 3 falls off the 4 x 4 grid
-        assert not _validate_range(validator, npz(3 << 16), comptime)
-        assert not _validate_range(validator, npz(3), comptime)
+        assert not _validate_spread(validator, npz(3 << 16), comptime)
+        assert not _validate_spread(validator, npz(3), comptime)
 
-    # range alone is bounded by the grid, with or without targets
-    assert not _validate_range(
+    # spread alone is bounded by the grid, with or without targets
+    assert not _validate_spread(
         "default.py",
-        _to_npz(rtc_p2pPartnerRange=np.full((4, 4, 1), 4, np.uint32)),
+        _to_npz(rtc_p2pPartnerSpread=np.full((4, 4, 1), 4, np.uint32)),
         comptime,
     )
-    assert _validate_range(
+    assert _validate_spread(
         "intersubgrid.py",
-        _to_npz(rtc_p2pPartnerRange=np.full((4, 4, 1), 4, np.uint32)),
+        _to_npz(rtc_p2pPartnerSpread=np.full((4, 4, 1), 4, np.uint32)),
         comptime,
     )  # nothing to check without targets
 
     # within the grid, but reaching out of a 2 x 2 subgrid
-    assert _validate_range("default.py", npz(1 << 16 | 1), comptime)
-    assert not _validate_range(
+    assert _validate_spread("default.py", npz(1 << 16 | 1), comptime)
+    assert not _validate_spread(
         "intersubgrid.py",
         npz(1 << 16 | 1),
         {**comptime, "nRowSubgrid": 2, "nColSubgrid": 2},
     )
-    assert not _validate_range(
+    assert not _validate_spread(
         "intersubgrid.py",
         npz(
             1 << 16 | 1,

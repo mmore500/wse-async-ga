@@ -1,4 +1,4 @@
-"""Validator that rtc_p2pPartnerRange keeps p2p targets in their subgrid.
+"""Validator that rtc_p2pPartnerSpread keeps p2p targets in their subgrid.
 
 Takes comptime configs json as argument and runtime config npz on stdin.
 """
@@ -10,7 +10,7 @@ import sys
 import numpy as np
 
 
-def validate_rtc_p2pPartnerRange_within_subgrid(
+def validate_rtc_p2pPartnerSpread_within_subgrid(
     data: np.ndarray,
     target: np.ndarray,
     nRowSubgrid: np.ndarray,
@@ -33,12 +33,12 @@ def validate_rtc_p2pPartnerRange_within_subgrid(
     subgridOriginCol = cols - cols % widths
 
     target = target.squeeze(axis=2)  # enforce depth exactly 1
-    partnerRange = np.broadcast_to(data.squeeze(axis=2), (nRow, nCol))
+    partnerSpread = np.broadcast_to(data.squeeze(axis=2), (nRow, nCol))
     has_target = target != 0xFFFFFFFF
-    col = (target >> 16) + (partnerRange >> 16)
-    row = (target & 0xFFFF) + (partnerRange & 0xFFFF)
+    col = (target >> 16) + (partnerSpread >> 16)
+    row = (target & 0xFFFF) + (partnerSpread & 0xFFFF)
     col, row = col[has_target], row[has_target]
-    assert (col < nCol).all() and (row < nRow).all(), "range off grid"
+    assert (col < nCol).all() and (row < nRow).all(), "spread off grid"
 
     is_bad = (  # is intersubgrid?
         subgridOriginRow[row, col] != subgridOriginRow[has_target]
@@ -49,8 +49,8 @@ def validate_rtc_p2pPartnerRange_within_subgrid(
 if __name__ == "__main__":
     comptime_config = json.loads(sys.argv[1])
     runtime_config = np.load(io.BytesIO(sys.stdin.buffer.read()))
-    data = runtime_config["rtc_p2pPartnerRange"]
-    print(f"validating rtc_p2pPartnerRange {data.shape=}")
+    data = runtime_config["rtc_p2pPartnerSpread"]
+    print(f"validating rtc_p2pPartnerSpread {data.shape=}")
     if "rtc_p2pTarget" not in runtime_config:
         print("no rtc_p2pTarget to offset, nothing to check")
         sys.exit()
@@ -64,6 +64,6 @@ if __name__ == "__main__":
         )
         for key in ("nRowSubgrid", "nColSubgrid")
     )
-    validate_rtc_p2pPartnerRange_within_subgrid(
+    validate_rtc_p2pPartnerSpread_within_subgrid(
         data, runtime_config["rtc_p2pTarget"], nRowSubgrid, nColSubgrid
     )
