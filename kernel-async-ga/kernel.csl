@@ -494,9 +494,7 @@ const immEnrichP2p: u16 = comptime compconf.get_value_or(
 );
 comptime { @comptime_assert(immEnrichNeigh >= 1 and immEnrichP2p >= 1); }
 
-// keep immigration symmetric among neighbors, by skipping immigration from
-// neighbors that have immigrated more often than the neighbor that has
-// immigrated least often, among those that have at all?
+// balance for symmetric incoming immigration among neighbors?
 const recvSymmetricThrottle: bool = comptime compconf.get_value_or(
   "ASYNC_GA_NEIGHBOR_RECV_SYMMETRIC_THROTTLE", @as(u16, 1)
 ) != 0;
