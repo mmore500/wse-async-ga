@@ -69,9 +69,12 @@ fn _initialize_ith_genome(i: u16) void {
     genome.initialize_one(_get_ith_genome(i));
 }
 
-fn _sample_one_tournament() u16 {
+// hold a tournament among tournamentSize genomes, rounded stochastically, and
+// return the fittest's word index; under a tournament size of 1, a tournament
+// of no genomes may come up, and the focal genome then selects itself
+fn _sample_one_tournament(self: u16) u16 {
     var bestFit: f32 = math.NEGATIVE_INF(f32);
-    var bestIdx: u16 = 0;
+    var bestIdx: u16 = self;
     const epsilon = random.random_f32(0.0, 1.0);
     const effectiveTournamentSize = @as(i32, tournamentSize + epsilon);
     for (@range(i32, effectiveTournamentSize)) |i| {
@@ -124,7 +127,7 @@ fn _perform_extinction_all() void {
 fn _perform_selection_all() void {
     _eval_fitness_all();
     // sample tournament returns word indices, so don't need to rescale
-    @map(_sample_one_tournament, indexBufDsd);
+    for (@range(u16, popSize)) |i| { indexBuf[i] = _sample_one_tournament(i); }
 
     // back up main buffer to swap buffer
     @mov32(swapDsd, bufferDsd);
