@@ -33,10 +33,8 @@ if __name__ == "__main__":
     comptime_config = json.loads(sys.argv[1])
     runtime_config = np.load(io.BytesIO(sys.stdin.buffer.read()))
     data = runtime_config["rtc_p2pPartnerRange"]
-    target = (
-        runtime_config["rtc_p2pTarget"]
-        if "rtc_p2pTarget" in runtime_config
-        else None
-    )
+    target = None  # no p2p targets to offset
+    if "rtc_p2pTarget" in runtime_config:
+        target = runtime_config["rtc_p2pTarget"]
     print(f"validating rtc_p2pPartnerRange {data.shape=}")
     validate_rtc_p2pPartnerRange_in_bounds(data, target, comptime_config)
