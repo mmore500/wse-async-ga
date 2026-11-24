@@ -177,9 +177,9 @@ def test_default_template_p2p_modes(tmp_path: pathlib.Path) -> None:
 )
 def test_p2p_send_probability_validator(probability: float, ok: bool) -> None:
     npz = _to_npz(
-        rtc_p2pSendProbability=np.full(
-            (2, 2, 1), probability, np.float32
-        ).view(np.uint32)
+        rtc_p2pSendProbability=np.full((2, 2, 1), probability, np.float32).view(
+            np.uint32
+        )
     )
     result = subprocess.run(
         [
