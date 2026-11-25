@@ -48,6 +48,9 @@ echo "ASYNC_GA_NONBLOCK ${ASYNC_GA_NONBLOCK}"
 ASYNC_GA_POPSIZE="${ASYNC_GA_POPSIZE:-32}"
 echo "ASYNC_GA_POPSIZE ${ASYNC_GA_POPSIZE}"
 
+# genomes per tournament, as a fraction rounded stochastically for each
+# tournament: 3/2 holds tournaments of 1 and of 2 equally often, and under
+# 1 a tournament may come up empty, leaving a genome to replace itself
 ASYNC_GA_TOURNSIZE_NUMERATOR="${ASYNC_GA_TOURNSIZE_NUMERATOR:-5}"
 echo "ASYNC_GA_TOURNSIZE_NUMERATOR ${ASYNC_GA_TOURNSIZE_NUMERATOR}"
 
