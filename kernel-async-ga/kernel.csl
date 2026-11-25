@@ -639,10 +639,9 @@ comptime {  // fixed-length message passing supports at most 31 wavelets
 // runtime config: target col << 16 | row set by host
 var rtc_p2pTarget = [1]u32{ 0xFFFFFFFF };  // default none
 var ptr_rtc_p2pTarget : [*]u32 = &rtc_p2pTarget;
-// runtime config: how far past the partner the send target may be drawn,
-// packed col << 16 | row; each axis drawn uniformly in [0, spread] per send
-var rtc_p2pPartnerSpread = [1]u32{ 0 };  // default: target the partner exactly
-var ptr_rtc_p2pPartnerSpread : [*]u32 = &rtc_p2pPartnerSpread;
+// runtime config: spread col << 16 | row set by host
+var rtc_p2pSpread = [1]u32{ 0 };  // default none, i.e., target exactly
+var ptr_rtc_p2pSpread : [*]u32 = &rtc_p2pSpread;
 var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
 var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
 
@@ -658,17 +657,16 @@ task sendFinalizeTask_P() void {
   sendFlag_P = 1; busyThreads[sendThread_P] = 0;
 }
 
-// address a message to this PE's partner, offset along each axis by a
-// uniform draw within the partner spread
+// address p2p message, targeting row/col + unif(row/col spread)
 fn encodeSendHeader_P() u32 {
   const target = rtc_p2pTarget[0];
-  const spread = rtc_p2pPartnerSpread[0];
+  const spread = rtc_p2pSpread[0];
+  const destCol: u16 = @as(u16, target >> 16)
+    + opscalar.unif16(@as(u16, spread >> 16) + 1);
+  const destRow: u16 = @as(u16, target & 0xFFFF)
+    + opscalar.unif16(@as(u16, spread & 0xFFFF) + 1);
   return mp.encode_header(
-    @as(u16, target >> 16)  // dest_col
-      + opscalar.unif16(@as(u16, spread >> 16) + 1),
-    @as(u16, target & 0xFFFF)  // dest_row
-      + opscalar.unif16(@as(u16, spread & 0xFFFF) + 1),
-    p2pMsgSize - 1  // body length: genomes and pad
+    destCol, destRow, p2pMsgSize - 1  // body: genomes and pad
   );
 }
 
@@ -917,10 +915,12 @@ task cycleTask() void {
     }
 
     @assert(p2pPadWavelet & sendCount == 0);
-    sendBuf_P[0] = encodeSendHeader_P();
     sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount;
 
-    if (numLive > 0 and dispatchSend_P()) { sendFlag_P = 0; }
+    if (numLive > 0) {  // draw target and address message only if sending
+      sendBuf_P[0] = encodeSendHeader_P();
+      if (dispatchSend_P()) { sendFlag_P = 0; }
+    }
   }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
@@ -1027,7 +1027,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   if (p2pEnabled) {
     mp.init();
     busyThreads[p2pRecvThread] = 1;  // reserve microthread for p2p recv
-    // header is emplaced per send, which is when the target is drawn
+    // header is emplaced per send, when the target is drawn
     if (rtc_p2pTarget[0] != 0xFFFFFFFF) sendFlag_P = 1;
   }
 
@@ -1141,7 +1141,7 @@ comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_immCounter_W, "immCounter_W");
   @export_symbol(ptr_immCounter_P, "immCounter_P");
   @export_symbol(ptr_rtc_p2pTarget, "rtc_p2pTarget");
-  @export_symbol(ptr_rtc_p2pPartnerSpread, "rtc_p2pPartnerSpread");
+  @export_symbol(ptr_rtc_p2pSpread, "rtc_p2pSpread");
   @export_symbol(ptr_rtc_p2pSendProbability, "rtc_p2pSendProbability");
   @export_symbol(ptr_recvCounter_N, "recvCounter_N");
   @export_symbol(ptr_recvCounter_S, "recvCounter_S");

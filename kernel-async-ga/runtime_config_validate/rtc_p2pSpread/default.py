@@ -1,4 +1,4 @@
-"""Validators for rtc_p2pPartnerSpread values in a runtime config.
+"""Validators for rtc_p2pSpread values in a runtime config.
 
 Takes comptime configs json as argument and runtime config npz on stdin.
 """
@@ -10,7 +10,7 @@ import sys
 import numpy as np
 
 
-def validate_rtc_p2pPartnerSpread_in_bounds(
+def validate_rtc_p2pSpread_in_bounds(
     data: np.ndarray, target: np.ndarray, comptime_config: dict
 ) -> None:
     spread_col, spread_row = data >> 16, data & 0xFFFF
@@ -32,9 +32,9 @@ def validate_rtc_p2pPartnerSpread_in_bounds(
 if __name__ == "__main__":
     comptime_config = json.loads(sys.argv[1])
     runtime_config = np.load(io.BytesIO(sys.stdin.buffer.read()))
-    data = runtime_config["rtc_p2pPartnerSpread"]
+    data = runtime_config["rtc_p2pSpread"]
     target = None  # no p2p targets to offset
     if "rtc_p2pTarget" in runtime_config:
         target = runtime_config["rtc_p2pTarget"]
-    print(f"validating rtc_p2pPartnerSpread {data.shape=}")
-    validate_rtc_p2pPartnerSpread_in_bounds(data, target, comptime_config)
+    print(f"validating rtc_p2pSpread {data.shape=}")
+    validate_rtc_p2pSpread_in_bounds(data, target, comptime_config)

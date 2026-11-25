@@ -635,11 +635,11 @@ def test_rtc_evoepi_mutation_rate_validator(rate: float, ok: bool) -> None:
 
 
 def _validate_spread(validator: str, npz: bytes, comptime: dict) -> bool:
-    """Does npz pass an rtc_p2pPartnerSpread validator?"""
+    """Does npz pass an rtc_p2pSpread validator?"""
     return not subprocess.run(
         [
             sys.executable,
-            validate_dir.with_name("rtc_p2pPartnerSpread") / validator,
+            validate_dir.with_name("rtc_p2pSpread") / validator,
             json.dumps(comptime),
         ],
         input=npz,
@@ -648,10 +648,8 @@ def _validate_spread(validator: str, npz: bytes, comptime: dict) -> bool:
     ).returncode
 
 
-@pytest.mark.parametrize("partnerSpread", [0, 1, 2 << 16 | 3])
-def test_p2p_partner_spread_template(
-    tmp_path: pathlib.Path, partnerSpread: int
-) -> None:
+@pytest.mark.parametrize("spread", [0, 1, 2 << 16 | 3])
+def test_p2p_spread_template(tmp_path: pathlib.Path, spread: int) -> None:
     comptime = {
         "nRow": 4,
         "nCol": 4,
@@ -663,29 +661,29 @@ def test_p2p_partner_spread_template(
     }
     # unset by default, so the kernel's own default (no offset) stands
     npz = _generate(tmp_path, comptime, {"p2pMode": "pairs"})
-    assert "rtc_p2pPartnerSpread" not in np.load(io.BytesIO(npz)).files
+    assert "rtc_p2pSpread" not in np.load(io.BytesIO(npz)).files
 
     npz = _generate(
         tmp_path,
         comptime,
-        {"p2pMode": "pairs", "p2pPartnerSpread": partnerSpread},
+        {"p2pMode": "pairs", "p2pSpread": spread},
     )
-    data = np.load(io.BytesIO(npz))["rtc_p2pPartnerSpread"]
+    data = np.load(io.BytesIO(npz))["rtc_p2pSpread"]
     assert data.shape == (4, 4, 1) and data.dtype == np.uint32
-    assert (data == partnerSpread).all()
+    assert (data == spread).all()
 
 
-def test_p2p_partner_spread_validators_reject() -> None:
+def test_p2p_spread_validators_reject() -> None:
     comptime = {"nRow": 4, "nCol": 4, "nRowSubgrid": 0, "nColSubgrid": 0}
     none = 0xFFFFFFFF
     # (0, 0) <-> (1, 1) paired, others lack target; values are col << 16 | row
     target = np.full((4, 4, 1), none, np.uint32)
     target[0, 0], target[1, 1] = 1 << 16 | 1, 0
 
-    def npz(partnerSpread: int, **kwargs: np.ndarray) -> bytes:
+    def npz(spread: int, **kwargs: np.ndarray) -> bytes:
         return _to_npz(
             rtc_p2pTarget=target,
-            rtc_p2pPartnerSpread=np.full((4, 4, 1), partnerSpread, np.uint32),
+            rtc_p2pSpread=np.full((4, 4, 1), spread, np.uint32),
             **kwargs,
         )
 
@@ -699,12 +697,12 @@ def test_p2p_partner_spread_validators_reject() -> None:
     # spread alone is bounded by the grid, with or without targets
     assert not _validate_spread(
         "default.py",
-        _to_npz(rtc_p2pPartnerSpread=np.full((4, 4, 1), 4, np.uint32)),
+        _to_npz(rtc_p2pSpread=np.full((4, 4, 1), 4, np.uint32)),
         comptime,
     )
     assert _validate_spread(
         "intersubgrid.py",
-        _to_npz(rtc_p2pPartnerSpread=np.full((4, 4, 1), 4, np.uint32)),
+        _to_npz(rtc_p2pSpread=np.full((4, 4, 1), 4, np.uint32)),
         comptime,
     )  # nothing to check without targets
 
