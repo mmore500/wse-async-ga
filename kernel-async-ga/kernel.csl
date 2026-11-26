@@ -639,6 +639,9 @@ comptime {  // fixed-length message passing supports at most 31 wavelets
 // runtime config: target col << 16 | row set by host
 var rtc_p2pTarget = [1]u32{ 0xFFFFFFFF };  // default none
 var ptr_rtc_p2pTarget : [*]u32 = &rtc_p2pTarget;
+// runtime config: spread col << 16 | row set by host
+var rtc_p2pSpread = [1]u32{ 0 };  // default none, i.e., target exactly
+var ptr_rtc_p2pSpread : [*]u32 = &rtc_p2pSpread;
 var rtc_p2pSendProbability = [1]f32{ ctc_p2pSendProbability };
 var ptr_rtc_p2pSendProbability : [*]f32 = &rtc_p2pSendProbability;
 
@@ -652,6 +655,25 @@ const sendBufDsd_P = @get_dsd(mem1d_dsd, .{
 // callback for when send is complete, set flag to request refill & next send
 task sendFinalizeTask_P() void {
   sendFlag_P = 1; busyThreads[sendThread_P] = 0;
+}
+
+// address p2p message, targeting row/col + unif(row/col spread)
+fn encodeSendHeader_P() u32 {
+  const target = rtc_p2pTarget[0];
+  const spread = rtc_p2pSpread[0];
+  // drawn col and row, up to target plus spread, must fit 16 bits
+  @assert((target >> 16) + (spread >> 16) < 0xFFFF);
+  @assert((target & 0xFFFF) + (spread & 0xFFFF) < 0xFFFF);
+  // + 1: unif16's upper bound is exclusive, so draws span [0, spread]
+  const destCol: u16 = @as(u16, target >> 16)
+    + opscalar.unif16(@as(u16, spread >> 16) + 1);
+  const destRow: u16 = @as(u16, target & 0xFFFF)
+    + opscalar.unif16(@as(u16, spread & 0xFFFF) + 1);
+  return mp.encode_header(
+    destCol,  // dest_col
+    destRow,  // dest_row
+    p2pMsgSize - 1  // msg body length: genomes and pad
+  );
 }
 
 // open async uthread to send from sendBuf, header & pad emplaced at launch
@@ -901,7 +923,10 @@ task cycleTask() void {
     @assert(p2pPadWavelet & sendCount == 0);
     sendBuf_P[p2pMsgSize - 1] = p2pPadWavelet | sendCount;
 
-    if (numLive > 0 and dispatchSend_P()) { sendFlag_P = 0; }
+    if (numLive > 0) {  // draw target and address message only if sending
+      sendBuf_P[0] = encodeSendHeader_P();
+      if (dispatchSend_P()) { sendFlag_P = 0; }
+    }
   }
   const shuf2 = @random16() & 3;
   for (@range(u16, 4)) |i| {  // send to all neighbors
@@ -1008,15 +1033,7 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   if (p2pEnabled) {
     mp.init();
     busyThreads[p2pRecvThread] = 1;  // reserve microthread for p2p recv
-    const p2pTarget = rtc_p2pTarget[0];
-    if (p2pTarget != 0xFFFFFFFF) {
-      sendBuf_P[0] = mp.encode_header(
-        @as(u16, p2pTarget >> 16),  // dest_col
-        @as(u16, p2pTarget & 0xFFFF),  // dest_row
-        p2pMsgSize - 1  // body length: genomes and pad
-      );
-      sendFlag_P = 1;
-    }
+    if (rtc_p2pTarget[0] != 0xFFFFFFFF) sendFlag_P = 1;
   }
 
   //  how many active neighbors?
@@ -1129,6 +1146,7 @@ comptime {  // symbols let memcpy gather end-state data from device to host
   @export_symbol(ptr_immCounter_W, "immCounter_W");
   @export_symbol(ptr_immCounter_P, "immCounter_P");
   @export_symbol(ptr_rtc_p2pTarget, "rtc_p2pTarget");
+  @export_symbol(ptr_rtc_p2pSpread, "rtc_p2pSpread");
   @export_symbol(ptr_rtc_p2pSendProbability, "rtc_p2pSendProbability");
   @export_symbol(ptr_recvCounter_N, "recvCounter_N");
   @export_symbol(ptr_recvCounter_S, "recvCounter_S");

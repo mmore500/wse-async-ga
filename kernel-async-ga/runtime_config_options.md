@@ -71,6 +71,14 @@ If no runtime config value is specified, symbols keep compile time default.
 - `p2pSeed`
   - seeds random choice of targets
   - if not specified, `globalSeed`
+- `p2pSpread`
+  - how far past its partner a PE may draw its send target, packed as
+    `col << 16 | row`; each axis is drawn uniformly over `[0, spread]`, anew
+    for every send
+  - `0` (default): sends to the partner exactly
+  - validators check the farthest target stays on the grid and in the
+    sending PE's subgrid
+  - sets `rtc_p2pSpread`
 - `setSymbolValues`
   - device symbols set from a Python lambda of symbol `shape` (nRow, nCol,
     1) giving 32-bit values, e.g., `f32`, `i32`, or `u32`:

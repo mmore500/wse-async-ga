@@ -290,6 +290,11 @@ if __name__ == "__main__":
             shape, runtime_config["p2pSendProbability"], np.float32
         ).view(np.uint32)
 
+    if "p2pSpread" in runtime_config:  # packed col << 16 | row
+        p2pSymbols["rtc_p2pSpread"] = np.full(
+            shape, runtime_config["p2pSpread"], np.uint32
+        )
+
     p2pMode = runtime_config.get("p2pMode", "none")
     if p2pMode == "none":
         pass
