@@ -2091,8 +2091,7 @@ del df, tsc_ticks, tsc_sec, tsc_cysec, tsc_cyhz, tsc_cyns, tscStart_ints, tscEnd
 # runner.dump("corefile.cs1")
 runner.stop()
 
-# after device reads: with a nonblocking kernel, the simulator dies on the
-# next memcpy if the host pauses a second or two once the kernel is done
+# process data after runner.stop (otherwise simulator stalls)
 log("processing fossils =====================================================")
 if args.process_fossils is False:
     log(" - skipping fossil processing!")
