@@ -664,6 +664,7 @@ fn encodeSendHeader_P() u32 {
   // drawn col and row, up to target plus spread, must fit 16 bits
   @assert((target >> 16) + (spread >> 16) < 0xFFFF);
   @assert((target & 0xFFFF) + (spread & 0xFFFF) < 0xFFFF);
+  // + 1: unif16's upper bound is exclusive, so draws span [0, spread]
   const destCol: u16 = @as(u16, target >> 16)
     + opscalar.unif16(@as(u16, spread >> 16) + 1);
   const destRow: u16 = @as(u16, target & 0xFFFF)
@@ -671,7 +672,7 @@ fn encodeSendHeader_P() u32 {
   return mp.encode_header(
     destCol,  // dest_col
     destRow,  // dest_row
-    p2pMsgSize - 1  // body length: genomes and pad
+    p2pMsgSize - 1  // msg body length: genomes and pad
   );
 }
 
