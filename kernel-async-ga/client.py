@@ -1220,13 +1220,6 @@ log(f"- saved file size: {file_size_gb:.2f} GB")
 
 del fossils
 
-log("processing fossils =====================================================")
-if args.process_fossils is False:
-    log(" - skipping fossil processing!")
-else:
-    log(f" - processing fossils {nWav=}...")
-    process_fossils(nWav)
-
 log("runtime config =============================================")
 runtimeConfigMismatches = []  # raise at end, so that outputs get saved
 for symbol, data in runtimeConfig.items():
@@ -2097,6 +2090,15 @@ del df, tsc_ticks, tsc_sec, tsc_cysec, tsc_cyhz, tsc_cyns, tscStart_ints, tscEnd
 
 # runner.dump("corefile.cs1")
 runner.stop()
+
+# after device reads: with a nonblocking kernel, the simulator dies on the
+# next memcpy if the host pauses a second or two once the kernel is done
+log("processing fossils =====================================================")
+if args.process_fossils is False:
+    log(" - skipping fossil processing!")
+else:
+    log(f" - processing fossils {nWav=}...")
+    process_fossils(nWav)
 
 if runtimeConfigMismatches:
     raise ValueError(
