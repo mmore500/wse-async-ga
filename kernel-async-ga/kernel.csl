@@ -661,12 +661,17 @@ task sendFinalizeTask_P() void {
 fn encodeSendHeader_P() u32 {
   const target = rtc_p2pTarget[0];
   const spread = rtc_p2pSpread[0];
+  // drawn col and row, up to target plus spread, must fit 16 bits
+  @assert((target >> 16) + (spread >> 16) < 0xFFFF);
+  @assert((target & 0xFFFF) + (spread & 0xFFFF) < 0xFFFF);
   const destCol: u16 = @as(u16, target >> 16)
     + opscalar.unif16(@as(u16, spread >> 16) + 1);
   const destRow: u16 = @as(u16, target & 0xFFFF)
     + opscalar.unif16(@as(u16, spread & 0xFFFF) + 1);
   return mp.encode_header(
-    destCol, destRow, p2pMsgSize - 1  // body: genomes and pad
+    destCol,  // dest_col
+    destRow,  // dest_row
+    p2pMsgSize - 1  // body length: genomes and pad
   );
 }
 
@@ -1027,7 +1032,6 @@ fn dolaunch() void {  // launched by RPC (remote procedure call)
   if (p2pEnabled) {
     mp.init();
     busyThreads[p2pRecvThread] = 1;  // reserve microthread for p2p recv
-    // header is emplaced per send, when the target is drawn
     if (rtc_p2pTarget[0] != 0xFFFFFFFF) sendFlag_P = 1;
   }
 
